@@ -5,7 +5,6 @@ import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
 import { computed, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
 
 import ConceptBuilderModal from '../ConceptBuilderModal.vue'
 
@@ -14,7 +13,6 @@ const props = defineProps<{
   card: AiriCard
 }>()
 
-const { t } = useI18n()
 const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const autonomousArtistryStore = useAutonomousArtistryStore()

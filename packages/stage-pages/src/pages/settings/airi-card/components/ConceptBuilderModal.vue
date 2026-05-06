@@ -59,7 +59,7 @@ const modelStore = useModelStore()
 const backgroundStore = useBackgroundStore()
 const airiCardStore = useAiriCardStore()
 
-const { activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId } = storeToRefs(speechStore)
+const { activeSpeechProvider } = storeToRefs(speechStore)
 
 const activeTab = ref('identity')
 const id = ref('')
