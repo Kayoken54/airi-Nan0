@@ -1,7 +1,7 @@
 {
   "name": "@proj-airi/stage-tamagotchi",
   "type": "module",
-  "version": "0.9.1-stable.20260505",
+  "version": "0.9.1-stable.20260506",
   "private": true,
   "description": "LLM powered virtual character",
   "author": {
@@ -110,7 +110,6 @@
     "onnxruntime-web": "^1.24.2",
     "pinia": "catalog:",
     "popmotion": "^11.0.5",
-    "posthog-js": "catalog:",
     "rehype-stringify": "^10.0.1",
     "reka-ui": "^2.8.2",
     "remark-parse": "^11.0.0",
