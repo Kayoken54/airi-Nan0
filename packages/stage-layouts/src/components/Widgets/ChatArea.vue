@@ -1,11 +1,23 @@
 <script setup lang="ts">
+import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
 import type { ChatProvider } from '@xsai-ext/providers/utils'
 
-import { isStageTamagotchi } from '@proj-airi/stage-shared'
+import { estimateTokens, formatTokenCount, isStageTamagotchi } from '@proj-airi/stage-shared'
+import {
+  CharacterContextDialog,
+  ChatImagesPopover,
+  ChatMemoryPopover,
+  ChatSessionModal,
+} from '@proj-airi/stage-ui/components'
 import { useAudioAnalyzer } from '@proj-airi/stage-ui/composables'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
+import { useChatMaintenanceStore } from '@proj-airi/stage-ui/stores/chat/maintenance'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
+import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
+import { useShortTermMemoryStore } from '@proj-airi/stage-ui/stores/memory-short-term'
+import { buildSystemPrompt, useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
@@ -13,21 +25,33 @@ import { useSettings, useSettingsAudioDevice, useSettingsChat } from '@proj-airi
 import { BasicTextarea, FieldSelect } from '@proj-airi/ui'
 import { until } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { PopoverContent, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
 
 import IndicatorMicVolume from './IndicatorMicVolume.vue'
 
-// Transcription listening state (separate from microphone enabled)
+import { BackgroundDialogPicker } from '../Backgrounds'
 
 const props = defineProps<{
   tools?: any[]
 }>()
+
+const router = useRouter()
 const messageInput = ref('')
+const attachments = ref<{ type: 'image', data: string, mimeType: string, url: string }[]>([])
 const hearingPopoverOpen = ref(false)
 const isComposing = ref(false)
 const isListening = ref(false)
+const isImagineMode = ref(false)
+const trashConfirmOpen = ref(false)
+const showContext = ref(false)
+const showSessions = ref(false)
+const backgroundDialogOpen = ref(false)
+const fileInput = useTemplateRef<HTMLInputElement>('fileInput')
+
 const providersStore = useProvidersStore()
 const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
@@ -37,8 +61,16 @@ const { askPermission, startStream } = useSettingsAudioDevice()
 const { enabled, selectedAudioInput, stream, audioInputs } = storeToRefs(useSettingsAudioDevice())
 const chatOrchestrator = useChatOrchestratorStore()
 const chatSession = useChatSessionStore()
+const chatStream = useChatStreamStore()
+const airiCardStore = useAiriCardStore()
+const shortTermMemory = useShortTermMemoryStore()
+const { cleanupMessages } = useChatMaintenanceStore()
+
+const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { ingest, onAfterMessageComposed } = chatOrchestrator
 const { messages } = storeToRefs(chatSession)
+const { streamingMessage } = storeToRefs(chatStream)
+const { sending } = storeToRefs(chatOrchestrator)
 const { audioContext } = useAudioContext()
 const { t } = useI18n()
 
@@ -50,7 +82,162 @@ const { supportsStreamInput } = storeToRefs(hearingPipeline)
 const { configured: hearingConfigured, autoSendEnabled, autoSendDelay } = storeToRefs(hearingStore)
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value)
 
-// Auto-send logic
+const characterName = computed(() => activeCard.value?.name || 'AIRI')
+const effectiveSystemPrompt = computed(() => buildSystemPrompt(activeCard.value))
+
+// --- Logic Helpers ---
+function formatLocalDayKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function handleTrashClick() {
+  const today = formatLocalDayKey(new Date())
+  const isTodayCached = activeCardId.value && shortTermMemory.getCharacterBlocks(activeCardId.value).some(b => b.date === today)
+  if (!isTodayCached && messages.value.length > 0) {
+    trashConfirmOpen.value = true
+    return
+  }
+  cleanupMessages()
+}
+
+async function handleSaveAndClear() {
+  trashConfirmOpen.value = false
+  if (activeCardId.value) {
+    try {
+      await shortTermMemory.rebuildToday(activeCardId.value)
+    }
+    catch (err) {
+      console.error('[ChatArea] Failed to cache today before clear:', err)
+    }
+  }
+  cleanupMessages()
+}
+
+function handleClearAnyway() {
+  trashConfirmOpen.value = false
+  cleanupMessages()
+}
+
+function addImageAttachmentFromBase64(data: string, mimeType: string, _fileName?: string) {
+  let url = ''
+  try {
+    const binary = atob(data)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    const blob = new Blob([bytes], { type: mimeType })
+    url = URL.createObjectURL(blob)
+  }
+  catch {
+    url = `data:${mimeType};base64,${data}`
+  }
+
+  attachments.value.push({
+    type: 'image' as const,
+    data,
+    mimeType,
+    url,
+  })
+}
+
+function handleFilePaste(files: File[]) {
+  for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const base64Data = (e.target?.result as string)?.split(',')[1]
+        if (base64Data) {
+          addImageAttachmentFromBase64(base64Data, file.type, file.name)
+        }
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+}
+
+function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (target.files?.length) {
+    handleFilePaste(Array.from(target.files))
+  }
+  target.value = ''
+}
+
+async function handleScreenshotClick() {
+  // Vision capture is typically restricted in browser unless using getDisplayMedia
+  // For now, we show a toast explaining browser limitations if electron visionStore is missing
+  toast.info('Vision capture is optimized for desktop. Please use the attach button for screenshots.')
+}
+
+function navigateToImageJournal() {
+  if (!activeCardId.value)
+    return
+  router.push(`/settings/airi-card?cardId=${activeCardId.value}&tab=gallery`)
+}
+
+function removeAttachment(index: number) {
+  const attachment = attachments.value[index]
+  if (attachment) {
+    URL.revokeObjectURL(attachment.url)
+    attachments.value.splice(index, 1)
+  }
+}
+
+// --- Token Counter ---
+const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+
+const sessionTokenCount = computed(() => {
+  let total = 0
+  for (const message of historyMessages.value) {
+    if (typeof message.content === 'string') {
+      total += estimateTokens(message.content)
+    }
+    else if (Array.isArray(message.content)) {
+      const textOnly = message.content
+        .map((part) => {
+          if (typeof part === 'string')
+            return part
+          if (part && typeof part === 'object' && 'text' in part && !('image_url' in part))
+            return String(part.text ?? '')
+          return ''
+        })
+        .join('')
+      total += estimateTokens(textOnly)
+    }
+  }
+  return total
+})
+
+const formattedTokenCount = computed(() => formatTokenCount(sessionTokenCount.value))
+
+const globalContextWidth = computed(() => {
+  if (!activeProvider.value || !activeModel.value)
+    return undefined
+  try {
+    const rawMap = localStorage.getItem('airi:context-width-map')
+    if (!rawMap)
+      return undefined
+    const map = JSON.parse(rawMap)
+    return map[activeProvider.value]?.[activeModel.value]
+  }
+  catch {
+    return undefined
+  }
+})
+
+const effectiveContextWidth = computed(() => activeCard.value?.extensions?.airi?.generation?.known?.contextWidth || globalContextWidth.value)
+
+const contextPercentage = computed(() => {
+  if (!effectiveContextWidth.value)
+    return 0
+  return (sessionTokenCount.value / effectiveContextWidth.value) * 100
+})
+
+// --- Auto-send logic ---
 let autoSendTimeout: ReturnType<typeof setTimeout> | undefined
 const pendingAutoSendText = ref('')
 
@@ -63,28 +250,19 @@ function clearPendingAutoSend() {
 }
 
 async function debouncedAutoSend(text: string) {
-  // Double-check auto-send is enabled before proceeding
   if (!autoSendEnabled.value) {
     clearPendingAutoSend()
     return
   }
-
-  // Add text to pending buffer
   pendingAutoSendText.value = pendingAutoSendText.value ? `${pendingAutoSendText.value} ${text}` : text
-
-  // Clear existing timeout
   if (autoSendTimeout) {
     clearTimeout(autoSendTimeout)
   }
-
-  // Set new timeout
   autoSendTimeout = setTimeout(async () => {
-    // Final check before sending - auto-send might have been disabled while waiting
     if (!autoSendEnabled.value) {
       clearPendingAutoSend()
       return
     }
-
     const textToSend = pendingAutoSendText.value.trim()
     if (textToSend && autoSendEnabled.value) {
       try {
@@ -95,7 +273,6 @@ async function debouncedAutoSend(text: string) {
           providerConfig,
           tools: props.tools,
         })
-        // Clear the message input after sending
         messageInput.value = ''
         pendingAutoSendText.value = ''
       }
@@ -108,42 +285,40 @@ async function debouncedAutoSend(text: string) {
 }
 
 async function handleSend() {
-  if (!messageInput.value.trim() || isComposing.value) {
+  if (!messageInput.value.trim() && !attachments.value.length || isComposing.value) {
     return
   }
 
   const textToSend = messageInput.value
+  const attachmentsToSend = attachments.value.map(att => ({ ...att }))
+
   messageInput.value = ''
+  attachments.value = []
+
+  if (isImagineMode.value) {
+    const artistryStore = useAutonomousArtistryStore()
+    void artistryStore.runArtistTask(textToSend, chatSession.messages as any, 'assistant')
+    return
+  }
 
   try {
     const providerConfig = providersStore.getProviderConfig(activeProvider.value)
-
     await ingest(textToSend, {
       chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
       model: activeModel.value,
       providerConfig,
+      attachments: attachmentsToSend,
       tools: props.tools,
     })
+    attachmentsToSend.forEach(att => URL.revokeObjectURL(att.url))
   }
   catch (error) {
     messageInput.value = textToSend
-    messages.value.pop()
-    messages.value.push({
-      role: 'error',
-      content: (error as Error).message,
-    })
+    attachments.value = attachmentsToSend
   }
 }
 
-watch(hearingPopoverOpen, async (value) => {
-  if (value) {
-    await askPermission()
-  }
-})
-
-onAfterMessageComposed(async () => {
-})
-
+// --- Audio Analyzer ---
 const { startAnalyzer, stopAnalyzer, volumeLevel } = useAudioAnalyzer()
 const normalizedVolume = computed(() => Math.min(1, Math.max(0, (volumeLevel.value ?? 0) / 100)))
 let analyzerSource: MediaStreamAudioSourceNode | undefined
@@ -177,161 +352,80 @@ watch([hearingPopoverOpen, enabled, stream], () => {
 onUnmounted(() => {
   teardownAnalyzer()
   stopListening()
-
-  // Clear auto-send timeout on unmount
   if (autoSendTimeout) {
     clearTimeout(autoSendTimeout)
     autoSendTimeout = undefined
   }
 })
 
-// Transcription listening functions
+// --- Transcription ---
 async function startListening() {
-  // Allow calling this even if already listening - transcribeForMediaStream will handle session reuse/restart
   try {
-    console.info('[ChatArea] Starting listening...', {
-      enabled: enabled.value,
-      hasStream: !!stream.value,
-      supportsStreamInput: supportsStreamInput.value,
-      hearingConfigured: hearingConfigured.value,
-    })
-
-    // Auto-configure Web Speech API as default if no provider is configured
     if (!hearingConfigured.value) {
-      // Check if Web Speech API is available in the browser
-      // Web Speech API is NOT available in Electron (stage-tamagotchi) - it requires Google's embedded API keys
-      // which are not available in Electron, causing it to fail at runtime
       const isWebSpeechAvailable = typeof window !== 'undefined'
-        && !isStageTamagotchi() // Explicitly exclude Electron
+        && !isStageTamagotchi()
         && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
-
       if (isWebSpeechAvailable) {
-        console.info('[ChatArea] No transcription provider configured. Auto-configuring Web Speech API as default...')
-
-        // Initialize the provider in the providers store first
-        try {
-          providersStore.initializeProvider('browser-web-speech-api')
-        }
-        catch (err) {
-          console.warn('[ChatArea] Error initializing Web Speech API provider:', err)
-        }
-
-        // Set as active provider
+        providersStore.initializeProvider('browser-web-speech-api')
         hearingStore.activeTranscriptionProvider = 'browser-web-speech-api'
-
-        // Wait for reactivity to update
         await nextTick()
-
-        // Verify the provider was set correctly
-        if (hearingStore.activeTranscriptionProvider === 'browser-web-speech-api') {
-          console.info('[ChatArea] Web Speech API configured as default provider')
-          // Continue with transcription - Web Speech API is ready
-        }
-        else {
-          console.error('[ChatArea] Failed to set Web Speech API as default provider')
-          isListening.value = false
-          return
-        }
       }
       else {
-        console.error('[ChatArea] Web Speech API not available. No transcription provider configured and Web Speech API is not available in this browser. Please go to Settings > Modules > Hearing to configure a transcription provider. Browser support:', {
-          hasWindow: typeof window !== 'undefined',
-          hasWebkitSpeechRecognition: typeof window !== 'undefined' && 'webkitSpeechRecognition' in window,
-          hasSpeechRecognition: typeof window !== 'undefined' && 'SpeechRecognition' in window,
-        })
         isListening.value = false
         return
       }
     }
-
-    // Request microphone permission if needed (microphone should already be enabled by the user)
     if (!stream.value) {
-      console.info('[ChatArea] Requesting microphone permission...')
       await askPermission()
-
-      // If still no stream, try starting it manually
       if (!stream.value && enabled.value) {
-        console.info('[ChatArea] Attempting to start stream manually...')
         startStream()
-        // Wait for the stream to become available with a timeout.
         try {
           await until(stream).toBeTruthy({ timeout: 3000, throwOnTimeout: true })
         }
         catch {
-          console.error('[ChatArea] Timed out waiting for audio stream.')
           isListening.value = false
           return
         }
       }
     }
-
     if (!stream.value) {
-      const errorMsg = 'Failed to get audio stream for transcription. Please check microphone permissions and ensure a device is selected.'
-      console.error('[ChatArea]', errorMsg)
       isListening.value = false
       return
     }
-
-    // Check if streaming input is supported
     if (!shouldUseStreamInput.value) {
-      const errorMsg = 'Streaming input not supported by the selected transcription provider. Please select a provider that supports streaming (e.g., Web Speech API).'
-      console.warn('[ChatArea]', errorMsg)
-      // Clean up any existing sessions from other pages (e.g., test page) that might interfere
       await stopStreamingTranscription(true)
       isListening.value = false
       return
     }
-
-    console.info('[ChatArea] Starting streaming transcription with stream:', stream.value.id)
-
-    // Call transcribeForMediaStream - it's async so we await it
-    // Set listening state AFTER successful call
     try {
       await transcribeForMediaStream(stream.value, {
         onSentenceEnd: (delta) => {
           if (delta && delta.trim()) {
-            // Append transcribed text to message input
             const currentText = messageInput.value.trim()
             messageInput.value = currentText ? `${currentText} ${delta}` : delta
-            console.info('[ChatArea] Received transcription delta:', delta)
-
-            // Auto-send if enabled - check the current value (not captured in closure)
-            // This ensures we always respect the current setting, even if callbacks are reused
             if (autoSendEnabled.value) {
               debouncedAutoSend(delta)
             }
             else {
-              // If auto-send is disabled, clear any pending auto-send text to prevent accidental sends
               clearPendingAutoSend()
             }
           }
         },
         onSpeechEnd: (text) => {
-          console.info('[ChatArea] Speech ended, final text:', text)
-          if (!text || !text.trim()) {
+          if (!text || !text.trim())
             return
-          }
-
-          // Cancel any pending debounced auto-sends since we are handling the final text here
           clearPendingAutoSend()
-
-          // We ALWAYS "inscribe" the final text into the chat history so it's not lost.
-          // The auto-send setting now ONLY controls whether the AI assistant triggers a reply.
           void (async () => {
             try {
               const provider = await providersStore.getProviderInstance(activeProvider.value)
               if (!provider || !activeModel.value)
                 return
-
-              console.info('[ChatArea] Inscribing message:', { text, autoSend: autoSendEnabled.value })
               await ingest(text, {
                 chatProvider: provider as ChatProvider,
                 model: activeModel.value,
                 skipAssistant: !autoSendEnabled.value,
                 tools: props.tools,
               })
-
-              // Clear the message input if it matches the transcribed text (standard behavior)
               if (messageInput.value.trim() === text.trim()) {
                 messageInput.value = ''
               }
@@ -342,20 +436,14 @@ async function startListening() {
           })()
         },
       })
-
-      // Only set listening to true if transcription started successfully
-      // (transcribeForMediaStream might return early if session already exists)
       isListening.value = true
-      console.info('[ChatArea] Streaming transcription initiated successfully')
     }
     catch (err) {
-      console.error('[ChatArea] Transcription error:', err)
       isListening.value = false
-      throw err // Re-throw to be caught by outer catch
+      throw err
     }
   }
   catch (err) {
-    console.error('[ChatArea] Failed to start transcription:', err)
     isListening.value = false
   }
 }
@@ -363,14 +451,8 @@ async function startListening() {
 async function stopListening() {
   if (!isListening.value)
     return
-
   try {
-    console.info('[ChatArea] Stopping transcription...')
-
-    // Clear auto-send timeout
     clearPendingAutoSend()
-
-    // Send any pending text immediately if auto-send is enabled
     if (autoSendEnabled.value && pendingAutoSendText.value.trim()) {
       const textToSend = pendingAutoSendText.value.trim()
       pendingAutoSendText.value = ''
@@ -388,68 +470,73 @@ async function stopListening() {
         console.error('[ChatArea] Auto-send error on stop:', err)
       }
     }
-
     await stopStreamingTranscription(true)
     isListening.value = false
-    console.info('[ChatArea] Transcription stopped')
   }
   catch (err) {
-    console.error('[ChatArea] Error stopping transcription:', err)
     isListening.value = false
   }
 }
 
-// Start listening when microphone is enabled and stream is available
 watch(enabled, async (val) => {
   if (val && stream.value) {
-    // Microphone was just enabled and we have a stream, start transcription
     await startListening()
   }
   else if (!val && isListening.value) {
-    // Microphone was disabled, stop transcription
     await stopListening()
   }
 })
 
-// Start listening when stream becomes available (if microphone is enabled)
 watch(stream, async (val) => {
   if (val && enabled.value && !isListening.value) {
-    // Stream became available and microphone is enabled, start transcription
     await startListening()
   }
   else if (!val && isListening.value) {
-    // Stream was lost, stop transcription
     await stopListening()
   }
 })
 
-// Watch for auto-send setting changes and clear pending sends if disabled
 watch(autoSendEnabled, (enabled) => {
   if (!enabled) {
-    // Auto-send was disabled - clear any pending auto-send
     clearPendingAutoSend()
-    console.info('[ChatArea] Auto-send disabled, cleared pending text')
   }
+})
+
+onMounted(() => {
+  shortTermMemory.load()
 })
 </script>
 
 <template>
-  <div h="<md:full" flex gap-2 class="ph-no-capture">
+  <div h="<md:full" flex="~ col" gap-1 class="ph-no-capture">
+    <input ref="fileInput" type="file" accept="image/*" class="hidden" multiple @change="handleFileSelect">
+
+    <!-- Input Area -->
     <div
       :class="[
         'relative',
         'w-full',
-        'bg-primary-200/20 dark:bg-primary-400/20',
+        'bg-primary-200/20 dark:bg-primary-400/20 rounded-xl overflow-hidden',
       ]"
     >
+      <!-- Attachments Preview -->
+      <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 border-b border-primary-100/50 p-2">
+        <div v-for="(attachment, index) in attachments" :key="index" class="relative">
+          <img :src="attachment.url" class="h-16 w-16 rounded-md object-cover">
+          <button class="absolute h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-[10px] text-white -right-1 -top-1" @click="removeAttachment(index)">
+            &times;
+          </button>
+        </div>
+      </div>
+
       <BasicTextarea
         v-model="messageInput"
         :send-mode="settingsChat.sendMode"
-        :placeholder="t('stage.message')"
-        text="primary-600 dark:primary-100  placeholder:primary-500 dark:placeholder:primary-200"
+        :placeholder="isImagineMode ? 'Describe a scene to imagine...' : t('stage.message')"
+        text="neutral-800 dark:primary-100 placeholder:neutral-500 dark:placeholder:primary-300"
         bg="transparent"
         min-h="[100px]" max-h="[300px]" w-full
-        rounded-t-xl p-4 font-medium pb="[60px]"
+        p-4 font-medium
         outline-none transition="all duration-250 ease-in-out placeholder:all placeholder:duration-250 placeholder:ease-in-out"
         :class="{
           'transition-colors-none placeholder:transition-colors-none': themeColorsHueDynamic,
@@ -463,7 +550,6 @@ watch(autoSendEnabled, (enabled) => {
       <div
         absolute bottom-2 left-2 z-10 flex items-center gap-2
       >
-        <!-- Microphone icon button -->
         <PopoverRoot v-model:open="hearingPopoverOpen">
           <PopoverTrigger as-child>
             <button
@@ -530,5 +616,201 @@ watch(autoSendEnabled, (enabled) => {
         </PopoverRoot>
       </div>
     </div>
+
+    <!-- Action Row (Grounding, Memory, Images, Trash, Send) -->
+    <div flex items-center justify-end gap-2 px-1 py-1>
+      <!-- Token Indicator -->
+      <div
+        v-if="effectiveContextWidth"
+        class="flex cursor-help items-center gap-1.5 px-2 py-1"
+        :title="`${globalContextWidth ? '[Inherited] ' : ''}Context: ${formattedTokenCount} / ${formatTokenCount(effectiveContextWidth)} (${contextPercentage.toFixed(1)}%)`"
+      >
+        <div class="i-solar:graph-bold-duotone text-[10px] text-neutral-400 dark:text-neutral-500" />
+        <span class="text-[10px] text-neutral-400 font-bold leading-none tracking-tight uppercase dark:text-neutral-500">{{ formattedTokenCount }}</span>
+        <div class="h-1.5 w-12 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+          <div
+            class="h-full transition-all duration-300"
+            :class="[
+              contextPercentage > 85 ? 'bg-red-500' : contextPercentage > 60 ? 'bg-amber-500' : 'bg-emerald-500',
+            ]"
+            :style="{ width: `${Math.min(contextPercentage, 100)}%` }"
+          />
+        </div>
+      </div>
+      <div
+        v-else
+        class="flex cursor-help items-center gap-1.5 px-2 py-1 text-[10px] font-bold tracking-tight uppercase"
+        :class="[
+          sessionTokenCount > 100000 ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400 dark:text-neutral-500',
+        ]"
+        title="Est. of tokens used for this chat"
+      >
+        <div class="i-solar:graph-bold-duotone text-xs" />
+        <span>{{ formattedTokenCount }}</span>
+      </div>
+
+      <!-- Grounding Toggle -->
+      <button
+        :class="[
+          'max-h-[10lh] min-h-[1lh]',
+          'flex items-center justify-center rounded-md p-2 outline-none',
+          'transition-colors transition-transform active:scale-95',
+          activeCard?.extensions?.airi?.groundingEnabled
+            ? 'bg-amber-100 text-lg text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+            : 'bg-neutral-100 text-lg text-neutral-500 hover:text-primary-500 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:text-primary-400',
+        ]"
+        :title="activeCard?.extensions?.airi?.groundingEnabled ? 'Grounding Active — sensor data attached to messages' : 'Attach sensor data with each message (Visit Proactivity tab to preview)'"
+        @click="airiCardStore.toggleGrounding(activeCardId)"
+      >
+        <div :class="[activeCard?.extensions?.airi?.groundingEnabled ? 'i-solar:cpu-bolt-bold-duotone' : 'i-solar:cpu-bold-duotone']" />
+      </button>
+
+      <!-- Memory Popover -->
+      <ChatMemoryPopover
+        show-cache-status
+        :title="`Memory & Context for ${characterName}`"
+        @view-context="showContext = true"
+        @manage-sessions="showSessions = true"
+      />
+
+      <!-- Images Popover (incl. Background Picker) -->
+      <ChatImagesPopover
+        :imagine-mode="isImagineMode"
+        @toggle-imagine="isImagineMode = !isImagineMode"
+        @attach="fileInput?.click()"
+        @screenshot="handleScreenshotClick"
+        @view-journal="navigateToImageJournal"
+      >
+        <template #extra-actions>
+          <button
+            class="group w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            @click="backgroundDialogOpen = true"
+          >
+            <div class="i-solar:gallery-wide-bold-duotone text-lg text-neutral-400 transition group-hover:text-primary-500" />
+            Background Picker
+          </button>
+        </template>
+      </ChatImagesPopover>
+
+      <!-- Clear Messages (Safety Hook) -->
+      <button
+        class="max-h-[10lh] min-h-[1lh]"
+        bg="neutral-100 dark:neutral-800"
+        text="lg neutral-500 dark:neutral-400"
+        hover:text="red-500 dark:red-400"
+        flex items-center justify-center rounded-md p-2 outline-none
+        transition-colors transition-transform active:scale-95
+        title="Clear Messages"
+        @click="handleTrashClick"
+      >
+        <div class="i-solar:trash-bin-2-bold-duotone" />
+      </button>
+
+      <!-- Smart Send Split Button -->
+      <div
+        class="flex items-center gap-0.5 overflow-hidden rounded-lg shadow-sm transition-colors"
+        bg="primary-500 hover:primary-600"
+        max-h="[10lh]"
+      >
+        <button
+          class="h-9 flex items-center justify-center px-3 outline-none transition-transform active:scale-95"
+          text="white"
+          title="Send Message"
+          @click="handleSend"
+        >
+          <div class="i-solar:plain-2-bold-duotone mr-1.5 text-lg" />
+          <span class="text-xs font-bold leading-none tracking-tighter uppercase">Send</span>
+        </button>
+
+        <PopoverRoot>
+          <PopoverTrigger as-child>
+            <button
+              class="h-9 w-6 flex items-center justify-center border-l border-white/20 outline-none hover:bg-white/10"
+              text="white"
+              title="Change Send Key Mode"
+            >
+              <div class="i-solar:alt-arrow-down-linear text-xs" />
+            </button>
+          </PopoverTrigger>
+          <PopoverPortal>
+            <PopoverContent
+              class="z-100 flex flex-col gap-1 border border-neutral-200 rounded-xl bg-white/95 p-1.5 shadow-2xl backdrop-blur-md dark:border-neutral-700 dark:bg-neutral-900/95"
+              side="top"
+              align="end"
+              :side-offset="12"
+            >
+              <div class="px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                Send Key Mode
+              </div>
+              <button
+                v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
+                :key="mode"
+                :class="[
+                  'px-3 py-2 text-xs font-semibold rounded-lg transition-all text-left flex items-center justify-between gap-4',
+                  settingsChat.sendMode === mode
+                    ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/50 dark:text-primary-300'
+                    : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
+                ]"
+                @click="settingsChat.sendMode = mode"
+              >
+                <span>{{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl + Enter' : 'Double Enter' }}</span>
+                <div v-if="settingsChat.sendMode === mode" class="i-solar:check-circle-bold text-sm" />
+              </button>
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <BackgroundDialogPicker v-model="backgroundDialogOpen" />
+
+    <ChatSessionModal v-model="showSessions" />
+
+    <CharacterContextDialog
+      v-model="showContext"
+      :character-name="characterName"
+      :system-prompt="effectiveSystemPrompt"
+    />
+
+    <!-- Trash Confirmation Dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="trashConfirmOpen"
+          class="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          @click.self="trashConfirmOpen = false"
+        >
+          <div class="max-w-md w-full border border-neutral-200/60 rounded-2xl bg-white/90 p-6 shadow-2xl backdrop-blur-xl dark:border-neutral-800/60 dark:bg-neutral-900/90">
+            <h3 class="text-xl text-neutral-900 font-bold dark:text-white">
+              Clear conversation?
+            </h3>
+            <p class="mt-2 text-neutral-600 dark:text-neutral-400">
+              You haven't summarized today's chat into memory yet. Clearing now will lose this context for future sessions.
+            </p>
+            <div class="mt-6 flex flex-col gap-2">
+              <button
+                class="w-full rounded-xl bg-primary-500 py-3 text-sm text-white font-bold transition active:scale-95 hover:bg-primary-600"
+                @click="handleSaveAndClear"
+              >
+                Save to Memory & Clear
+              </button>
+              <button
+                class="w-full rounded-xl bg-neutral-100 py-3 text-sm text-neutral-700 font-bold transition active:scale-95 dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                @click="handleClearAnyway"
+              >
+                Clear Anyway
+              </button>
+              <button
+                class="mt-2 w-full text-sm text-neutral-400 font-medium hover:text-neutral-600 dark:hover:text-neutral-200"
+                @click="trashConfirmOpen = false"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
-</template>
+</template>e>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { listSessions, signOut } from '@proj-airi/stage-ui/libs/auth'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
+import { useTheme } from '@proj-airi/ui'
 import { onClickOutside, useMediaQuery } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
@@ -9,6 +10,7 @@ import { toast } from 'vue-sonner'
 
 const authStore = useAuthStore()
 const { isAuthenticated, user } = storeToRefs(authStore)
+const { isDark, toggleDark } = useTheme()
 
 const isMobile = useMediaQuery('(max-width: 768px)')
 
@@ -40,6 +42,21 @@ async function handleListSessions() {
 
 <template>
   <div flex items-center gap-2>
+    <!-- Theme Toggle -->
+    <button
+      border="2 solid neutral-100/60 dark:neutral-800/30"
+      bg="neutral-50/70 dark:neutral-800/70"
+      w-fit flex items-center justify-center rounded-xl p-2 backdrop-blur-md
+      text="lg neutral-500 dark:neutral-400"
+      transition-colors transition-transform active:scale-95
+      @click="() => toggleDark()"
+    >
+      <Transition name="fade" mode="out-in">
+        <div v-if="isDark" i-solar:moon-bold size-5 />
+        <div v-else i-solar:sun-2-bold size-5 />
+      </Transition>
+    </button>
+
     <!-- Non-authenticated: Settings & Login -->
     <!-- NOTICE: The avatar is stored in the localstorage, it will be shown at the first time of the page load, so we do not need the skeleton loading here -->
     <template v-if="!isAuthenticated">
@@ -52,30 +69,6 @@ async function handleListSessions() {
       >
         <div i-solar:settings-minimalistic-bold-duotone size-5 text="neutral-500 dark:neutral-400" />
       </RouterLink>
-
-      <template v-if="isMobile">
-        <button
-          border="2 solid neutral-100/60 dark:neutral-800/30"
-          bg="neutral-50/70 dark:neutral-800/70"
-          w-fit flex items-center justify-center rounded-xl p-2 backdrop-blur-md
-          title="Login"
-          type="button"
-          @click="authStore.isLoginDrawerOpen = true"
-        >
-          <div i-solar:user-bold-duotone />
-        </button>
-      </template>
-      <template v-else>
-        <RouterLink
-          border="2 solid neutral-100/60 dark:neutral-800/30"
-          bg="neutral-50/70 dark:neutral-800/70"
-          w-fit flex items-center justify-center rounded-xl p-2 backdrop-blur-md
-          :title="isAuthenticated ? `Logged in as ${userName}` : 'Login'"
-          to="/auth/login"
-        >
-          <div i-solar:user-bold-duotone />
-        </RouterLink>
-      </template>
     </template>
 
     <!-- Authenticated: Avatar Dropdown -->

@@ -2854,7 +2854,7 @@ export const useProvidersStore = defineStore('providers', () => {
             // Use safe cloning to prevent "object could not be cloned" errors with Vue/Pinia Proxies
             const safeConfig = config ? JSON.parse(JSON.stringify({ ...config, apiKey: config.apiKey ? '***' : undefined })) : undefined
 
-            ;(window as any).electron.ipcRenderer.send('provider-validation-result', {
+            ;(window as any).electron?.ipcRenderer?.send('provider-validation-result', {
               providerId,
               valid: validationResult.valid,
               reason: validationResult.reason,

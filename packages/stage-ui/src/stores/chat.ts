@@ -814,7 +814,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
                 fullText += healedText
                 rawFullText += healedText
                 turnRawContent += healedText
-                ;(window as any).electron.ipcRenderer.send('llm-raw-output', {
+                ;(window as any).electron?.ipcRenderer?.send('llm-raw-output', {
                   type: 'delta',
                   text: healedText,
                   sessionId,
@@ -852,7 +852,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
               }
               case 'finish':
                 chatLog('Stream finished. Reason:', (event as any).finishReason, 'rawFullText length:', rawFullText.length)
-                ;(window as any).electron.ipcRenderer.send('llm-raw-output', {
+                ;(window as any).electron?.ipcRenderer?.send('llm-raw-output', {
                   type: 'full',
                   text: rawFullText,
                   sessionId,

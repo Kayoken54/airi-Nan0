@@ -331,7 +331,7 @@ export const useDiscordStore = defineStore('discord', () => {
       const buffers = audioTurnBuffer.value.map(buf => new Uint8Array(buf))
 
       // We send the array of buffers to the main process for merging and delivery
-      const result = await (window as any).electron.ipcRenderer.invoke(
+      const result = await (window as any).electron?.ipcRenderer?.invoke(
         channelName,
         {
           channelId,
@@ -370,7 +370,7 @@ export const useDiscordStore = defineStore('discord', () => {
       console.log(`[DiscordStore] NATIVE BYPASS: Invoking ${channelName}. Shape: ${base64.substring(0, 50)}...`)
 
       // We bypass the wrapper and use the literal channel name to avoid "undefined" contract issues
-      const result = await (window as any).electron.ipcRenderer.invoke(
+      const result = await (window as any).electron?.ipcRenderer?.invoke(
         channelName,
         toRaw({ channelId, base64, content, filename }),
       )

@@ -666,6 +666,11 @@ async function setupLipSync() {
   if (lipSyncStarted.value)
     return
 
+  if (!audioContext || !audioContext.audioWorklet) {
+    console.warn('[Stage] Lip sync skipped: AudioWorklet is not available in this browser context (requires HTTPS or localhost).')
+    return
+  }
+
   try {
     const lipSync = await createLive2DLipSync(audioContext, wlipsyncProfile as Profile, live2dLipSyncOptions)
     live2dLipSync.value = lipSync

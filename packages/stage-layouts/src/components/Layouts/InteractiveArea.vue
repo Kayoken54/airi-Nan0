@@ -9,7 +9,6 @@ import { useDeferredMount } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
-import ChatActionButtons from '../Widgets/ChatActionButtons.vue'
 import ChatArea from '../Widgets/ChatArea.vue'
 import ChatContainer from '../Widgets/ChatContainer.vue'
 
@@ -50,8 +49,6 @@ const historyMessages = computed(() => messages.value as unknown as ChatHistoryI
         <ChatArea :tools="props.tools" />
       </ChatContainer>
     </div>
-
-    <ChatActionButtons />
   </div>
 </template>
 

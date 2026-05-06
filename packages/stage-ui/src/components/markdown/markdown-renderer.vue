@@ -102,10 +102,15 @@ onMounted(() => {
   font-size: 2.5rem;
   font-weight: 900;
   margin-bottom: 1.5rem;
-  background: linear-gradient(to right, #38bdf8, #a78bfa, #ffffff);
+  background: linear-gradient(to right, #38bdf8, #a78bfa, #64748b);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.025em;
+}
+
+.dark .markdown-content :deep(h1) {
+  background: linear-gradient(to right, #38bdf8, #a78bfa, #ffffff);
+  -webkit-background-clip: text;
 }
 
 .markdown-content :deep(h2) {
@@ -113,8 +118,13 @@ onMounted(() => {
   font-weight: 800;
   margin-top: 2rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   padding-bottom: 0.5rem;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.dark .markdown-content :deep(h2) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.9);
 }
 
@@ -123,19 +133,23 @@ onMounted(() => {
   font-weight: 700;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
+  color: rgba(0, 0, 0, 0.8);
+}
+
+.dark .markdown-content :deep(h3) {
   color: rgba(255, 255, 255, 0.85);
 }
 
 .markdown-content :deep(p) {
   margin-bottom: 1.25rem;
   line-height: 1.75;
-  color: rgba(255, 255, 255, 0.7);
+  color: inherit;
 }
 
 .markdown-content :deep(ul), .markdown-content :deep(ol) {
   margin-bottom: 1.25rem;
   padding-left: 1.5rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: inherit;
 }
 
 .markdown-content :deep(li) {
@@ -152,20 +166,27 @@ onMounted(() => {
 
 .markdown-content :deep(blockquote p) {
   margin-bottom: 0;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(0, 0, 0, 0.7);
   font-style: italic;
 }
 
+.dark .markdown-content :deep(blockquote p) {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .markdown-content :deep(pre), .markdown-content :deep(.shiki) {
-  background: rgba(0, 0, 0, 0.3) !important;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: 12px;
   padding: 1.25rem;
   margin: 1.5rem 0;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  color: inherit;
 }
 
-.dark .markdown-content :deep(.shiki) {
+.dark .markdown-content :deep(pre), .dark .markdown-content :deep(.shiki) {
   background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 </style>
