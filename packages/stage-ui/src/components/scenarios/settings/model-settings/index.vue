@@ -150,6 +150,7 @@ async function handleApplyToActiveCharacter() {
       v-if="stageModelRenderer === 'live2d'"
       ref="live2dRef"
       :palette="palette"
+      :model-id="stageModelSelected"
       @extract-colors-from-model="$emit('extractColorsFromModel')"
     />
     <VRM

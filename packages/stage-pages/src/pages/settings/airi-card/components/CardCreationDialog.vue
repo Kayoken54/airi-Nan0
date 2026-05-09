@@ -6,6 +6,7 @@ import type { SpeechCapabilitiesInfo } from '@proj-airi/stage-ui/stores/provider
 import kebabcase from '@stdlib/string-base-kebabcase'
 
 import { useLive2d } from '@proj-airi/stage-ui-live2d'
+import { useSpine } from '@proj-airi/stage-ui-spine'
 import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
@@ -64,6 +65,7 @@ const modelStore = useModelStore()
 const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 const backgroundStore = useBackgroundStore()
 const live2dStore = useLive2d()
+const spineStore = useSpine()
 
 const { sensorPayload } = storeToRefs(proactivityStore)
 const { activeProvider: consciousnessProvider, activeModel: defaultConsciousnessModel } = storeToRefs(consciousnessStore)
@@ -73,6 +75,7 @@ const { activeProvider: defaultArtistryProvider } = storeToRefs(artistryStore)
 const { availableExpressions } = storeToRefs(modelStore)
 const { animationOptions } = storeToRefs(customVrmAnimationsStore)
 const { availableExpressions: live2dExpressions } = storeToRefs(live2dStore)
+const { availableAnimations: spineAnimations } = storeToRefs(spineStore)
 
 // Determine if we're in edit mode
 const isEditMode = computed(() => !!props.cardId)
@@ -83,6 +86,14 @@ const isLive2d = computed(() => {
   if (!model)
     return false
   return model.format === DisplayModelFormat.Live2dZip || model.format === DisplayModelFormat.Live2dDirectory
+})
+
+const isSpine = computed(() => {
+  const modelId = selectedDisplayModelId.value || defaultDisplayModelId.value
+  const model = displayModelsStore.displayModels.find(m => m.id === modelId)
+  if (!model)
+    return false
+  return model.format === DisplayModelFormat.SpineZip
 })
 
 // Modules configuration
@@ -273,9 +284,19 @@ const actingModelExpressionOptions = computed(() => {
   if (isLive2d.value) {
     return live2dExpressions.value.map(e => e.name).sort((a, b) => a.localeCompare(b))
   }
+  if (isSpine.value) {
+    return spineAnimations.value.map(a => a.name).sort((a, b) => a.localeCompare(b))
+  }
   const modelExps = [...availableExpressions.value]
   const vrmaExps = Object.keys(animations)
   return [...new Set([...modelExps, ...vrmaExps])].sort((a, b) => a.localeCompare(b))
+})
+
+const actingIdleAnimationOptions = computed(() => {
+  if (isSpine.value) {
+    return spineAnimations.value.map(a => ({ label: a.name, value: a.name }))
+  }
+  return animationOptions.value
 })
 
 function isVrmaExpression(name: string) {
@@ -871,7 +892,7 @@ function getDefaultPlaceholder(defaultValue: string | undefined): string {
             v-model:selected-acting-speech-expression-prompt="selectedActingSpeechExpressionPrompt"
             v-model:selected-acting-speech-mannerism-prompt="selectedActingSpeechMannerismPrompt"
             v-model:selected-acting-idle-animations="selectedActingIdleAnimations"
-            :acting-idle-animation-options="animationOptions"
+            :acting-idle-animation-options="actingIdleAnimationOptions"
             :acting-model-expression-options="actingModelExpressionOptions"
             :acting-grouped-expression-tags="actingGroupedExpressionTags"
             :acting-mannerism-options="actingMannerismOptions"

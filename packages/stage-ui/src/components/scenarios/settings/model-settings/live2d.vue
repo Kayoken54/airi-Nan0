@@ -3,6 +3,7 @@ import { defaultModelParameters, useLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCacheV2 } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
 import { Button, Checkbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
+import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -13,8 +14,9 @@ import { useSettings } from '../../../../stores/settings'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
 
-defineProps<{
+const props = defineProps<{
   palette: string[]
+  modelId?: string
 }>()
 defineEmits<{
   (e: 'extractColorsFromModel'): void
@@ -79,15 +81,30 @@ onMounted(() => {
     console.info('Available motions:', runtimeMotions.value)
   }, { immediate: true })
 
+  function loadSavedMotion(modelId: string) {
+    const savedPath = localStorage.getItem(`live2d-${modelId}-selected-motion`)
+    const savedName = localStorage.getItem(`live2d-${modelId}-selected-motion-name`)
+    if (savedPath) {
+      selectedRuntimeMotion.value = savedPath
+    }
+    else {
+      selectedRuntimeMotion.value = ''
+    }
+    if (savedName) {
+      selectedRuntimeMotionName.value = savedName
+    }
+    else {
+      selectedRuntimeMotionName.value = 'None'
+    }
+  }
+
   // Restore selected motion
-  const savedPath = localStorage.getItem('selected-runtime-motion')
-  const savedName = localStorage.getItem('selected-runtime-motion-name')
-  if (savedPath) {
-    selectedRuntimeMotion.value = savedPath
-  }
-  if (savedName) {
-    selectedRuntimeMotionName.value = savedName
-  }
+  loadSavedMotion(props.modelId || 'global')
+
+  // Watch for model changes
+  watch(() => props.modelId, (newId) => {
+    loadSavedMotion(newId || 'global')
+  })
 
   // Add click outside handler
   document.addEventListener('click', handleClickOutside)
@@ -112,12 +129,28 @@ async function clearModelCache() {
 
 // Runtime motion selection handlers
 function handleMotionSelect(motion: any) {
+  const modelId = props.modelId || 'global'
+
+  if (motion.displayPath === '') {
+    selectedRuntimeMotion.value = ''
+    selectedRuntimeMotionName.value = 'None'
+    localStorage.removeItem(`live2d-${modelId}-selected-motion`)
+    localStorage.removeItem(`live2d-${modelId}-selected-motion-name`)
+    localStorage.removeItem(`live2d-${modelId}-selected-motion-group`)
+    localStorage.removeItem(`live2d-${modelId}-selected-motion-index`)
+
+    live2dIdleAnimationEnabled.value = false
+    currentMotion.value = undefined
+    showMotionSelector.value = false
+    return
+  }
+
   selectedRuntimeMotion.value = motion.displayPath // Store full path
   selectedRuntimeMotionName.value = motion.name // Store just the filename for display
-  localStorage.setItem('selected-runtime-motion', motion.displayPath)
-  localStorage.setItem('selected-runtime-motion-name', motion.name)
-  localStorage.setItem('selected-runtime-motion-group', motion.group)
-  localStorage.setItem('selected-runtime-motion-index', motion.index.toString())
+  localStorage.setItem(`live2d-${modelId}-selected-motion`, motion.displayPath)
+  localStorage.setItem(`live2d-${modelId}-selected-motion-name`, motion.name)
+  localStorage.setItem(`live2d-${modelId}-selected-motion-group`, motion.group)
+  localStorage.setItem(`live2d-${modelId}-selected-motion-index`, motion.index.toString())
 
   // Enable idle animation
   live2dIdleAnimationEnabled.value = true
@@ -214,44 +247,66 @@ onUnmounted(() => {
       <div :class="['flex', 'items-center', 'justify-between']">
         <span :class="['text-sm', 'text-neutral-600', 'dark:text-neutral-400']">Idle Animation</span>
         <div data-motion-selector :class="['relative', 'flex', 'flex-col', 'items-end', 'gap-1']">
-          <button
-            :title="selectedRuntimeMotion"
-            :class="['flex', 'items-center', 'gap-2', 'border', 'rounded', 'bg-neutral-100', 'px-4', 'py-2', 'text-sm', 'text-neutral-700', 'font-medium', 'transition-colors', 'dark:border-neutral-700', 'dark:bg-neutral-800', 'hover:bg-neutral-200', 'dark:text-neutral-300', 'dark:hover:bg-neutral-700']"
-            @click="toggleMotionSelector"
-          >
-            <span :class="['max-w-32', 'truncate']">{{ selectedRuntimeMotionName || 'Select Motion' }}</span>
-            <div
-              :class="[showMotionSelector ? 'i-solar:alt-arrow-up-line-duotone' : 'i-solar:alt-arrow-down-line-duotone', 'text-xs', 'transition-transform']"
-            />
-          </button>
-
-          <!-- Dropdown menu -->
-          <div
-            v-if="showMotionSelector"
-            :class="['bg-white', 'dark:bg-neutral-800', 'border', 'border-neutral-200', 'dark:border-neutral-700', 'absolute', 'right-0', 'top-10', 'z-50', 'max-h-80', 'min-w-64', 'overflow-y-auto', 'rounded-lg', 'shadow-lg']"
-          >
-            <div v-if="runtimeMotions.length === 0" :class="['p-4', 'text-sm', 'text-neutral-500', 'dark:text-neutral-400']">
-              No motions available
-            </div>
-            <button
-              v-for="motion in runtimeMotions"
-              :key="motion.fullPath"
-              :class="[
-                'w-full', 'px-4', 'py-2.5', 'text-left', 'transition-colors', 'hover:bg-neutral-100', 'dark:hover:bg-neutral-700',
-                {
-                  'bg-neutral-100 dark:bg-neutral-700': selectedRuntimeMotion === motion.displayPath,
-                },
-              ]"
-              @click="handleMotionSelect(motion)"
+          <DropdownMenuRoot v-model:open="showMotionSelector">
+            <DropdownMenuTrigger
+              :title="selectedRuntimeMotion"
+              :class="['flex', 'items-center', 'gap-2', 'border', 'rounded', 'bg-neutral-100', 'px-4', 'py-2', 'text-sm', 'text-neutral-700', 'font-medium', 'transition-colors', 'dark:border-neutral-700', 'dark:bg-neutral-800', 'hover:bg-neutral-200', 'dark:text-neutral-300', 'dark:hover:bg-neutral-700']"
             >
-              <div :class="['text-sm', 'text-neutral-900', 'font-medium', 'dark:text-neutral-100']">
-                {{ motion.name }}
-              </div>
-              <div :class="['truncate', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
-                {{ motion.displayPath }}
-              </div>
-            </button>
-          </div>
+              <span :class="['max-w-32', 'truncate']">{{ selectedRuntimeMotionName || 'Select Motion' }}</span>
+              <div
+                :class="[showMotionSelector ? 'i-solar:alt-arrow-up-line-duotone' : 'i-solar:alt-arrow-down-line-duotone', 'text-xs', 'transition-transform']"
+              />
+            </DropdownMenuTrigger>
+
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                :class="['bg-white', 'dark:bg-neutral-800', 'border', 'border-neutral-200', 'dark:border-neutral-700', 'z-50', 'max-h-80', 'min-w-64', 'overflow-y-auto', 'rounded-lg', 'shadow-lg']"
+                align="end"
+                side="bottom"
+                :side-offset="4"
+              >
+                <div v-if="runtimeMotions.length === 0" :class="['p-4', 'text-sm', 'text-neutral-500', 'dark:text-neutral-400']">
+                  No motions available
+                </div>
+                <DropdownMenuItem
+                  :class="[
+                    'w-full', 'px-4', 'py-2.5', 'text-left', 'transition-colors', 'hover:bg-neutral-100', 'dark:hover:bg-neutral-700',
+                    'cursor-pointer', 'outline-none',
+                    {
+                      'bg-neutral-100 dark:bg-neutral-700': selectedRuntimeMotion === '',
+                    },
+                  ]"
+                  @click="handleMotionSelect({ name: 'None', displayPath: '', group: '', index: 0 })"
+                >
+                  <div :class="['text-sm', 'text-neutral-900', 'font-medium', 'dark:text-neutral-100']">
+                    None
+                  </div>
+                  <div :class="['truncate', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+                    Unset idle animation
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  v-for="motion in runtimeMotions"
+                  :key="motion.fullPath"
+                  :class="[
+                    'w-full', 'px-4', 'py-2.5', 'text-left', 'transition-colors', 'hover:bg-neutral-100', 'dark:hover:bg-neutral-700',
+                    'cursor-pointer', 'outline-none',
+                    {
+                      'bg-neutral-100 dark:bg-neutral-700': selectedRuntimeMotion === motion.displayPath,
+                    },
+                  ]"
+                  @click="handleMotionSelect(motion)"
+                >
+                  <div :class="['text-sm', 'text-neutral-900', 'font-medium', 'dark:text-neutral-100']">
+                    {{ motion.name }}
+                  </div>
+                  <div :class="['truncate', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+                    {{ motion.displayPath }}
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </div>
     </div>

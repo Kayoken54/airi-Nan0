@@ -29,7 +29,7 @@ const props = withDefaults(defineProps<{
   maxFps?: number
 }>(), {
   paused: false,
-  premultipliedAlpha: true,
+  premultipliedAlpha: false,
   defaultMixDuration: 0.2,
   idleAnimationEnabled: true,
   maxFps: 0,
