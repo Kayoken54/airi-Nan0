@@ -283,11 +283,37 @@ const sceneOptions = computed(() => {
 const actingModelExpressionOptions = computed(() => {
   if (isLive2d.value) {
     const exps = live2dExpressions.value.map(e => e.name)
-    const motions = live2dStore.availableMotions.map((m) => {
+    const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
+    const hiddenMotions = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.hiddenMotions || []
+    
+    const mappedMotions: string[] = []
+    const unmappedMotions: string[] = []
+    
+    live2dStore.availableMotions.forEach((m) => {
+      if (hiddenMotions.includes(m.fileName))
+        return
+        
       const name = m.fileName.split('/').pop() || m.fileName
-      return name.replace('.motion3.json', '').replace('.json', '')
+      const cleanName = name.replace('.motion3.json', '').replace('.json', '')
+      const mappedName = motionMappings[m.fileName]
+      
+      if (mappedName) {
+        mappedMotions.push(mappedName)
+      }
+      else {
+        unmappedMotions.push(cleanName)
+      }
     })
-    return [...new Set([...exps, ...motions])].sort((a, b) => a.localeCompare(b))
+    
+    mappedMotions.sort((a, b) => a.localeCompare(b))
+    unmappedMotions.sort((a, b) => a.localeCompare(b))
+    
+    if (mappedMotions.length > 0) {
+      return [...new Set([...exps, ...mappedMotions])]
+    }
+    else {
+      return [...new Set([...exps, ...unmappedMotions])]
+    }
   }
   if (isSpine.value) {
     return spineAnimations.value.map(a => a.name).sort((a, b) => a.localeCompare(b))
@@ -299,11 +325,37 @@ const actingModelExpressionOptions = computed(() => {
 
 const actingIdleAnimationOptions = computed(() => {
   if (isLive2d.value) {
-    return live2dStore.availableMotions.map((m) => {
+    const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
+    const hiddenMotions = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.hiddenMotions || []
+    
+    const mappedMotions: { label: string, value: string }[] = []
+    const unmappedMotions: { label: string, value: string }[] = []
+    
+    live2dStore.availableMotions.forEach((m) => {
+      if (hiddenMotions.includes(m.fileName))
+        return
+        
       const name = m.fileName.split('/').pop() || m.fileName
       const cleanName = name.replace('.motion3.json', '').replace('.json', '')
-      return { label: cleanName, value: cleanName }
-    }).sort((a, b) => a.label.localeCompare(b.label))
+      const mappedName = motionMappings[m.fileName]
+      
+      if (mappedName) {
+        mappedMotions.push({ label: mappedName, value: mappedName })
+      }
+      else {
+        unmappedMotions.push({ label: cleanName, value: cleanName })
+      }
+    })
+    
+    mappedMotions.sort((a, b) => a.label.localeCompare(b.label))
+    unmappedMotions.sort((a, b) => a.label.localeCompare(b.label))
+    
+    if (mappedMotions.length > 0) {
+      return mappedMotions
+    }
+    else {
+      return unmappedMotions
+    }
   }
   if (isSpine.value) {
     return spineAnimations.value.map(a => ({ label: a.name, value: a.name }))
@@ -362,10 +414,12 @@ function appendUniqueLine(target: typeof selectedActingModelExpressionPrompt, li
 function insertModelExpression(name: string) {
   if (isLive2d.value) {
     const isExpression = live2dExpressions.value.some(e => e.name === name)
+    const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
     const isMotion = live2dStore.availableMotions.some((m) => {
       const displayName = m.fileName.split('/').pop() || m.fileName
       const cleanName = displayName.replace('.motion3.json', '').replace('.json', '')
-      return displayName === name || cleanName === name
+      const mappedName = motionMappings[m.fileName]
+      return displayName === name || cleanName === name || mappedName === name
     })
 
     if (isExpression) {

@@ -273,10 +273,12 @@ const emotionsQueue = createQueue<EmotionPayload>({
           }
           else {
             // New fallback: try to find motion by name in availableMotions (Ground Truth)
+            const motionMappings = activeCard.value?.extensions?.airi?.modules?.live2d?.motionMappings || {}
             const matchedMotion = live2dStore.availableMotions.find((m: any) => {
               const name = m.fileName.split('/').pop() || m.fileName
               const cleanName = name.replace('.motion3.json', '').replace('.json', '')
-              return name === emotionName || m.fileName === emotionName || cleanName === emotionName
+              const mappedName = motionMappings[m.fileName]
+              return name === emotionName || m.fileName === emotionName || cleanName === emotionName || mappedName === emotionName
             })
             if (matchedMotion) {
               currentMotion.value = { group: matchedMotion.motionName, index: matchedMotion.motionIndex }
