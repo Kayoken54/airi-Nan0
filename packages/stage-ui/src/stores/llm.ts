@@ -7,6 +7,7 @@ import { listModels } from '@xsai/model'
 import { streamText } from '@xsai/stream-text'
 import { defineStore } from 'pinia'
 import { toRaw } from 'vue'
+import { useSettingsChat } from './settings/chat'
 
 export type StreamEvent
   = | { type: 'text-delta', text: string }
@@ -99,6 +100,49 @@ export function sanitizeMessages(messages: unknown[], options?: { vision?: boole
   })
 }
 
+function combineSystemMessagesIfNeeded(messages: Message[], chatConfig: any, settingsChat: any): Message[] {
+  const shouldCombine = settingsChat.combineSystemMessages || chatConfig.baseURL?.includes('googleapis.com')
+  
+  if (!shouldCombine) {
+    return messages
+  }
+
+  const systemMessages = messages.filter(m => m.role === 'system')
+  if (systemMessages.length <= 1) {
+    return messages
+  }
+
+  const personaMessages: Message[] = []
+  const contextMessages: Message[] = []
+  
+  for (const m of systemMessages) {
+    const content = typeof m.content === 'string' ? m.content : ''
+    const isContext = content.startsWith('These are the contextual information retrieved')
+      || content.startsWith('[ENVIRONMENTAL AWARENESS]')
+      || content.includes('[CONTEXT_AWARENESS]')
+      
+    if (isContext) {
+      contextMessages.push(m)
+    } else {
+      personaMessages.push(m)
+    }
+  }
+  
+  const uniquePersonaContents = [...new Set(personaMessages.map(m => typeof m.content === 'string' ? m.content : ''))]
+  const dedupedPersonaContent = uniquePersonaContents.join('\n\n')
+  
+  const lastContextMessage = contextMessages[contextMessages.length - 1]
+  const lastContextContent = lastContextMessage ? (typeof lastContextMessage.content === 'string' ? lastContextMessage.content : '') : ''
+  
+  const combinedContent = [dedupedPersonaContent, lastContextContent].filter(Boolean).join('\n\n')
+  
+  const nonSystemMessages = messages.filter(m => m.role !== 'system')
+  return [
+    { role: 'system', content: combinedContent } as Message,
+    ...nonSystemMessages
+  ]
+}
+
 function streamOptionsToolsCompatibilityOk(model: string, chatProvider: ChatProvider, _: Message[], options?: StreamOptions): boolean {
   if (options?.supportsTools)
     return true
@@ -129,7 +173,9 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
   const headers = options?.headers
   const chatConfig = chatProvider.chat(model)
 
-  const sanitized = sanitizeMessages(messages as unknown[], { vision: options?.vision })
+  const settingsChat = useSettingsChat()
+  const processedMessages = combineSystemMessagesIfNeeded(messages, chatConfig, settingsChat)
+  const sanitized = sanitizeMessages(processedMessages as unknown[], { vision: options?.vision })
   const requestOverrides = sanitizeRequestOverrides(options?.requestOverrides)
   const resolveTools = async () => {
     const tools = typeof options?.tools === 'function'
@@ -238,7 +284,9 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
 async function generateFrom(model: string, chatProvider: ChatProvider, messages: Message[], options?: StreamOptions) {
   const headers = options?.headers
   const chatConfig = chatProvider.chat(model)
-  const sanitized = sanitizeMessages(messages as unknown[], { vision: options?.vision })
+  const settingsChat = useSettingsChat()
+  const processedMessages = combineSystemMessagesIfNeeded(messages, chatConfig, settingsChat)
+  const sanitized = sanitizeMessages(processedMessages as unknown[], { vision: options?.vision })
   const requestOverrides = sanitizeRequestOverrides(options?.requestOverrides)
 
   const resolveTools = async () => {
