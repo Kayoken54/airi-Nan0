@@ -47,6 +47,7 @@ const emits = defineEmits<{
   (e: 'modelLoaded'): void
   (e: 'error', error: Error): void
   (e: 'animationsDiscovered', value: { animations: { name: string, duration: number }[], skins: { name: string }[] }): void
+  (e: 'hitAreaHover', value: { name: string, x: number, y: number, hovered: boolean } | null): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -86,6 +87,49 @@ const triggeredMotions = new Set<string>()
 const canvas = toRef(() => props.canvas)
 const modelSrc = toRef(() => props.modelSrc)
 const paused = toRef(() => props.paused)
+
+let hoveredArea: string | null = null
+
+function onCanvasMouseMove(event: MouseEvent) {
+  if (!canvas.value || !skeleton || props.interactionMode !== 'tactile')
+    return
+
+  const rect = canvas.value.getBoundingClientRect()
+  const mouseX = event.clientX - rect.left
+  const mouseY = event.clientY - rect.top
+
+  const realMouseX = mouseX * (canvas.value.width / canvas.value.clientWidth)
+  const realMouseY = mouseY * (canvas.value.height / canvas.value.clientHeight)
+
+  let found = false
+  for (const area of model0HitAreas) {
+    const bone = skeleton.findBone(area.name)
+    if (!bone)
+      continue
+
+    const boneCanvasX = canvas.value.width / 2 + bone.worldX * skeleton.scaleX
+    const boneCanvasY = canvas.value.height / 2 - bone.worldY * skeleton.scaleY
+
+    const radius = 50 // pixels
+    const dist = Math.sqrt((realMouseX - boneCanvasX) ** 2 + (realMouseY - boneCanvasY) ** 2)
+
+    if (dist < radius) {
+      found = true
+      if (hoveredArea !== area.name) {
+        hoveredArea = area.name
+        const cssX = boneCanvasX * (canvas.value.clientWidth / canvas.value.width)
+        const cssY = boneCanvasY * (canvas.value.clientHeight / canvas.value.height)
+        emits('hitAreaHover', { name: area.name, x: cssX, y: cssY, hovered: true })
+      }
+      break
+    }
+  }
+
+  if (!found && hoveredArea) {
+    hoveredArea = null
+    emits('hitAreaHover', null)
+  }
+}
 
 function onCanvasClick(event: MouseEvent) {
   if (!canvas.value || !skeleton || props.interactionMode !== 'tactile')
@@ -157,6 +201,7 @@ function onCanvasClick(event: MouseEvent) {
 
 function disposeSpine() {
   canvas.value?.removeEventListener('click', onCanvasClick)
+  canvas.value?.removeEventListener('mousemove', onCanvasMouseMove)
   if (spineCanvas) {
     try {
       spineCanvas.dispose()
@@ -336,7 +381,10 @@ async function loadModel() {
             // Apply active independent animations.
             applyActiveAnimations(activeAnimations.value[props.modelId] || {})
 
-            canvas.value?.addEventListener('click', onCanvasClick)
+            if (props.interactionMode === 'tactile') {
+              canvas.value?.addEventListener('click', onCanvasClick)
+              canvas.value?.addEventListener('mousemove', onCanvasMouseMove)
+            }
             emits('modelLoaded')
             resolve()
           }

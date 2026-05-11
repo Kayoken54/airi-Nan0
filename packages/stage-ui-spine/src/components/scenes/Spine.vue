@@ -40,6 +40,17 @@ const componentStateModel = defineModel<'pending' | 'loading' | 'mounted'>('mode
 const canvasRef = ref<InstanceType<typeof SpineCanvas>>()
 const modelRef = ref<InstanceType<typeof SpineModel>>()
 
+const hoverState = ref<{ name: string, x: number, y: number } | null>(null)
+
+function handleHitAreaHover(value: { name: string, x: number, y: number, hovered: boolean } | null) {
+  if (value && value.hovered) {
+    hoverState.value = value
+  }
+  else {
+    hoverState.value = null
+  }
+}
+
 watch([componentStateModel, componentStateCanvas], () => {
   componentState.value = (componentStateModel.value === 'mounted' && componentStateCanvas.value === 'mounted')
     ? 'mounted'
@@ -83,7 +94,29 @@ defineExpose({
         :x-offset="xOffset"
         :y-offset="yOffset"
         :scale="scale"
+        @hit-area-hover="handleHitAreaHover"
       />
     </SpineCanvas>
+
+    <!-- SVG Overlay for Hover Effect -->
+    <svg
+      v-if="hoverState && interactionMode === 'tactile'"
+      class="pointer-events-none absolute inset-0"
+      :width="width"
+      :height="height"
+    >
+      <defs>
+        <radialGradient id="pink-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="rgba(249, 168, 212, 0.4)" />
+          <stop offset="100%" stop-color="rgba(249, 168, 212, 0)" />
+        </radialGradient>
+      </defs>
+      <circle
+        :cx="hoverState.x"
+        :cy="hoverState.y"
+        r="40"
+        fill="url(#pink-glow)"
+      />
+    </svg>
   </Screen>
 </template>
