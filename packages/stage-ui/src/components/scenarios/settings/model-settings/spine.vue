@@ -83,11 +83,11 @@ const variantOptions = computed(() => availableVariants.value.map(v => ({
   description: '',
 })))
 
-const animationOptions = computed(() => availableAnimations.value.map(animation => ({
+/* const animationOptions = computed(() => availableAnimations.value.map(animation => ({
   label: animation.name,
   value: animation.name,
   description: `${animation.duration.toFixed(2)}s`,
-})))
+}))) */
 
 const skinOptions = computed(() => availableSkins.value.map(skin => ({
   label: skin.name,

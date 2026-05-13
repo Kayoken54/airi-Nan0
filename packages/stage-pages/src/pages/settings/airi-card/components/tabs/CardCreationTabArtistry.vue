@@ -106,6 +106,27 @@ function openReplicateModel() {
     return
   window.open(`https://replicate.com/${selectedArtistryModel.value}`, '_blank')
 }
+
+const TOOL_CALL_TEMPLATE = `## Instruction: Image Journaling
+You possess the **image_journal** tool to manifest your digital captures. You MUST use it frequently to visualize the scene or yourself.
+
+### How to Use
+- **Action**: Always use "create".
+- **Prompt**: A detailed description of the image.
+- **Mode**: Choose "inline" (chat history), "widget" (overlay), or "bg" (background).`
+
+const TOKEN_TEMPLATE = `## Instruction: Image Journaling (Token Style)
+You can manifest images by using the following token format in your response:
+\\\`<|image_journal: action="create", prompt="...", title="...", mode="widget"|>\\\`
+Replace \\\`widget\\\` with \\\`bg\\\` or \\\`inline\\\` as needed.`
+
+function applyToolCallTemplate() {
+  selectedArtistryWidgetInstruction.value = TOOL_CALL_TEMPLATE
+}
+
+function applyTokenTemplate() {
+  selectedArtistryWidgetInstruction.value = TOKEN_TEMPLATE
+}
 </script>
 
 <template>
@@ -368,6 +389,24 @@ function openReplicateModel() {
           description="Pre-pended to every prompt sent to the image generator."
           placeholder="e.g. Masterpiece, high quality, 1girl, anime,"
         />
+
+        <div class="mb-2 flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded-lg bg-neutral-200 px-3 py-1.5 text-xs text-neutral-600 font-medium transition-colors dark:bg-neutral-800 hover:bg-neutral-300 dark:text-neutral-400 dark:hover:bg-neutral-700"
+            @click="applyToolCallTemplate"
+          >
+            Load Tool Call Template
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-neutral-200 px-3 py-1.5 text-xs text-neutral-600 font-medium transition-colors dark:bg-neutral-800 hover:bg-neutral-300 dark:text-neutral-400 dark:hover:bg-neutral-700"
+            @click="applyTokenTemplate"
+          >
+            Load Token Template
+          </button>
+        </div>
+
         <FieldInput
           v-model="selectedArtistryWidgetInstruction"
           :label="t('settings.pages.modules.artistry.widget-instructions.label')"

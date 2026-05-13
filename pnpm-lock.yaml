@@ -779,9 +779,6 @@ importers:
       pinia:
         specifier: 'catalog:'
         version: 3.0.4(typescript@5.9.3)(vue@3.5.29(typescript@5.9.3))
-      posthog-js:
-        specifier: 'catalog:'
-        version: 1.306.1
       rehype-stringify:
         specifier: 'catalog:'
         version: 10.0.1
@@ -975,54 +972,9 @@ importers:
 
   apps/stage-tamagotchi:
     dependencies:
-      '@date-fns/utc':
-        specifier: ^2.1.1
-        version: 2.1.1
-      '@fontsource-variable/comfortaa':
-        specifier: ^5.2.8
-        version: 5.2.8
-      '@fontsource-variable/dm-sans':
-        specifier: ^5.2.8
-        version: 5.2.8
-      '@fontsource-variable/jura':
-        specifier: ^5.2.7
-        version: 5.2.7
-      '@fontsource-variable/quicksand':
-        specifier: ^5.2.10
-        version: 5.2.10
-      '@fontsource-variable/urbanist':
-        specifier: ^5.2.7
-        version: 5.2.7
-      '@fontsource/dm-mono':
-        specifier: ^5.2.7
-        version: 5.2.7
-      '@fontsource/dm-serif-display':
-        specifier: ^5.2.8
-        version: 5.2.8
-      '@fontsource/gugi':
-        specifier: ^5.2.7
-        version: 5.2.7
-      '@fontsource/kiwi-maru':
-        specifier: ^5.2.8
-        version: 5.2.8
-      '@fontsource/m-plus-rounded-1c':
-        specifier: ^5.2.10
-        version: 5.2.10
-      '@fontsource/sniglet':
-        specifier: ^5.2.8
-        version: 5.2.8
-      '@formkit/auto-animate':
-        specifier: ^0.9.0
-        version: 0.9.0(vue@3.5.29(typescript@5.9.3))
       '@guiiai/logg':
         specifier: 'catalog:'
         version: 1.2.11
-      '@huggingface/transformers':
-        specifier: ^3.8.1
-        version: 3.8.1
-      '@intlify/core':
-        specifier: 'catalog:'
-        version: 11.2.8
       '@moeru/eventa':
         specifier: 'catalog:'
         version: 1.0.0-beta.1(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
@@ -1197,9 +1149,6 @@ importers:
       nprogress:
         specifier: ^0.2.0
         version: 0.2.0
-      onnxruntime-web:
-        specifier: npm:onnxruntime-web@^1.24.2
-        version: 1.24.2
       pinia:
         specifier: 'catalog:'
         version: 3.0.4(typescript@5.9.3)(vue@3.5.29(typescript@5.9.3))
@@ -1215,18 +1164,9 @@ importers:
       remark-parse:
         specifier: ^11.0.0
         version: 11.0.0
-      remark-rehype:
-        specifier: ^11.1.2
-        version: 11.1.2
       replicate:
         specifier: ^1.0.1
         version: 1.4.0
-      shiki:
-        specifier: ^3.23.0
-        version: 3.23.0
-      splitpanes:
-        specifier: 'catalog:'
-        version: 4.0.4(vue@3.5.29(typescript@5.9.3))
       systeminformation:
         specifier: ^5.23.5
         version: 5.31.5
@@ -1245,31 +1185,13 @@ importers:
       valibot:
         specifier: 'catalog:'
         version: 1.2.0(typescript@5.9.3)
-      vaul-vue:
-        specifier: ^0.4.1
-        version: 0.4.1(reka-ui@2.8.2(vue@3.5.29(typescript@5.9.3)))(vue@3.5.29(typescript@5.9.3))
       vue:
         specifier: 'catalog:'
         version: 3.5.29(typescript@5.9.3)
-      vue-demi:
-        specifier: ^0.14.10
-        version: 0.14.10(vue@3.5.29(typescript@5.9.3))
-      vue-i18n:
-        specifier: 'catalog:'
-        version: 11.2.8(vue@3.5.29(typescript@5.9.3))
-      vue-router:
-        specifier: 'catalog:'
-        version: 4.6.4(vue@3.5.29(typescript@5.9.3))
-      vue-sonner:
-        specifier: 'catalog:'
-        version: 2.0.9(vue@3.5.29(typescript@5.9.3))
-      xsschema:
-        specifier: 'catalog:'
-        version: 0.4.0-beta.13(@valibot/to-json-schema@1.0.0-rc.0(valibot@1.2.0(typescript@5.9.3)))(zod-to-json-schema@3.25.1(zod@4.3.6))(zod@4.3.6)
-      zod:
-        specifier: 'catalog:'
-        version: 4.3.6
     devDependencies:
+      '@date-fns/utc':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@electron-toolkit/preload':
         specifier: ^3.0.2
         version: 3.0.2(electron@40.8.0)
@@ -1282,6 +1204,45 @@ importers:
       '@electron/notarize':
         specifier: 'catalog:'
         version: 3.1.1
+      '@fontsource-variable/comfortaa':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource-variable/dm-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource-variable/jura':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource-variable/quicksand':
+        specifier: ^5.2.10
+        version: 5.2.10
+      '@fontsource-variable/urbanist':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource/dm-mono':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource/dm-serif-display':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource/gugi':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource/kiwi-maru':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource/m-plus-rounded-1c':
+        specifier: ^5.2.10
+        version: 5.2.10
+      '@fontsource/sniglet':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@formkit/auto-animate':
+        specifier: ^0.9.0
+        version: 0.9.0(vue@3.5.29(typescript@5.9.3))
+      '@huggingface/transformers':
+        specifier: ^3.8.1
+        version: 3.8.1
       '@iconify-json/carbon':
         specifier: ^1.2.18
         version: 1.2.18
@@ -1312,6 +1273,9 @@ importers:
       '@iconify/utils':
         specifier: ^3.1.0
         version: 3.1.0
+      '@intlify/core':
+        specifier: 'catalog:'
+        version: 11.2.8
       '@intlify/unplugin-vue-i18n':
         specifier: ^11.0.7
         version: 11.0.7(@vue/compiler-dom@3.5.29)(eslint@9.39.3(jiti@2.6.1))(rollup@4.59.0)(typescript@5.9.3)(vite@6.2.7(@types/node@24.10.14)(jiti@2.6.1)(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(vue-i18n@11.2.8(vue@3.5.29(typescript@5.9.3)))(vue@3.5.29(typescript@5.9.3))
@@ -1402,6 +1366,18 @@ importers:
       mkcert:
         specifier: 'catalog:'
         version: 3.2.0
+      onnxruntime-web:
+        specifier: npm:onnxruntime-web@^1.24.2
+        version: 1.24.2
+      remark-rehype:
+        specifier: ^11.1.2
+        version: 11.1.2
+      shiki:
+        specifier: ^3.23.0
+        version: 3.23.0
+      splitpanes:
+        specifier: 'catalog:'
+        version: 4.0.4(vue@3.5.29(typescript@5.9.3))
       std-env:
         specifier: ^4.0.0-rc.1
         version: 4.0.0-rc.1
@@ -1420,6 +1396,9 @@ importers:
       unplugin-yaml:
         specifier: ^4.0.0
         version: 4.0.0(@nuxt/kit@3.20.2(magicast@0.5.2))(esbuild@0.27.2)(rolldown@1.0.0-rc.3)(rollup@4.59.0)(vite@6.2.7(@types/node@24.10.14)(jiti@2.6.1)(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))
+      vaul-vue:
+        specifier: ^0.4.1
+        version: 0.4.1(reka-ui@2.8.2(vue@3.5.29(typescript@5.9.3)))(vue@3.5.29(typescript@5.9.3))
       vite:
         specifier: ~6.2.5
         version: 6.2.7(@types/node@24.10.14)(jiti@2.6.1)(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
@@ -1432,18 +1411,36 @@ importers:
       vite-plugin-vue-layouts:
         specifier: ^0.11.0
         version: 0.11.0(vite@6.2.7(@types/node@24.10.14)(jiti@2.6.1)(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(vue-router@4.6.4(vue@3.5.29(typescript@5.9.3)))(vue@3.5.29(typescript@5.9.3))
+      vue-demi:
+        specifier: ^0.14.10
+        version: 0.14.10(vue@3.5.29(typescript@5.9.3))
+      vue-i18n:
+        specifier: 'catalog:'
+        version: 11.2.8(vue@3.5.29(typescript@5.9.3))
       vue-macros:
         specifier: ^3.1.2
         version: 3.1.2(@vueuse/core@14.2.1(vue@3.5.29(typescript@5.9.3)))(esbuild@0.27.2)(rolldown@1.0.0-rc.3)(rollup@4.59.0)(typescript@5.9.3)(vite@6.2.7(@types/node@24.10.14)(jiti@2.6.1)(less@4.5.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(vue-tsc@3.2.5(typescript@5.9.3))(vue@3.5.29(typescript@5.9.3))
+      vue-router:
+        specifier: 'catalog:'
+        version: 4.6.4(vue@3.5.29(typescript@5.9.3))
+      vue-sonner:
+        specifier: 'catalog:'
+        version: 2.0.9(vue@3.5.29(typescript@5.9.3))
       vue-tsc:
         specifier: ^3.1.8
         version: 3.2.5(typescript@5.9.3)
+      xsschema:
+        specifier: 'catalog:'
+        version: 0.4.0-beta.13(@valibot/to-json-schema@1.0.0-rc.0(valibot@1.2.0(typescript@5.9.3)))(zod-to-json-schema@3.25.1(zod@4.3.6))(zod@4.3.6)
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
       yauzl:
         specifier: ^3.2.0
         version: 3.2.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.6
 
   apps/stage-web:
     dependencies:
@@ -2338,9 +2335,6 @@ importers:
       pinia:
         specifier: 'catalog:'
         version: 3.0.4(typescript@5.9.3)(vue@3.5.29(typescript@5.9.3))
-      posthog-js:
-        specifier: 'catalog:'
-        version: 1.306.1
       reka-ui:
         specifier: ^2.8.2
         version: 2.8.2(vue@3.5.29(typescript@5.9.3))
@@ -31793,7 +31787,7 @@ snapshots:
 
   ts-declaration-location@1.0.7(typescript@5.9.3):
     dependencies:
-      picomatch: 4.0.4
+      picomatch: 4.0.3
       typescript: 5.9.3
 
   ts-interface-checker@0.1.13: {}
@@ -32187,7 +32181,7 @@ snapshots:
   unplugin-utils@0.2.5:
     dependencies:
       pathe: 2.0.3
-      picomatch: 4.0.4
+      picomatch: 4.0.3
 
   unplugin-utils@0.3.1:
     dependencies:

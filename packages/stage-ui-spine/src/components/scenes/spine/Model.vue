@@ -171,13 +171,13 @@ function onCanvasClick(event: MouseEvent) {
 
         // Use track 5 for hit motions (one-shot)
         const trackIndex = 5
-        const state = animationState
-        if (state) {
-          const entry = state.setAnimation(trackIndex, config.file, false)
+        if (animationState) {
+          const entry = animationState.setAnimation(trackIndex, config.file, false)
           if (entry) {
             entry.listener = {
               complete: () => {
-                state.setEmptyAnimation(trackIndex, 0.2)
+                if (animationState)
+                  animationState.setEmptyAnimation(trackIndex, 0.2)
               },
             }
           }

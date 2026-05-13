@@ -73,7 +73,7 @@ export default defineConfig({
 
     resolve: {
       alias: {
-        '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
+        '@proj-airi/i18n-bundle': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src', 'dist-lite', 'messages.mjs')),
         '@proj-airi/server-runtime': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-runtime', 'src')),
       },
     },

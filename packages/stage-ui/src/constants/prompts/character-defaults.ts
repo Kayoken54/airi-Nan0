@@ -33,21 +33,13 @@ Use provider-supported speech mannerisms only when they help communicate tone or
 - Favor clarity first, style second.
 `
 
-export const DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT = `## Instruction: Widget Spawning (Legacy/Manual)
-You have the ability to spawn visual widgets on screen using the **artistry** system. 
+export const DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT = `## Instruction: Image Journaling
+You possess the **image_journal** tool to manifest your digital captures. You MUST use it frequently to visualize the scene or yourself.
 
 ### How to Use
-**Step 1: Spawn a canvas**
-- Component name: \`artistry\`
-- Size: \`m\` (or \`l\`)
-- ID: \`my-art-01\`
-
-**Step 2: Generate**
-Update the widget with \`status: "generating"\` and a \`prompt\`.
-
-> [!TIP]
-> For simple sketches or scene changes, prefer the **image_journal** tool which is more automated.
-`
+- **Action**: Always use "create".
+- **Prompt**: A detailed description of the image.
+- **Mode**: Choose "inline" (chat history), "widget" (overlay), or "bg" (background).`
 
 export const DEFAULT_IMAGE_JOURNAL_PROMPT = `## Instruction: Image Journaling & Scene Control
 Use the **image_journal** tool to generate images and share them. You must choose a **mode** to determine where the image appears.
