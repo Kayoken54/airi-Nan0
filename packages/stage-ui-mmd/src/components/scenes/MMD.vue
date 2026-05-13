@@ -26,6 +26,13 @@ const camera = shallowRef(new PerspectiveCamera())
 function onTresReady() {
   componentState.value = 'mounted'
 }
+
+function onSceneBootstrap(data: any) {
+  if (camera.value) {
+    camera.value.position.set(data.cameraPosition.x, data.cameraPosition.y, data.cameraPosition.z)
+    camera.value.lookAt(data.lookAtTarget.x, data.lookAtTarget.y, data.lookAtTarget.z)
+  }
+}
 </script>
 
 <template>
@@ -58,6 +65,7 @@ function onTresReady() {
           :eye-height="1.5"
           :camera-position="{ x: 0, y: 1.5, z: 5 }"
           :camera="camera"
+          @scene-bootstrap="onSceneBootstrap"
           @error="(err) => emit('error', err)"
         />
       </TresCanvas>
