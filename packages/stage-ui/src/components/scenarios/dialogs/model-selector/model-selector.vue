@@ -191,8 +191,18 @@ async function handleAddMmdModel(file: FileList | null) {
     return
 
   try {
-    await displayModelStore.addDisplayModel(DisplayModelFormat.PMXZip, zipFile)
-    toast.success('MMD model zip added successfully!')
+    const extracted = await extractMmdFromZip(zipFile)
+    if (!extracted) {
+      toast.error('No PMX or PMD model file found in the zip archive.')
+      return
+    }
+
+    const format = extracted.modelFile.name.toLowerCase().endsWith('.pmd')
+      ? DisplayModelFormat.PMD
+      : DisplayModelFormat.PMXZip
+
+    await displayModelStore.addDisplayModelWithTextures(format, extracted.modelFile, extracted.textureFiles)
+    toast.success('MMD model added successfully!')
   }
   catch (error) {
     console.error('[Model Selector] Failed to add MMD model:', error)

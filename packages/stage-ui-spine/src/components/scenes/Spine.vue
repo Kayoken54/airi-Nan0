@@ -33,6 +33,9 @@ withDefaults(defineProps<{
   scale: 1,
 })
 
+const emits = defineEmits<{
+  (e: 'hitAreaHover', value: { name: string, x: number, y: number, hovered: boolean } | null): void
+}>()
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 const componentStateCanvas = defineModel<'pending' | 'loading' | 'mounted'>('canvasState', { default: 'pending' })
 const componentStateModel = defineModel<'pending' | 'loading' | 'mounted'>('modelState', { default: 'pending' })
@@ -49,6 +52,7 @@ function handleHitAreaHover(value: { name: string, x: number, y: number, hovered
   else {
     hoverState.value = null
   }
+  emits('hitAreaHover', value)
 }
 
 watch([componentStateModel, componentStateCanvas], () => {

@@ -101,32 +101,27 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
         return
       }
 
-      if (model.format === DisplayModelFormat.PMXZip) {
-        const toastId = toast.loading('Extracting MMD model...')
+      if (model.format === DisplayModelFormat.PMXZip || model.format === DisplayModelFormat.PMD) {
+        const toastId = toast.loading('Loading MMD model textures...')
         try {
-          const extracted = await extractMmdFromZip(model.file, msg => toast.loading(msg, { id: toastId }))
+          const textureFiles = await displayModelsStore.getDisplayModelTextures(model.id)
           if (requestId !== stageModelUpdateSequence)
             return
-          if (extracted) {
-            const map = new Map<string, string>()
-            for (const tex of extracted.textureFiles) {
-              map.set(tex.relativePath.toLowerCase(), URL.createObjectURL(tex.file))
-            }
-            mmdTextureMap.value = map
-            const nextUrl = `${URL.createObjectURL(extracted.modelFile)}#${extracted.modelFile.name}`
-            replaceStageModelUrl(nextUrl)
-            stageModelSelectedFile.value = extracted.modelFile
-            toast.success('MMD model ready!', { id: toastId })
+
+          const map = new Map<string, string>()
+          for (const tex of textureFiles) {
+            map.set(tex.relativePath.toLowerCase(), URL.createObjectURL(tex.file))
           }
-          else {
-            toast.error('Failed to extract MMD model!', { id: toastId })
-            const nextUrl = URL.createObjectURL(model.file)
-            replaceStageModelUrl(nextUrl)
-            stageModelSelectedFile.value = model.file
-          }
+          mmdTextureMap.value = map
+
+          const nextUrl = `${URL.createObjectURL(model.file)}#${model.file.name}`
+          replaceStageModelUrl(nextUrl)
+          stageModelSelectedFile.value = model.file
+          toast.success('MMD model ready!', { id: toastId })
         }
         catch (e) {
-          toast.error('Failed to load MMD model!', { id: toastId })
+          console.error('[StageModel] Failed to load MMD textures:', e)
+          toast.error('Failed to load MMD model textures!', { id: toastId })
           const nextUrl = URL.createObjectURL(model.file)
           replaceStageModelUrl(nextUrl)
           stageModelSelectedFile.value = model.file

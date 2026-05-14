@@ -323,6 +323,16 @@ async function loadModel() {
         },
         initialize: (sc) => {
           try {
+            if (canvas.value) {
+              const rect = canvas.value.getBoundingClientRect()
+              console.log('[Spine] Canvas BBox on load:', {
+                width: rect.width,
+                height: rect.height,
+                top: rect.top,
+                left: rect.left,
+              })
+            }
+
             const am = sc.assetManager
             const atlas = am.require(assetPaths.atlasPath) as import('@esotericsoftware/spine-webgl').TextureAtlas
             const attachmentLoader = new spine.AtlasAttachmentLoader(atlas)
@@ -698,6 +708,24 @@ watch(currentSkin, (skinName) => {
 watch(currentVariant, async () => {
   if (loadedVariants.length > 1)
     await loadModel()
+})
+
+watch(() => props.interactionMode, (newMode) => {
+  if (!canvas.value)
+    return
+
+  // Always remove first to avoid duplicates
+  canvas.value.removeEventListener('click', onCanvasClick)
+  canvas.value.removeEventListener('mousemove', onCanvasMouseMove)
+
+  if (newMode === 'tactile') {
+    canvas.value.addEventListener('click', onCanvasClick)
+    canvas.value.addEventListener('mousemove', onCanvasMouseMove)
+    console.log('[Spine] Tactile mode enabled, added listeners')
+  }
+  else {
+    console.log('[Spine] Tactile mode disabled, removed listeners')
+  }
 })
 
 watch(() => props.idleAnimationEnabled, () => {

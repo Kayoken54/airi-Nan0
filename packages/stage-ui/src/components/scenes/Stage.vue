@@ -50,6 +50,10 @@ withDefaults(defineProps<{
   scale?: number
 }>(), { paused: false, scale: 1 })
 
+const emits = defineEmits<{
+  (e: 'hitAreaHover', value: { name: string, x: number, y: number, hovered: boolean } | null): void
+}>()
+
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
 const db = ref<DuckDBWasmDrizzleDatabase>()
@@ -1136,6 +1140,7 @@ defineExpose({
         :x-offset="xOffset !== undefined ? Number(xOffset) : undefined"
         :y-offset="yOffset !== undefined ? Number(yOffset) : undefined"
         :scale="scale !== undefined ? Number(scale) : undefined"
+        @hit-area-hover="(val) => emits('hitAreaHover', val)"
       />
       <MMDScene
         v-if="stageModelRenderer === 'mmd' && stageModelSelectedUrl"

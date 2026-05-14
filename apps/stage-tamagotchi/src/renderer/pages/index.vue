@@ -57,6 +57,7 @@ const isLoading = ref(true)
 
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
+const isSpineHitAreaHovered = ref(false)
 
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const { isOutside: isOutsideMain } = useElectronMouseInElement(controlsIslandRoot)
@@ -235,7 +236,7 @@ async function handleSpawnStandalone(stickerId: string) {
   })
 }
 
-watch([isOutsideForInstant, isAroundWindowBorderForInstant, isOutsideWindow, isTransparent, hearingDialogOpen, whisperDockOpen, fadeOnHoverEnabled], () => {
+watch([isOutsideForInstant, isAroundWindowBorderForInstant, isOutsideWindow, isTransparent, hearingDialogOpen, whisperDockOpen, fadeOnHoverEnabled, isSpineHitAreaHovered], () => {
   if (hearingDialogOpen.value || whisperDockOpen.value) {
     // Hearing dialog or whisper dock is open; keep window interactive
     isIgnoringMouseEvents.value = false
@@ -247,9 +248,10 @@ watch([isOutsideForInstant, isAroundWindowBorderForInstant, isOutsideWindow, isT
 
   const insideControls = !isOutsideForInstant.value
   const nearBorder = isAroundWindowBorderForInstant.value
+  const insideHitArea = isSpineHitAreaHovered.value
 
-  if (insideControls || nearBorder) {
-    // Inside interactive controls or near resize border: do NOT ignore events
+  if (insideControls || nearBorder || insideHitArea) {
+    // Inside interactive controls, near resize border, or inside Spine hit area: do NOT ignore events
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -622,6 +624,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
           :x-offset="computedXOffset"
           :y-offset="computedYOffset"
           mb="<md:18"
+          @hit-area-hover="(val) => isSpineHitAreaHovered = val?.hovered || false"
         />
         <ControlsIsland
           ref="controlsIslandRef"
