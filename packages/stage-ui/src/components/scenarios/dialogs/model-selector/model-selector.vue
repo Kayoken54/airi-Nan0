@@ -48,6 +48,7 @@ const currentTab = ref<'library' | 'explore'>('library')
 const marketplaces = [
   { name: 'Steam Workshop', vrm: false, live2d: true, spine: true, mmd: false, languages: ['us'], origin: 'Steam', url: 'https://steamcommunity.com/workshop/browse/?appid=616720' },
   { name: 'VChaVCha (Hololive MMD)', vrm: false, live2d: false, spine: false, mmd: true, languages: ['us'], origin: 'VChaVCha', url: 'https://vchavcha.com/en/free-resources/hololive-mmd-download/' },
+  { name: 'NicoNico 3D (MMD)', vrm: false, live2d: false, spine: false, mmd: true, languages: ['jp'], origin: 'Japan', url: 'https://3d.nicovideo.jp/search?category=all&download_filter=all&limit=28&max_pages=100&order=1&page=1&perfect_match=1&sort=view&usable_animation=&word=MMD&word_type=tag&work_type=mmd' },
   { name: 'Reverse: 1999 (v1.7+)', vrm: false, live2d: true, spine: false, mmd: false, languages: ['cn', 'en'], origin: 'Storm Preservation', url: 'https://dasilva333.github.io/r1999-web-gallery/' },
   { name: 'Booth', vrm: true, live2d: true, spine: false, mmd: false, languages: ['jp', 'us'], origin: 'Japan', url: 'https://booth.pm/en/browse/VTuber' },
   { name: 'Booth VRMA', vrm: true, live2d: false, spine: false, mmd: false, languages: ['jp', 'us'], origin: 'Japan', url: 'https://booth.pm/en/browse/3D%20Motion%20&%20Animation?sort=price_asc&tags%5B%5D=VRMA' },
