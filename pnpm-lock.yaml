@@ -2405,6 +2405,9 @@ importers:
       '@proj-airi/stage-ui-live2d':
         specifier: workspace:*
         version: link:../stage-ui-live2d
+      '@proj-airi/stage-ui-mmd':
+        specifier: workspace:*
+        version: link:../stage-ui-mmd
       '@proj-airi/stage-ui-three':
         specifier: workspace:*
         version: link:../stage-ui-three

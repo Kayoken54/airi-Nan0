@@ -6,6 +6,7 @@ import type { SpeechCapabilitiesInfo } from '@proj-airi/stage-ui/stores/provider
 import kebabcase from '@stdlib/string-base-kebabcase'
 
 import { useLive2d } from '@proj-airi/stage-ui-live2d'
+import { useMmd } from '@proj-airi/stage-ui-mmd'
 import { useSpine } from '@proj-airi/stage-ui-spine'
 import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
@@ -65,6 +66,7 @@ const modelStore = useModelStore()
 const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 const backgroundStore = useBackgroundStore()
 const live2dStore = useLive2d()
+const mmdStore = useMmd()
 const spineStore = useSpine()
 
 const { sensorPayload } = storeToRefs(proactivityStore)
@@ -75,6 +77,7 @@ const { activeProvider: defaultArtistryProvider } = storeToRefs(artistryStore)
 const { availableExpressions } = storeToRefs(modelStore)
 const { animationOptions } = storeToRefs(customVrmAnimationsStore)
 const { availableExpressions: live2dExpressions } = storeToRefs(live2dStore)
+const { availableMorphs: mmdMorphs, availableMotions: mmdMotions } = storeToRefs(mmdStore)
 const { availableAnimations: spineAnimations } = storeToRefs(spineStore)
 
 // Determine if we're in edit mode
@@ -94,6 +97,14 @@ const isSpine = computed(() => {
   if (!model)
     return false
   return model.format === DisplayModelFormat.SpineZip
+})
+
+const isMmd = computed(() => {
+  const modelId = selectedDisplayModelId.value || defaultDisplayModelId.value
+  const model = displayModelsStore.displayModels.find(m => m.id === modelId)
+  if (!model)
+    return false
+  return model.format === DisplayModelFormat.PMXZip || model.format === DisplayModelFormat.PMXDirectory || model.format === DisplayModelFormat.PMD
 })
 
 // Modules configuration
@@ -285,18 +296,18 @@ const actingModelExpressionOptions = computed(() => {
     const exps = live2dExpressions.value.map(e => e.name)
     const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
     const hiddenMotions = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.hiddenMotions || []
-    
+
     const mappedMotions: string[] = []
     const unmappedMotions: string[] = []
-    
+
     live2dStore.availableMotions.forEach((m) => {
       if (hiddenMotions.includes(m.fileName))
         return
-        
+
       const name = m.fileName.split('/').pop() || m.fileName
       const cleanName = name.replace('.motion3.json', '').replace('.json', '')
       const mappedName = motionMappings[m.fileName]
-      
+
       if (mappedName) {
         mappedMotions.push(mappedName)
       }
@@ -304,10 +315,10 @@ const actingModelExpressionOptions = computed(() => {
         unmappedMotions.push(cleanName)
       }
     })
-    
+
     mappedMotions.sort((a, b) => a.localeCompare(b))
     unmappedMotions.sort((a, b) => a.localeCompare(b))
-    
+
     if (mappedMotions.length > 0) {
       return [...new Set([...exps, ...mappedMotions])]
     }
@@ -318,6 +329,33 @@ const actingModelExpressionOptions = computed(() => {
   if (isSpine.value) {
     return spineAnimations.value.map(a => a.name).sort((a, b) => a.localeCompare(b))
   }
+  if (isMmd.value) {
+    const mappings = mmdStore.morphMappings || {}
+    const hidden = mmdStore.hiddenMorphs || []
+
+    const mapped: string[] = []
+    const unmapped: string[] = []
+
+    mmdMorphs.value.forEach((m) => {
+      if (hidden.includes(m))
+        return
+
+      const mappedName = mappings[m]
+      if (mappedName) {
+        mapped.push(mappedName)
+      }
+      else {
+        unmapped.push(m)
+      }
+    })
+
+    if (mapped.length > 0) {
+      return [...new Set(mapped)].sort((a, b) => a.localeCompare(b))
+    }
+    else {
+      return [...new Set(unmapped)].sort((a, b) => a.localeCompare(b))
+    }
+  }
   const modelExps = [...availableExpressions.value]
   const vrmaExps = Object.keys(animations)
   return [...new Set([...modelExps, ...vrmaExps])].sort((a, b) => a.localeCompare(b))
@@ -327,18 +365,18 @@ const actingIdleAnimationOptions = computed(() => {
   if (isLive2d.value) {
     const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
     const hiddenMotions = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.hiddenMotions || []
-    
+
     const mappedMotions: { label: string, value: string }[] = []
     const unmappedMotions: { label: string, value: string }[] = []
-    
+
     live2dStore.availableMotions.forEach((m) => {
       if (hiddenMotions.includes(m.fileName))
         return
-        
+
       const name = m.fileName.split('/').pop() || m.fileName
       const cleanName = name.replace('.motion3.json', '').replace('.json', '')
       const mappedName = motionMappings[m.fileName]
-      
+
       if (mappedName) {
         mappedMotions.push({ label: mappedName, value: mappedName })
       }
@@ -346,10 +384,10 @@ const actingIdleAnimationOptions = computed(() => {
         unmappedMotions.push({ label: cleanName, value: cleanName })
       }
     })
-    
+
     mappedMotions.sort((a, b) => a.label.localeCompare(b.label))
     unmappedMotions.sort((a, b) => a.label.localeCompare(b.label))
-    
+
     if (mappedMotions.length > 0) {
       return mappedMotions
     }
@@ -359,6 +397,9 @@ const actingIdleAnimationOptions = computed(() => {
   }
   if (isSpine.value) {
     return spineAnimations.value.map(a => ({ label: a.name, value: a.name }))
+  }
+  if (isMmd.value) {
+    return mmdMotions.value.map(m => ({ label: m, value: m }))
   }
   return animationOptions.value
 })
