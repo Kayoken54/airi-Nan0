@@ -764,7 +764,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     const characterId = getCurrentCharacterId()
     const parentMessages = getSessionMessages(options.fromSessionId)
     const forkIndex = options.atIndex ?? parentMessages.length
-    const nextMessages = parentMessages.slice(0, forkIndex)
+    const nextMessages = JSON.parse(JSON.stringify(parentMessages.slice(0, forkIndex)))
     return await createSession(characterId, { setActive: false, messages: nextMessages })
   }
 

@@ -45,6 +45,9 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'delete'): void
+  (e: 'fork'): void
+  (e: 'edit'): void
+  (e: 'retry'): void
 }>()
 defineSlots<{
   default: (props: { setMeasuredElement: (element: Element | ComponentPublicInstance | null) => void }) => unknown
@@ -131,7 +134,27 @@ async function handleAction(action: ChatActionMenuAction) {
     return
   }
 
-  emit('delete')
+  if (action === 'delete') {
+    emit('delete')
+    return
+  }
+
+  if (action === 'fork') {
+    emit('fork')
+    return
+  }
+
+  if (action === 'edit') {
+    emit('edit')
+    return
+  }
+
+  if (action === 'retry') {
+    emit('retry')
+    return
+  }
+
+  console.log(`[ChatActionMenu] Unhandled action: ${action}`)
 }
 
 function handleContextMenuOpenChange(open: boolean) {

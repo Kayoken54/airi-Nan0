@@ -2,7 +2,7 @@
 import { format } from 'date-fns'
 import { storeToRefs } from 'pinia'
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import { useChatSessionStore } from '../../../stores/chat/session-store'
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
@@ -46,6 +46,25 @@ async function handleDeleteSession(sessionId: string) {
 
 function formatSessionDate(timestamp: number) {
   return format(timestamp, 'MMM d, yyyy HH:mm')
+}
+const editingSessionId = ref<string | null>(null)
+const editText = ref('')
+
+function handleStartEdit(sessionId: string, currentTitle?: string) {
+  editingSessionId.value = sessionId
+  editText.value = currentTitle || 'Untitled Timeline'
+}
+
+function handleSaveTitle(sessionId: string) {
+  if (!editText.value.trim())
+    return
+
+  const meta = chatSessionStore.sessionMetas[sessionId]
+  if (meta) {
+    meta.title = editText.value.trim()
+    chatSessionStore.persistSessionMessages(sessionId)
+  }
+  editingSessionId.value = null
 }
 </script>
 
@@ -106,7 +125,22 @@ function formatSessionDate(timestamp: number) {
                 Active
               </div>
 
+              <div v-if="editingSessionId === session.sessionId" class="flex items-center gap-2 pr-16" @click.stop>
+                <input
+                  v-model="editText"
+                  class="w-full border border-primary-500 rounded bg-white px-2 py-0.5 text-sm font-bold dark:bg-neutral-800 focus:outline-none"
+                  @keyup.enter="handleSaveTitle(session.sessionId)"
+                  @keyup.esc="editingSessionId = null"
+                >
+                <button
+                  class="p-1 text-primary-500 hover:text-primary-600"
+                  @click.stop="handleSaveTitle(session.sessionId)"
+                >
+                  <div class="i-solar:check-circle-bold text-lg" />
+                </button>
+              </div>
               <span
+                v-else
                 :class="[
                   'text-sm font-bold truncate pr-16',
                   session.sessionId === activeSessionId ? 'text-primary-700 dark:text-primary-300' : 'text-neutral-700 dark:text-neutral-200',
@@ -133,6 +167,13 @@ function formatSessionDate(timestamp: number) {
 
               <!-- Actions -->
               <div class="absolute bottom-4 right-4 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  class="rounded-xl bg-neutral-100 p-2 text-neutral-600 transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                  title="Edit Title"
+                  @click.stop="handleStartEdit(session.sessionId, session.title)"
+                >
+                  <div class="i-solar:pen-bold text-lg" />
+                </button>
                 <button
                   v-if="characterSessions.length > 1"
                   class="rounded-xl bg-red-50 p-2 text-red-500 transition-all dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-800/30"

@@ -3,6 +3,7 @@ import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesText 
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 
 import ChatResponsePart from './response-part.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
@@ -93,6 +94,25 @@ function handleDelete() {
   if (props.message.id)
     chatSession.deleteMessage(props.message.id)
   emit('delete')
+}
+
+async function handleFork() {
+  const messages = chatSession.getSessionMessages(chatSession.activeSessionId)
+  const index = messages.findIndex(m => m.id === props.message.id)
+  if (index !== -1) {
+    try {
+      const newSessionId = await chatSession.forkSession({
+        fromSessionId: chatSession.activeSessionId,
+        atIndex: index + 1, // Include this message
+      })
+      toast.success('Conversation forked successfully!')
+      console.log(`[AssistantItem] Forked session created: ${newSessionId}`)
+    }
+    catch (error) {
+      console.error('Failed to fork session:', error)
+      toast.error('Failed to fork conversation.')
+    }
+  }
 }
 
 // Visual FX state parsing (re-injected from main)
@@ -326,6 +346,7 @@ const resolvedSlices = computed(() => {
       placement="right"
       @copy="handleCopy"
       @delete="handleDelete"
+      @fork="handleFork"
     >
       <template #default="{ setMeasuredElement }">
         <div class="w-full flex flex-row gap-2">
