@@ -399,20 +399,23 @@ onUnmounted(() => {
             </div>
             <div
               v-for="motion in filteredMotions"
-              :key="motion.fullPath"
+              :key="`${motion.group}-${motion.index}-${motion.fullPath}`"
               :class="[
                 'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
-                selectedRuntimeMotion === motion.displayPath ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+                currentMotion?.group === motion.group && currentMotion?.index === motion.index ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
               ]"
             >
               <!-- Left Side: Name and Path -->
               <div class="min-w-0 flex-1 cursor-pointer" @click="handleMotionSelect(motion)">
                 <div class="flex items-center gap-2">
                   <!-- Active Indicator -->
-                  <div v-if="selectedRuntimeMotion === motion.displayPath" class="h-2 w-2 rounded-full bg-primary-500" />
+                  <div v-if="currentMotion?.group === motion.group && currentMotion?.index === motion.index" class="h-2 w-2 rounded-full bg-primary-500" />
 
                   <!-- Name (Editable) -->
-                  <div v-if="editingMotionKey === motion.fullPath" class="flex flex-1 items-center gap-1" @click.stop>
+                  <div v-if="editingMotionKey === motion.fullPath" class="flex flex-1 items-center gap-1.5" @click.stop>
+                    <span class="inline-flex items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 font-semibold ring-1 ring-primary-700/10 ring-inset dark:bg-primary-900/30 dark:text-primary-400 dark:ring-primary-400/20">
+                      {{ motion.group }}
+                    </span>
                     <input
                       v-model="editingMotionValue"
                       type="text"
@@ -428,8 +431,11 @@ onUnmounted(() => {
                       <div class="i-solar:close-circle-bold-duotone text-lg" />
                     </button>
                   </div>
-                  <div v-else class="max-w-[230px] truncate text-sm text-neutral-900 font-medium dark:text-neutral-100">
-                    {{ getDisplayName(motion) }}
+                  <div v-else class="max-w-[230px] flex items-center gap-1.5 truncate text-sm text-neutral-900 font-medium dark:text-neutral-100">
+                    <span class="inline-flex items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 font-semibold ring-1 ring-primary-700/10 ring-inset dark:bg-primary-900/30 dark:text-primary-400 dark:ring-primary-400/20">
+                      {{ motion.group }}
+                    </span>
+                    <span class="truncate">{{ getDisplayName(motion) }}</span>
                   </div>
                 </div>
                 <div class="ml-4 max-w-[230px] truncate text-xs text-neutral-500 dark:text-neutral-400">
