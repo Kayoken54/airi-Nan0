@@ -249,8 +249,52 @@ async function clearModelCache() {
 }
 
 // Runtime motion selection handlers
+function isMotionInCycle(motion: any) {
+  const cardIdleAnimations = activeCard.value?.extensions?.airi?.acting?.idleAnimations || []
+  const expectedKey = `live2d:${motion.group}:${motion.index}:${motion.fullPath}`
+  return cardIdleAnimations.includes(expectedKey)
+}
+
+function toggleMotionInCycle(motion: any) {
+  if (!activeCardId.value || !activeCard.value)
+    return
+
+  const expectedKey = `live2d:${motion.group}:${motion.index}:${motion.fullPath}`
+  const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
+  const next = current.includes(expectedKey)
+    ? current.filter(k => k !== expectedKey)
+    : [...current, expectedKey]
+
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions.airi,
+        acting: {
+          ...activeCard.value.extensions.airi.acting,
+          idleAnimations: next,
+        },
+      },
+    },
+  })
+}
+
 function handleMotionSelect(motion: any) {
   const modelId = props.modelId || 'global'
+
+  // Click currently active motion to toggle it off (Set to "None" state)
+  if (currentMotion.value?.group === motion.group && currentMotion.value?.index === motion.index) {
+    selectedRuntimeMotion.value = ''
+    selectedRuntimeMotionName.value = 'None'
+    localStorage.removeItem(`live2d-${modelId}-selected-motion`)
+    localStorage.removeItem(`live2d-${modelId}-selected-motion-name`)
+    localStorage.removeItem(`live2d-${modelId}-selected-motion-group`)
+    localStorage.removeItem(`live2d-${modelId}-selected-motion-index`)
+
+    currentMotion.value = { group: '', index: -1 }
+    showMotionSelector.value = false
+    return
+  }
 
   if (motion.displayPath === '') {
     selectedRuntimeMotion.value = ''
@@ -280,10 +324,6 @@ function handleMotionSelect(motion: any) {
   currentMotion.value = { group: motion.group, index: motion.index }
 
   showMotionSelector.value = false
-
-  console.info('✅ Selected runtime motion:', motion.name)
-  console.info('Full path:', motion.displayPath)
-  console.info('Group:', motion.group, 'Index:', motion.index)
 }
 
 // Close dropdown when clicking outside
@@ -445,6 +485,20 @@ onUnmounted(() => {
 
               <!-- Right Side: Actions -->
               <div class="flex items-center gap-1" @click.stop>
+                <!-- Loop / Cycle Toggle -->
+                <button
+                  class="rounded p-1 transition-colors"
+                  :class="[
+                    isMotionInCycle(motion)
+                      ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
+                      : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
+                  ]"
+                  :title="isMotionInCycle(motion) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
+                  @click="toggleMotionInCycle(motion)"
+                >
+                  <div class="i-solar:infinity-bold-duotone text-sm" />
+                </button>
+
                 <!-- Edit Button -->
                 <button
                   class="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"

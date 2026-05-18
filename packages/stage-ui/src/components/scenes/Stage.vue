@@ -1179,6 +1179,7 @@ defineExpose({
         :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
         :live2d-max-fps="live2dMaxFps"
+        :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm'"

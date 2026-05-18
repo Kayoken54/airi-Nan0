@@ -30,6 +30,7 @@ const props = withDefaults(defineProps<{
   live2dMaxFps?: number
   xOffset?: number | string
   yOffset?: number | string
+  idleAnimations?: string[]
 }>(), {
   paused: false,
   focusAt: () => ({ x: 0, y: 0 }),
@@ -41,6 +42,7 @@ const props = withDefaults(defineProps<{
   live2dForceAutoBlinkEnabled: false,
   live2dShadowEnabled: true,
   live2dMaxFps: 0,
+  idleAnimations: () => [],
 })
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -101,6 +103,7 @@ defineExpose({
         :live2d-auto-blink-enabled="live2dAutoBlinkEnabled"
         :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
+        :idle-animations="idleAnimations"
       />
     </Live2DCanvas>
   </Screen>

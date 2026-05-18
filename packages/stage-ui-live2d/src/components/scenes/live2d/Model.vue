@@ -47,6 +47,7 @@ const props = withDefaults(defineProps<{
   live2dAutoBlinkEnabled?: boolean
   live2dForceAutoBlinkEnabled?: boolean
   live2dShadowEnabled?: boolean
+  idleAnimations?: string[]
 }>(), {
   mouthOpenSize: 0,
   paused: false,
@@ -59,6 +60,7 @@ const props = withDefaults(defineProps<{
   live2dAutoBlinkEnabled: true,
   live2dForceAutoBlinkEnabled: false,
   live2dShadowEnabled: true,
+  idleAnimations: () => [],
 })
 
 const emits = defineEmits<{
@@ -307,32 +309,64 @@ async function loadModel() {
       })) || []))
       .filter(Boolean)
 
-    // Check if user has selected a runtime motion to play as idle
-    const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
-    const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
+    // Configure the loop settings for motions in the cycle subset or selected motion
+    const cycleMotions = props.idleAnimations
+      ?.filter(k => k.startsWith('live2d:'))
+      .map((k) => {
+        const [_, group, indexStr] = k.split(':')
+        return {
+          group,
+          index: Number.parseInt(indexStr),
+        }
+      }) || []
 
-    // Configure the selected motion to loop
-    if (selectedMotionGroup !== null && selectedMotionIndex) {
-      const groupIndex = (motionManager.groups as Record<string, any>)[selectedMotionGroup]
+    const configureMotionLoop = (groupName: string, indexStr: string) => {
+      const groupIndex = (motionManager.groups as Record<string, any>)[groupName]
       if (groupIndex !== undefined && motionManager.motionGroups[groupIndex]) {
-        const motionIndex = Number.parseInt(selectedMotionIndex)
+        const motionIndex = Number.parseInt(indexStr)
         const motion = motionManager.motionGroups[groupIndex][motionIndex]
         if (motion && motion._looper) {
           // Force the motion to loop
           motion._looper.loopDuration = 0 // 0 means infinite loop
-          console.info('Configured motion to loop infinitely:', selectedMotionGroup, motionIndex)
+          console.info('[Live2D Cycle] Configured motion to loop infinitely:', groupName, motionIndex)
         }
       }
     }
 
-    if (selectedMotionGroup !== null && selectedMotionIndex && live2dIdleAnimationEnabled.value) {
-      setTimeout(() => {
-        console.info('Playing selected runtime motion:', selectedMotionGroup, selectedMotionIndex)
-        currentMotion.value = {
-          group: selectedMotionGroup,
-          index: Number.parseInt(selectedMotionIndex),
+    if (cycleMotions.length > 0) {
+      cycleMotions.forEach(m => configureMotionLoop(m.group, String(m.index)))
+    }
+    else {
+      const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
+      const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
+      if (selectedMotionGroup !== null && selectedMotionIndex) {
+        configureMotionLoop(selectedMotionGroup, selectedMotionIndex)
+      }
+    }
+
+    if (live2dIdleAnimationEnabled.value) {
+      if (cycleMotions.length > 0) {
+        setTimeout(() => {
+          console.info('[Live2D Cycle] Playing initial motion from card cycle subset:', cycleMotions[0].group, cycleMotions[0].index)
+          currentMotion.value = {
+            group: cycleMotions[0].group,
+            index: cycleMotions[0].index,
+          }
+        }, 300)
+      }
+      else {
+        const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
+        const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
+        if (selectedMotionGroup !== null && selectedMotionIndex) {
+          setTimeout(() => {
+            console.info('Playing selected runtime motion:', selectedMotionGroup, selectedMotionIndex)
+            currentMotion.value = {
+              group: selectedMotionGroup,
+              index: Number.parseInt(selectedMotionIndex),
+            }
+          }, 300)
         }
-      }, 300)
+      }
     }
 
     // Remove eye ball movements from idle motion group to prevent conflicts
@@ -431,10 +465,48 @@ async function loadModel() {
 
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
+      if (!live2dIdleAnimationEnabled.value) {
+        return
+      }
+
+      // Parse current card cycle subset
+      const cycleMotions = props.idleAnimations
+        ?.filter(k => k.startsWith('live2d:'))
+        .map((k) => {
+          const [_, group, indexStr] = k.split(':')
+          return {
+            group,
+            index: Number.parseInt(indexStr),
+          }
+        }) || []
+
+      if (cycleMotions.length > 0) {
+        let nextMotion = cycleMotions[0]
+
+        if (cycleMotions.length > 1) {
+          // Select a random motion from the subset (ideally excluding the one that just finished)
+          const current = currentMotion.value
+          const choices = cycleMotions.filter(
+            m => m.group !== current?.group || m.index !== current?.index,
+          )
+          const selection = choices.length > 0 ? choices : cycleMotions
+          nextMotion = selection[Math.floor(Math.random() * selection.length)]
+        }
+
+        console.info('[Live2D Cycle] Motion finished, playing next subset motion:', nextMotion.group, nextMotion.index)
+        requestAnimationFrame(() => {
+          currentMotion.value = {
+            group: nextMotion.group,
+            index: nextMotion.index,
+          }
+        })
+        return
+      }
+
       const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
       const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
 
-      if (selectedMotionGroup !== null && selectedMotionIndex && live2dIdleAnimationEnabled.value) {
+      if (selectedMotionGroup !== null && selectedMotionIndex) {
         // Restart the selected runtime motion immediately for seamless looping
         console.info('Motion finished, restarting runtime motion:', selectedMotionGroup, selectedMotionIndex)
         // Use requestAnimationFrame to restart on the next frame for smooth transition
@@ -638,6 +710,17 @@ async function setMotion(motionName: string, index?: number) {
   // TODO: motion? Not every Live2D model has motion, we do need to help users to set motion
   if (!model.value) {
     console.warn('Cannot set motion: model not loaded')
+    return
+  }
+
+  if (!motionName || index === -1) {
+    console.info('Stopping all motions (standstill/none state)')
+    try {
+      model.value.internalModel.motionManager.stopAllMotions()
+    }
+    catch (e) {
+      console.warn('Failed to stop all motions:', e)
+    }
     return
   }
 
