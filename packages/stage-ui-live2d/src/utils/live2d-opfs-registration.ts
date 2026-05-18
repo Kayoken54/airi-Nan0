@@ -26,3 +26,34 @@ if (!Live2DFactory.live2DModelMiddlewares.includes(live2dEncodeFilenamesMiddlewa
     Live2DFactory.live2DModelMiddlewares.splice(insertBefore, 0, live2dEncodeFilenamesMiddleware)
   }
 }
+
+// Monkeypatch ZipLoader.unzip to sanitize manifest settings in-memory before pixi-live2d-display parses them,
+// preventing WebGL initialization crashes (TypeError: Parameter 'url' must be a string) on custom/non-standard triggers.
+const originalUnzip = ZipLoader.unzip
+ZipLoader.unzip = function (reader: any, settings: any) {
+  if (settings) {
+    // Sanitize motions
+    if (settings.motions && typeof settings.motions === 'object') {
+      for (const [groupName, motions] of Object.entries(settings.motions)) {
+        if (Array.isArray(motions)) {
+          settings.motions[groupName] = motions.filter((motion: any) => {
+            return (
+              (typeof motion?.file === 'string' && motion.file.trim() !== '')
+              || (typeof motion?.File === 'string' && motion.File.trim() !== '')
+            )
+          })
+        }
+      }
+    }
+    // Sanitize expressions
+    if (settings.expressions && Array.isArray(settings.expressions)) {
+      settings.expressions = settings.expressions.filter((exp: any) => {
+        return (
+          (typeof exp?.file === 'string' && exp.file.trim() !== '')
+          || (typeof exp?.File === 'string' && exp.File.trim() !== '')
+        )
+      })
+    }
+  }
+  return originalUnzip.call(this, reader, settings)
+}

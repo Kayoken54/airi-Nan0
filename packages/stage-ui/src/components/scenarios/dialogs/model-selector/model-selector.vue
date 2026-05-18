@@ -492,142 +492,144 @@ function handleFixError(err: string) {
         Loading display models...
       </div>
 
-      <div
-        class="w-full lg:max-h-80dvh"
-        :class="[
-          viewMode === 'grid' ? 'flex flex-col gap-2 md:grid lg:grid-cols-2 md:grid-cols-1' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2',
-        ]"
-      >
-        <!-- (Rest of Library Model Grid) -->
+      <div class="flex-1 overflow-y-auto pr-1">
         <div
-          v-for="(model) of filteredModels"
-          :key="model.id"
-          class="group relative transition-all duration-200"
+          class="w-full lg:max-h-80dvh"
           :class="[
-            viewMode === 'grid' ? 'block h-full w-full md:flex md:flex-row gap-2' : 'flex flex-col',
-            highlightDisplayModelCard === model.id ? 'z-10' : 'z-0',
+            viewMode === 'grid' ? 'flex flex-col gap-2 md:grid lg:grid-cols-2 md:grid-cols-1' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2',
           ]"
-          @click="() => highlightDisplayModelCard = model.id"
         >
-          <!-- Options Menu -->
-          <div class="absolute right-2 top-2 z-10">
-            <DropdownMenuRoot>
-              <DropdownMenuTrigger
-                :class="[
-                  'bg-neutral-900/40 group-hover:bg-neutral-900/60 dark:bg-neutral-950/40 group-hover:dark:bg-neutral-900/80',
-                  viewMode === 'compact' ? 'h-5 w-5' : 'h-7 w-7',
-                  'text-white flex items-center justify-center rounded-lg backdrop-blur-md transition-all duration-200 ease-in-out shadow-sm',
-                ]"
-                aria-label="Options for Display Models"
-                @click.stop
-              >
-                <div :class="['i-solar:menu-dots-bold', viewMode === 'compact' ? 'text-xs' : 'text-base']" />
-              </DropdownMenuTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuContent
-                  :class="[
-                    'will-change-[opacity,transform] z-10000 max-w-45 rounded-xl p-1 text-white shadow-2xl outline-none data-[side=bottom]:animate-slideUpAndFade data-[side=left]:animate-slideRightAndFade data-[side=right]:animate-slideLeftAndFade data-[side=top]:animate-slideDownAndFade dark:text-black',
-                    'bg-neutral-900/90 dark:bg-neutral-100/90',
-                    'backdrop-blur-xl border border-white/10 dark:border-black/10',
-                  ]"
-                  transition="colors duration-200 ease-in-out"
-                  align="start"
-                  side="bottom"
-                  :side-offset="4"
-                >
-                  <DropdownMenuItem
-                    class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base leading-none outline-none data-[highlighted]:bg-white/10 sm:text-sm dark:data-[highlighted]:bg-black/10"
-                    @click="openRenameDialog(model)"
-                  >
-                    <div class="flex items-center gap-2">
-                      <div class="i-solar:pen-bold" />
-                      <div>Rename</div>
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base text-red-400 font-semibold leading-none outline-none data-[highlighted]:bg-red-500/20 sm:text-sm"
-                    @click="handleRemoveModel(model)"
-                  >
-                    <div class="flex items-center gap-2">
-                      <div class="i-solar:trash-bin-minimalistic-bold-duotone" />
-                      <div>Remove</div>
-                    </div>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenuPortal>
-            </DropdownMenuRoot>
-          </div>
-
-          <!-- Preview Image Area -->
+          <!-- (Rest of Library Model Grid) -->
           <div
-            class="relative cursor-pointer overflow-hidden transition-all duration-300"
+            v-for="(model) of filteredModels"
+            :key="model.id"
+            class="group relative transition-all duration-200"
             :class="[
-              viewMode === 'grid' ? 'h-50 md:h-60 w-full md:w-45 lg:w-50 shrink-0' : 'aspect-[3/4] w-full',
+              viewMode === 'grid' ? 'block h-full w-full md:flex md:flex-row gap-2' : 'flex flex-col',
+              highlightDisplayModelCard === model.id ? 'z-10' : 'z-0',
             ]"
-            @click="handlePick(model)"
+            @click="() => highlightDisplayModelCard = model.id"
           >
-            <img
-              v-if="model.previewImage"
-              :src="model.previewImage"
-              h-full w-full rounded-xl object-cover
-              loading="lazy"
+            <!-- Options Menu -->
+            <div class="absolute right-2 top-2 z-10">
+              <DropdownMenuRoot>
+                <DropdownMenuTrigger
+                  :class="[
+                    'bg-neutral-900/40 group-hover:bg-neutral-900/60 dark:bg-neutral-950/40 group-hover:dark:bg-neutral-900/80',
+                    viewMode === 'compact' ? 'h-5 w-5' : 'h-7 w-7',
+                    'text-white flex items-center justify-center rounded-lg backdrop-blur-md transition-all duration-200 ease-in-out shadow-sm',
+                  ]"
+                  aria-label="Options for Display Models"
+                  @click.stop
+                >
+                  <div :class="['i-solar:menu-dots-bold', viewMode === 'compact' ? 'text-xs' : 'text-base']" />
+                </DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuContent
+                    :class="[
+                      'will-change-[opacity,transform] z-10000 max-w-45 rounded-xl p-1 text-white shadow-2xl outline-none data-[side=bottom]:animate-slideUpAndFade data-[side=left]:animate-slideRightAndFade data-[side=right]:animate-slideLeftAndFade data-[side=top]:animate-slideDownAndFade dark:text-black',
+                      'bg-neutral-900/90 dark:bg-neutral-100/90',
+                      'backdrop-blur-xl border border-white/10 dark:border-black/10',
+                    ]"
+                    transition="colors duration-200 ease-in-out"
+                    align="start"
+                    side="bottom"
+                    :side-offset="4"
+                  >
+                    <DropdownMenuItem
+                      class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base leading-none outline-none data-[highlighted]:bg-white/10 sm:text-sm dark:data-[highlighted]:bg-black/10"
+                      @click="openRenameDialog(model)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <div class="i-solar:pen-bold" />
+                        <div>Rename</div>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base text-red-400 font-semibold leading-none outline-none data-[highlighted]:bg-red-500/20 sm:text-sm"
+                      @click="handleRemoveModel(model)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <div class="i-solar:trash-bin-minimalistic-bold-duotone" />
+                        <div>Remove</div>
+                      </div>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPortal>
+              </DropdownMenuRoot>
+            </div>
+
+            <!-- Preview Image Area -->
+            <div
+              class="relative cursor-pointer overflow-hidden transition-all duration-300"
               :class="[
-                highlightDisplayModelCard === model.id ? 'ring-3 ring-primary-500 shadow-lg' : 'ring-1 ring-white/10 dark:ring-black/10',
-                'group-hover:scale-105 transition-transform duration-500',
+                viewMode === 'grid' ? 'h-50 md:h-60 w-full md:w-45 lg:w-50 shrink-0' : 'aspect-[3/4] w-full',
               ]"
-            >
-            <div
-              v-else
-              :class="['h-full w-full flex flex-col items-center justify-center gap-2 rounded-xl bg-neutral-200 dark:bg-neutral-800', highlightDisplayModelCard === model.id ? 'ring-3 ring-primary-500 shadow-lg' : 'ring-1 ring-white/10 dark:ring-black/10']"
-            >
-              <div class="i-solar:question-square-bold-duotone text-4xl opacity-30" />
-            </div>
-
-            <!-- Hover Effects Overlay -->
-            <div
-              class="pointer-events-none absolute inset-0 flex items-end justify-center rounded-xl from-black/60 to-transparent bg-gradient-to-t p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-            >
-              <div :class="['text-white text-xs font-bold flex items-center gap-1', 'translate-y-2 group-hover:translate-y-0 transition-transform duration-300']">
-                <div class="i-solar:map-arrow-up-bold" />
-                Pick Model
-              </div>
-            </div>
-          </div>
-
-          <!-- Labels Area -->
-          <div
-            class="flex flex-1 flex-col"
-            :class="[viewMode === 'grid' ? 'justify-between p-2' : 'p-1.5']"
-          >
-            <div class="w-full">
-              <div
-                class="font-bold transition-colors"
-                :class="[
-                  viewMode === 'grid' ? 'text-lg line-clamp-2 leading-tight' : 'text-sm line-clamp-1',
-                  highlightDisplayModelCard === model.id ? 'text-primary-500' : '',
-                ]"
-              >
-                {{ model.name }}
-              </div>
-              <div
-                class="mt-1 flex items-center gap-1 opacity-60"
-                :class="[viewMode === 'grid' ? 'text-sm' : 'text-xs']"
-              >
-                <div v-if="model.format === DisplayModelFormat.VRM" class="i-solar:box-bold" />
-                <div v-else class="i-solar:mask-hachi-bold" />
-                <div>{{ mapFormatRenderer[model.format] }}</div>
-              </div>
-            </div>
-
-            <!-- Pick toggle button for Standard View only -->
-            <Button
-              v-if="viewMode === 'grid'"
-              variant="secondary"
-              class="mt-2 w-full !rounded-lg !py-1.5"
               @click="handlePick(model)"
             >
-              Pick
-            </Button>
+              <img
+                v-if="model.previewImage"
+                :src="model.previewImage"
+                h-full w-full rounded-xl object-cover
+                loading="lazy"
+                :class="[
+                  highlightDisplayModelCard === model.id ? 'ring-3 ring-primary-500 shadow-lg' : 'ring-1 ring-white/10 dark:ring-black/10',
+                  'group-hover:scale-105 transition-transform duration-500',
+                ]"
+              >
+              <div
+                v-else
+                :class="['h-full w-full flex flex-col items-center justify-center gap-2 rounded-xl bg-neutral-200 dark:bg-neutral-800', highlightDisplayModelCard === model.id ? 'ring-3 ring-primary-500 shadow-lg' : 'ring-1 ring-white/10 dark:ring-black/10']"
+              >
+                <div class="i-solar:question-square-bold-duotone text-4xl opacity-30" />
+              </div>
+
+              <!-- Hover Effects Overlay -->
+              <div
+                class="pointer-events-none absolute inset-0 flex items-end justify-center rounded-xl from-black/60 to-transparent bg-gradient-to-t p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+              >
+                <div :class="['text-white text-xs font-bold flex items-center gap-1', 'translate-y-2 group-hover:translate-y-0 transition-transform duration-300']">
+                  <div class="i-solar:map-arrow-up-bold" />
+                  Pick Model
+                </div>
+              </div>
+            </div>
+
+            <!-- Labels Area -->
+            <div
+              class="flex flex-1 flex-col"
+              :class="[viewMode === 'grid' ? 'justify-between p-2' : 'p-1.5']"
+            >
+              <div class="w-full">
+                <div
+                  class="font-bold transition-colors"
+                  :class="[
+                    viewMode === 'grid' ? 'text-lg line-clamp-2 leading-tight' : 'text-sm line-clamp-1',
+                    highlightDisplayModelCard === model.id ? 'text-primary-500' : '',
+                  ]"
+                >
+                  {{ model.name }}
+                </div>
+                <div
+                  class="mt-1 flex items-center gap-1 opacity-60"
+                  :class="[viewMode === 'grid' ? 'text-sm' : 'text-xs']"
+                >
+                  <div v-if="model.format === DisplayModelFormat.VRM" class="i-solar:box-bold" />
+                  <div v-else class="i-solar:mask-hachi-bold" />
+                  <div>{{ mapFormatRenderer[model.format] }}</div>
+                </div>
+              </div>
+
+              <!-- Pick toggle button for Standard View only -->
+              <Button
+                v-if="viewMode === 'grid'"
+                variant="secondary"
+                class="mt-2 w-full !rounded-lg !py-1.5"
+                @click="handlePick(model)"
+              >
+                Pick
+              </Button>
+            </div>
           </div>
         </div>
       </div>
