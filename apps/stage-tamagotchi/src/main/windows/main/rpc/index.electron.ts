@@ -58,7 +58,24 @@ export async function setupMainWindowElectronInvokes(params: {
 
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
   defineInvokeHandler(context, electronOpenSettings, async payload => params.settingsWindow.openWindow(payload?.route))
-  defineInvokeHandler(context, electronOpenChat, async () => toggleWindowShow(await params.chatWindow()))
+  defineInvokeHandler(context, electronOpenChat, async (enabled?: boolean) => {
+    const win = await params.chatWindow()
+    console.log(`[Main Process] [Chat Window] openChat handler called. enabled: ${enabled}, window exists: ${!!win}`)
+    if (win && !win.isDestroyed()) {
+      if (enabled === undefined) {
+        toggleWindowShow(win)
+      }
+      else if (enabled) {
+        console.log('[Main Process] [Chat Window] Showing chat window')
+        win.show()
+        win.focus()
+      }
+      else {
+        console.log('[Main Process] [Chat Window] Hiding chat window')
+        win.hide()
+      }
+    }
+  })
   defineInvokeHandler(context, noticeWindowEventa.openWindow, payload => params.noticeWindow.open(payload))
 
   defineInvokeHandler(context, electronGetMainWindowConfig, () => {

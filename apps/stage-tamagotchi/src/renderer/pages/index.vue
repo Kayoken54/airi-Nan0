@@ -575,8 +575,9 @@ function handleControlStripAction(e: Event) {
   const action = (e as CustomEvent).detail.action
   console.info(`[Main Page] [Control Strip Action] Received action: "${action}"`)
   if (action === 'chat') {
-    console.info('[Main Page] [Control Strip Action] Invoking openChat()...')
-    openChat()
+    controlStripStore.chatOpen = !controlStripStore.chatOpen
+    console.info(`[Main Page] [Control Strip Action] Invoking openChat(${controlStripStore.chatOpen})...`)
+    openChat(controlStripStore.chatOpen)
   }
   else if (action === 'settings') {
     openSettings()
