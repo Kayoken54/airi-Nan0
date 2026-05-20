@@ -38,6 +38,7 @@ import ResourceStatusIsland from '../components/stage-islands/resource-status-is
 
 import {
   electronCaptionToggleVisibility,
+  electronCustomizerToggleVisibility,
   electronGetCaptionWindowState,
   electronGetChatWindowState,
   electronGetMainWindowConfig,
@@ -65,6 +66,7 @@ const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const toggleCaptionVisibility = useElectronEventaInvoke(electronCaptionToggleVisibility)
 const getChatWindowState = useElectronEventaInvoke(electronGetChatWindowState)
 const getCaptionWindowState = useElectronEventaInvoke(electronGetCaptionWindowState)
+const toggleCustomizerVisibility = useElectronEventaInvoke(electronCustomizerToggleVisibility)
 
 const isLoading = ref(true)
 
@@ -595,6 +597,11 @@ watch(stream, async (newStream) => {
   }
 })
 
+async function handleOpenCustomizer() {
+  console.info('[Main Page] [Control Strip Action] Toggling Customizer Window...')
+  await toggleCustomizerVisibility()
+}
+
 function handleControlStripAction(e: Event) {
   const action = (e as CustomEvent).detail.action
   console.info(`[Main Page] [Control Strip Action] Received action: "${action}"`)
@@ -646,10 +653,14 @@ onMounted(async () => {
       controlStripStore.captionOpen = isOpen
       console.info(`[Main Page] [Store Sync] controlStripStore.captionOpen updated to: ${controlStripStore.captionOpen}`)
     })
+    window.electron.ipcRenderer.on('customizer-window-state', (_, isOpen: boolean) => {
+      console.info(`[Main Page] [IPC] Received 'customizer-window-state' event. Window open state: ${isOpen}`)
+    })
   }
 
   if (typeof window !== 'undefined') {
     window.addEventListener('control-strip:action', handleControlStripAction as EventListener)
+    window.addEventListener('control-strip:open-customizer', handleOpenCustomizer as EventListener)
   }
 })
 
@@ -668,6 +679,7 @@ onUnmounted(async () => {
 
   if (typeof window !== 'undefined') {
     window.removeEventListener('control-strip:action', handleControlStripAction as EventListener)
+    window.removeEventListener('control-strip:open-customizer', handleOpenCustomizer as EventListener)
   }
 })
 

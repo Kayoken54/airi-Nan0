@@ -45,6 +45,7 @@ import { setupAboutWindowReusable } from './windows/about'
 import { setupBeatSync } from './windows/beat-sync'
 import { setupCaptionWindowManager } from './windows/caption'
 import { setupChatWindowReusableFunc } from './windows/chat'
+import { setupCustomizerWindowManager } from './windows/customizer'
 import { setupDevtoolsWindow } from './windows/devtools'
 import { setupMainWindow } from './windows/main'
 import { setupNoticeWindowManager } from './windows/notice'
@@ -217,6 +218,11 @@ app.whenReady().then(async () => {
     build: async ({ dependsOn }) => setupCaptionWindowManager(dependsOn),
   })
 
+  const customizerWindow = injeca.provide('windows:customizer', {
+    dependsOn: { mainWindow, serverChannel, i18n },
+    build: async ({ dependsOn }) => setupCustomizerWindowManager(dependsOn),
+  })
+
   const tray = injeca.provide('app:tray', {
     dependsOn: { mainWindow, settingsWindow, captionWindow, widgetsWindow: widgetsManager, serverChannel, beatSyncBgWindow: beatSync, aboutWindow, i18n, appConfig },
     build: async ({ dependsOn }) => {
@@ -230,7 +236,7 @@ app.whenReady().then(async () => {
   })
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager, appConfig, i18n, captionWindow, stageWindow, chatWindow },
+    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager, appConfig, i18n, captionWindow, stageWindow, chatWindow, customizerWindow },
     callback: (deps) => {
       const context = createContext(ipcMain).context
       createServerChannelService({ serverChannel: deps.serverChannel })
