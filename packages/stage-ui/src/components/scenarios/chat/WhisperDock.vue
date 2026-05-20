@@ -261,6 +261,20 @@ function handleKeydown(e: KeyboardEvent) {
           ]"
         />
       </Transition>
+
+      <!-- Exit/Close Button -->
+      <button
+        :class="[
+          'size-7 rounded-lg flex items-center justify-center',
+          'text-neutral-400 hover:bg-red-500/10 hover:text-red-500',
+          'transition-all duration-200',
+          'cursor-pointer',
+        ]"
+        title="Close input (Esc)"
+        @click="dismiss"
+      >
+        <div class="i-ph:x-bold size-4" />
+      </button>
     </div>
   </Transition>
 </template>
