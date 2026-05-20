@@ -106,8 +106,17 @@ function toggleOrientation() {
   controlStripStore.toggleOrientation()
 }
 
-function cycleMode() {
-  controlStripStore.cycleInteractionMode()
+function getButtonTitle(btnId: string, defaultLabel: string): string {
+  if (btnId === 'chat') {
+    return `Chat Toggle: ${chatOpen.value ? 'Open (Green)' : 'Closed (Red)'}`
+  }
+  if (btnId === 'stage') {
+    return `Actor Stage: ${stageEnabled.value ? 'Visible (Green)' : 'Hidden (Red)'}`
+  }
+  if (btnId === 'mic') {
+    return `Microphone: ${micEnabled.value ? 'Active (Green)' : 'Muted (Red)'}`
+  }
+  return defaultLabel
 }
 </script>
 
@@ -167,7 +176,7 @@ function cycleMode() {
           'bg-white/15 hover:bg-white/25 dark:bg-white/5 dark:hover:bg-white/15 text-neutral-800 dark:text-neutral-200',
           'transition-all duration-200 hover:scale-105 active:scale-90 cursor-pointer',
         ]"
-        :title="btn.label"
+        :title="getButtonTitle(btn.id, btn.label)"
         @click="handleAction(btn.id)"
       >
         <span :class="[btn.icon, 'text-lg']" />
@@ -200,32 +209,5 @@ function cycleMode() {
         />
       </button>
     </div>
-
-    <!-- 3-WAY INTERACTION MODE SWITCHER -->
-    <button
-      :class="[
-        'flex items-center justify-center',
-        'w-9 h-9 rounded-full',
-        'border transition-all duration-200 active:scale-95 cursor-pointer',
-        interactionMode === 'tactile'
-          ? 'bg-primary-500/20 border-primary-500/40 text-primary-600 dark:text-primary-400'
-          : interactionMode === 'positioning'
-            ? 'bg-amber-500/20 border-amber-500/40 text-amber-600 dark:text-amber-400 animate-pulse'
-            : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-600 dark:text-indigo-400',
-      ]"
-      :title="`Interaction Mode: ${interactionMode.toUpperCase()} (Click to Cycle)`"
-      @click="cycleMode"
-    >
-      <span
-        :class="[
-          'text-lg',
-          interactionMode === 'tactile'
-            ? 'i-solar:magic-stick-linear'
-            : interactionMode === 'positioning'
-              ? 'i-solar:tuning-outline'
-              : 'i-solar:eye-linear',
-        ]"
-      />
-    </button>
   </div>
 </template>
