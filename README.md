@@ -140,7 +140,7 @@ If you want the running journal for what is actively being built, refined, and t
 
 <p float="left" align="center">
   <!-- readme-section:release-binary-windows -->
-  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.1-stable.20260519/AIRI-0.9.1-stable.20260519-windows-x64-setup.exe">
+  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.1-stable.20260520/AIRI-0.9.1-stable.20260520-windows-x64-setup.exe">
     <picture>
       <source
         width="33%"
@@ -156,7 +156,7 @@ If you want the running journal for what is actively being built, refined, and t
     </picture>
   </a>
   <!-- readme-section:release-binary-macos -->
-  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.1-stable.20260519/AIRI-0.9.1-stable.20260519-darwin-arm64.dmg">
+  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.1-stable.20260520/AIRI-0.9.1-stable.20260520-darwin-arm64.dmg">
     <picture>
       <source
         width="33%"
