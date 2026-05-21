@@ -11,7 +11,8 @@ import {
   useElectronMouseInWindow,
   useElectronRelativeMouse,
 } from '@proj-airi/electron-vueuse'
-import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
+import { useMmd } from '@proj-airi/stage-ui-mmd'
+import { useCustomVrmAnimationsStore, useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
 import { StickerStack, WhisperDock } from '@proj-airi/stage-ui/components'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useAudioRecorder } from '@proj-airi/stage-ui/composables/audio/audio-recorder'
@@ -21,6 +22,7 @@ import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { useLLM } from '@proj-airi/stage-ui/stores/llm'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useLiveSessionStore } from '@proj-airi/stage-ui/stores/modules/live-session'
@@ -29,7 +31,7 @@ import { useSettings, useSettingsAudioDevice, useSettingsControlStrip } from '@p
 import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positioning'
 import { useBroadcastChannel, useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, toRef, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
@@ -146,6 +148,11 @@ const controlStripStore = useSettingsControlStrip()
 const { stageEnabled, captionOpen } = storeToRefs(controlStripStore)
 const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
 const liveSessionStore = useLiveSessionStore()
+
+const cardStore = useAiriCardStore()
+const { activeCard } = storeToRefs(cardStore)
+const customVrmAnimationsStore = useCustomVrmAnimationsStore()
+const vrmIdleAnimation = toRef(modelStore as any, 'vrmIdleAnimation')
 
 watch(stageEnabled, (val) => {
   toggleStageVisibility(val)
@@ -665,6 +672,63 @@ async function handleOpenCustomizer() {
   await toggleCustomizerVisibility()
 }
 
+function handleOpenSettings(e: Event) {
+  const route = (e as CustomEvent).detail?.route
+  console.info(`[Main Page] [Control Strip Action] Opening settings for route: "${route}"`)
+  openSettings({ route })
+}
+
+function cycleAnimation() {
+  if (stageModelRenderer.value === 'mmd') {
+    const mmdStore = useMmd()
+    const allKeys = mmdStore.availableMotions
+    if (allKeys.length === 0) {
+      toast.error('No MMD motions available', { id: 'animation-cycle' })
+      return
+    }
+    const currentKey = mmdStore.currentMotion
+    const currentIndex = allKeys.indexOf(currentKey)
+    const nextIndex = (currentIndex + 1) % allKeys.length
+    const nextAnimation = allKeys[nextIndex]
+
+    mmdStore.currentMotion = nextAnimation
+    toast.info(`Cycling MMD: ${nextAnimation}`, { id: 'animation-cycle' })
+    return
+  }
+
+  const cardIdleAnimations = activeCard.value?.extensions?.airi?.acting?.idleAnimations || []
+  const allKeys = customVrmAnimationsStore.animationKeys
+  const hasCardSubset = cardIdleAnimations.length > 0
+
+  // Tier 1: Character owns a fixed idle (size 1)
+  if (cardIdleAnimations.length === 1) {
+    // Treat as manual cycler: Move the character's choice to the NEXT global animation
+    const currentKey = cardIdleAnimations[0]
+    const currentIndex = allKeys.indexOf(currentKey)
+    const nextIndex = (currentIndex + 1) % allKeys.length
+    const nextAnimation = allKeys[nextIndex]
+
+    if (activeCard.value?.extensions?.airi?.acting) {
+      activeCard.value.extensions.airi.acting.idleAnimations = [nextAnimation]
+      // No need to set vrmIdleAnimation manually, Stage.vue computed will handle it
+    }
+    toast.info(`Character Fixed: ${customVrmAnimationsStore.animationLabelByKey[nextAnimation] || nextAnimation}`, { id: 'animation-cycle' })
+    return
+  }
+
+  // Tier 2: Random cycling or global fallback
+  const keys = hasCardSubset ? cardIdleAnimations.filter(k => allKeys.includes(k)) : allKeys
+  const finalKeys = keys.length > 0 ? keys : allKeys
+
+  const currentKey = vrmIdleAnimation.value
+  const currentIndex = finalKeys.indexOf(currentKey)
+  const nextIndex = (currentIndex + 1) % finalKeys.length
+  const nextAnimation = finalKeys[nextIndex]
+
+  vrmIdleAnimation.value = nextAnimation
+  toast.info(`Cycling: ${customVrmAnimationsStore.animationLabelByKey[nextAnimation] || nextAnimation}`, { id: 'animation-cycle' })
+}
+
 function handleControlStripAction(e: Event) {
   const action = (e as CustomEvent).detail.action
   console.info(`[Main Page] [Control Strip Action] Received action: "${action}"`)
@@ -763,6 +827,9 @@ function handleControlStripAction(e: Event) {
       modelStore.cameraDistance = modelStore.modelSize.z * 10
     }
   }
+  else if (action === 'actor-idle-animations') {
+    cycleAnimation()
+  }
 }
 
 onMounted(async () => {
@@ -797,6 +864,7 @@ onMounted(async () => {
   if (typeof window !== 'undefined') {
     window.addEventListener('control-strip:action', handleControlStripAction as EventListener)
     window.addEventListener('control-strip:open-customizer', handleOpenCustomizer as EventListener)
+    window.addEventListener('control-strip:open-settings', handleOpenSettings as EventListener)
   }
 })
 
@@ -816,6 +884,7 @@ onUnmounted(async () => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('control-strip:action', handleControlStripAction as EventListener)
     window.removeEventListener('control-strip:open-customizer', handleOpenCustomizer as EventListener)
+    window.removeEventListener('control-strip:open-settings', handleOpenSettings as EventListener)
   }
 })
 
