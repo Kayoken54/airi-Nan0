@@ -918,10 +918,13 @@ onUnmounted(() => {
   }
 })
 
+const controlStripRef = ref<any>()
+
 defineExpose({
   canvasElement,
   captureFrame,
   readRenderTargetRegionAtClientPoint,
+  controlStripElement: computed(() => controlStripRef.value?.$el || null),
 })
 </script>
 
@@ -947,7 +950,7 @@ defineExpose({
 
     <!-- Floating Modular Control Strip Overlay -->
     <div class="pointer-events-none absolute inset-0 z-50 overflow-hidden">
-      <ControlStrip />
+      <ControlStrip ref="controlStripRef" />
     </div>
   </div>
 </template>

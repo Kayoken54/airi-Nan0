@@ -22,6 +22,7 @@ import {
   electronGetCaptionWindowState,
   electronGetChatWindowState,
   electronSetIgnoreMouseEvents,
+  electronStageSetAlwaysOnTop,
   electronStageToggleVisibility,
 } from '../shared/eventa'
 import { openDebugger, setupDebugger } from './app/debugger'
@@ -51,7 +52,7 @@ import { setupMainWindow } from './windows/main'
 import { setupNoticeWindowManager } from './windows/notice'
 import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
-import { setupActorStageWindow } from './windows/stage'
+import { setStageVisibleState, setupActorStageWindow } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
 
 function installStreamErrorGuards() {
@@ -273,12 +274,24 @@ app.whenReady().then(async () => {
       })
       defineInvokeHandler(context, electronStageToggleVisibility, async (enabled) => {
         console.log('[@proj-airi/stage-tamagotchi] [Main] Actor Stage visibility changed:', enabled)
+        setStageVisibleState(enabled)
         if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
           if (enabled) {
             deps.stageWindow.show()
           }
           else {
             deps.stageWindow.hide()
+          }
+        }
+      })
+      defineInvokeHandler(context, electronStageSetAlwaysOnTop, async (flag) => {
+        console.log('[@proj-airi/stage-tamagotchi] [Main] Actor Stage always-on-top changed:', flag)
+        if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
+          if (flag) {
+            deps.stageWindow.setAlwaysOnTop(true, 'screen-saver', 1)
+          }
+          else {
+            deps.stageWindow.setAlwaysOnTop(false)
           }
         }
       })

@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { useLiveSessionStore } from '../../../stores/modules/live-session'
 import { useSettingsAudioDevice } from '../../../stores/settings/audio-device'
 import { useSettingsControlStrip } from '../../../stores/settings/control-strip'
+import { useSettingsControlsIsland } from '../../../stores/settings/controls-island'
 
 const controlStripStore = useSettingsControlStrip()
 const { orientation, buttons, stageEnabled, chatOpen, captionOpen, backgroundTint } = storeToRefs(controlStripStore)
@@ -15,6 +16,9 @@ const { enabled: micEnabled } = storeToRefs(settingsAudioDeviceStore)
 
 const liveSessionStore = useLiveSessionStore()
 const { powerState } = storeToRefs(liveSessionStore)
+
+const controlsIslandStore = useSettingsControlsIsland()
+const { fadeOnHoverEnabled, alwaysOnTop } = storeToRefs(controlsIslandStore)
 
 const geminiDotClasses = computed(() => {
   if (powerState.value === 'busy') {
@@ -258,6 +262,24 @@ function getButtonTitle(btnId: string, defaultLabel: string): string {
           :class="[
             'absolute right-1 top-1 h-1.5 w-1.5 rounded-full transition-all duration-300',
             geminiDotClasses,
+          ]"
+        />
+
+        <!-- Status dot badge for Auto-Hide toggle -->
+        <span
+          v-if="btn.id === 'viewport-auto-hide'"
+          :class="[
+            'absolute right-1 top-1 h-1.5 w-1.5 rounded-full transition-colors duration-200',
+            fadeOnHoverEnabled ? 'bg-green-500' : 'bg-red-500',
+          ]"
+        />
+
+        <!-- Status dot badge for Always-on-Top toggle -->
+        <span
+          v-if="btn.id === 'always-on-top'"
+          :class="[
+            'absolute right-1 top-1 h-1.5 w-1.5 rounded-full transition-colors duration-200',
+            alwaysOnTop ? 'bg-green-500' : 'bg-red-500',
           ]"
         />
       </button>

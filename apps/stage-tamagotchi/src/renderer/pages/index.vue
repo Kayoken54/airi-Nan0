@@ -12,7 +12,7 @@ import {
   useElectronMouseInWindow,
   useElectronRelativeMouse,
 } from '@proj-airi/electron-vueuse'
-import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
+import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
 import { StickerStack, WhisperDock } from '@proj-airi/stage-ui/components'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useAudioRecorder } from '@proj-airi/stage-ui/composables/audio/audio-recorder'
@@ -20,6 +20,7 @@ import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composab
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
+import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { useLLM } from '@proj-airi/stage-ui/stores/llm'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
@@ -39,12 +40,12 @@ import ResourceStatusIsland from '../components/stage-islands/resource-status-is
 import {
   electronCaptionToggleVisibility,
   electronCustomizerToggleVisibility,
-  electronGetCaptionWindowState,
-  electronGetChatWindowState,
   electronGetMainWindowConfig,
   electronOpenChat,
   electronOpenSettings,
+  electronStageSetAlwaysOnTop,
   electronStageToggleVisibility,
+  electronWindowSetAlwaysOnTop,
   widgetsAdd,
 } from '../../shared/eventa'
 import { useControlsIslandStore } from '../stores/controls-island'
@@ -59,14 +60,15 @@ const stageCanvas = () => widgetStageRef.value?.canvasElement() || undefined
 const controlsIslandRoot = computed(() => controlsIslandRef.value?.rootElement)
 const geminiIslandRoot = computed(() => controlsIslandRef.value?.geminiRootElement)
 const geminiPanelRoot = computed(() => controlsIslandRef.value?.geminiPanelElement)
+const controlStripRoot = computed(() => widgetStageRef.value?.controlStripElement)
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 
 const openChat = useElectronEventaInvoke(electronOpenChat)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const toggleCaptionVisibility = useElectronEventaInvoke(electronCaptionToggleVisibility)
-const getChatWindowState = useElectronEventaInvoke(electronGetChatWindowState)
-const getCaptionWindowState = useElectronEventaInvoke(electronGetCaptionWindowState)
 const toggleCustomizerVisibility = useElectronEventaInvoke(electronCustomizerToggleVisibility)
+const setAlwaysOnTop = useElectronEventaInvoke(electronStageSetAlwaysOnTop)
+const modelStore = useModelStore()
 
 const isLoading = ref(true)
 
@@ -78,7 +80,8 @@ const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const { isOutside: isOutsideMain } = useElectronMouseInElement(controlsIslandRoot)
 const { isOutside: isOutsideGemini } = useElectronMouseInElement(geminiIslandRoot)
 const { isOutside: isOutsideGeminiPanel } = useElectronMouseInElement(geminiPanelRoot)
-const isOutside = computed(() => isOutsideMain.value && isOutsideGemini.value && isOutsideGeminiPanel.value)
+const { isOutside: isOutsideControlStrip } = useElectronMouseInElement(controlStripRoot)
+const isOutside = computed(() => isOutsideMain.value && isOutsideGemini.value && isOutsideGeminiPanel.value && isOutsideControlStrip.value)
 const isOutsideForInstant = isOutside
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
@@ -128,10 +131,12 @@ const isAroundWindowBorderForInstant = isAroundWindowBorder
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
-const { stageViewControlsEnabled, lastReloadReason } = storeToRefs(useSettings())
+const { stageViewControlsEnabled, lastReloadReason, alwaysOnTop } = storeToRefs(useSettings())
 const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
 const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
 const viewControlsActiveMode = ref<'x' | 'y' | 'z' | 'scale'>('scale')
+
+const setMainWindowAlwaysOnTop = useElectronEventaInvoke(electronWindowSetAlwaysOnTop)
 
 const positioningStore = usePositioningStore()
 const controlStripStore = useSettingsControlStrip()
@@ -141,6 +146,10 @@ const liveSessionStore = useLiveSessionStore()
 
 watch(stageEnabled, (val) => {
   toggleStageVisibility(val)
+}, { immediate: true })
+
+watch(alwaysOnTop, (val) => {
+  setAlwaysOnTop(val)
 }, { immediate: true })
 
 const computedScale = computed(() => {
@@ -178,7 +187,7 @@ function handleOffsetChange(offset: { x: number, y: number }) {
 watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
 
 const { pause, resume } = watch(isTransparent, (transparent) => {
-  shouldFadeOnCursorWithin.value = fadeOnHoverEnabled.value && !transparent
+  shouldFadeOnCursorWithin.value = !transparent
 }, { immediate: true })
 
 const isLocked = ref(false)
@@ -240,28 +249,18 @@ async function handleTakePhoto() {
 const getMainWindowConfig = useElectronEventaInvoke(electronGetMainWindowConfig)
 
 onMounted(async () => {
+  setMainWindowAlwaysOnTop(true)
+
   const config = await getMainWindowConfig() as any
+
   if (config) {
     isLocked.value = !!config.locked
   }
 
-  try {
-    const chatState = await getChatWindowState()
-    controlStripStore.chatOpen = Boolean(chatState)
-    console.info('[Main Page] Initialized controlStripStore.chatOpen on startup:', controlStripStore.chatOpen)
-  }
-  catch (err) {
-    console.error('[Main Page] Failed to fetch initial chat window state:', err)
-  }
-
-  try {
-    const captionState = await getCaptionWindowState()
-    controlStripStore.captionOpen = Boolean(captionState)
-    console.info('[Main Page] Initialized controlStripStore.captionOpen on startup:', controlStripStore.captionOpen)
-  }
-  catch (err) {
-    console.error('[Main Page] Failed to fetch initial caption window state:', err)
-  }
+  // NOTICE: We do NOT fetch the actual window state here to initialize chatOpen/captionOpen.
+  // The store already restores from localStorage (the source of truth). Calling getChatWindowState()
+  // has the side effect of creating the chat BrowserWindow (deps.chatWindow() is lazy-init),
+  // which makes isVisible() return true and overwrites the user's stored 'false' preference.
 
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('eventa:event:electron:windows:main:config-changed', (_event, config: any) => {
@@ -293,13 +292,16 @@ async function handleSpawnStandalone(stickerId: string) {
   })
 }
 
-watch([isOutsideForInstant, isAroundWindowBorderForInstant, isOutsideWindow, isTransparent, hearingDialogOpen, whisperDockOpen, fadeOnHoverEnabled, isSpineHitAreaHovered], () => {
-  if (hearingDialogOpen.value || whisperDockOpen.value) {
-    // Hearing dialog or whisper dock is open; keep window interactive
+// NOTICE: The main window hosts the ControlStrip and must never fade or hide.
+// Click-through for this window is governed solely by isTransparent (per-pixel):
+// when the cursor is over opaque UI (controls island, strip) → interactive;
+// when over a transparent gap → ignore mouse events so clicks reach windows below.
+function applyTransparencyState() {
+  if (hearingDialogOpen.value || whisperDockOpen.value || stageViewControlsEnabled.value) {
+    // Hearing dialog, whisper dock, or viewport controls are active; keep window interactive
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
-    pause()
     return
   }
 
@@ -315,17 +317,19 @@ watch([isOutsideForInstant, isAroundWindowBorderForInstant, isOutsideWindow, isT
     pause()
   }
   else {
-    const fadeEnabled = fadeOnHoverEnabled.value
-    // Otherwise allow click-through while we fade UI based on transparency (when enabled)
-    isIgnoringMouseEvents.value = fadeEnabled
-    shouldFadeOnCursorWithin.value = fadeEnabled && !isOutsideWindow.value && !isTransparent.value
-    setIgnoreMouseEvents([fadeEnabled, { forward: true }])
-    if (fadeEnabled)
+    const insideWindow = !isOutsideWindow.value
+
+    shouldFadeOnCursorWithin.value = insideWindow
+    isIgnoringMouseEvents.value = insideWindow
+    setIgnoreMouseEvents([insideWindow, { forward: true }])
+    if (insideWindow)
       resume()
     else
       pause()
   }
-})
+}
+
+watch([isOutsideForInstant, isAroundWindowBorderForInstant, isOutsideWindow, isTransparent, hearingDialogOpen, whisperDockOpen, isSpineHitAreaHovered, stageViewControlsEnabled], applyTransparencyState)
 
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const { stream, enabled, selectedAudioInputLabel } = storeToRefs(settingsAudioDeviceStore)
@@ -627,6 +631,71 @@ function handleControlStripAction(e: Event) {
   else if (action === 'gemini-session') {
     liveSessionStore.toggle()
   }
+  else if (action === 'always-on-top') {
+    alwaysOnTop.value = !alwaysOnTop.value
+    toast.success(`Always-on-Top turned ${alwaysOnTop.value ? 'ON' : 'OFF'}`, { id: 'always-on-top-status' })
+  }
+  else if (action === 'viewport-tactile') {
+    modelStore.interactionMode = 'tactile'
+    stageViewControlsEnabled.value = false
+    controlStripStore.interactionMode = 'tactile'
+    toast.success('Switched to Tactile Mode', { id: 'interaction-mode' })
+  }
+  else if (action === 'viewport-drag') {
+    modelStore.interactionMode = 'tactile'
+    stageViewControlsEnabled.value = true
+    controlStripStore.interactionMode = 'drag'
+    toast.success('Switched to Drag Mode', { id: 'interaction-mode' })
+  }
+  else if (action === 'viewport-positioning') {
+    modelStore.interactionMode = 'tactile'
+    stageViewControlsEnabled.value = true
+    controlStripStore.interactionMode = 'positioning'
+    toast.success('Switched to Positioning Mode', { id: 'interaction-mode' })
+  }
+  else if (action === 'viewport-orbit') {
+    modelStore.interactionMode = 'orbit'
+    stageViewControlsEnabled.value = false
+    controlStripStore.interactionMode = 'orbit'
+    toast.success('Switched to Orbit Mode', { id: 'interaction-mode' })
+  }
+  else if (action === 'viewport-cycle-modes') {
+    controlStripStore.cycleInteractionMode()
+    const mode = controlStripStore.interactionMode
+    if (mode === 'tactile') {
+      modelStore.interactionMode = 'tactile'
+      stageViewControlsEnabled.value = false
+    }
+    else if (mode === 'drag') {
+      modelStore.interactionMode = 'tactile'
+      stageViewControlsEnabled.value = true
+    }
+    else if (mode === 'positioning') {
+      modelStore.interactionMode = 'tactile'
+      stageViewControlsEnabled.value = true
+    }
+    else if (mode === 'orbit') {
+      modelStore.interactionMode = 'orbit'
+      stageViewControlsEnabled.value = false
+    }
+    toast.success(`Switched to ${mode.charAt(0).toUpperCase() + mode.slice(1)} Mode`, { id: 'interaction-mode' })
+  }
+  else if (action === 'viewport-auto-hide') {
+    fadeOnHoverEnabled.value = !fadeOnHoverEnabled.value
+  }
+  else if (action === 'viewport-reset-coordinates') {
+    const key = stageModelSelected.value
+    positioningStore.setPosition(key, { x: 0, y: 0, scale: 1 })
+    if (stageModelRenderer.value === 'live2d') {
+      const live2dStore = useLive2d()
+      live2dStore.resetState()
+    }
+    else {
+      modelStore.modelOffset = { x: 0, y: 0, z: 0 }
+      modelStore.cameraDistance = modelStore.modelSize.z * 10
+    }
+    toast.success('Coordinates and placement reset to defaults', { id: 'viewport-reset' })
+  }
 }
 
 onMounted(async () => {
@@ -749,7 +818,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
 
         <!-- Spatial Controls Overlay -->
         <Transition name="fade">
-          <div v-if="stageViewControlsEnabled" class="pointer-events-none absolute left-0 top-0 z-100 h-full w-full">
+          <div v-if="stageViewControlsEnabled && controlStripStore.interactionMode === 'positioning'" class="pointer-events-none absolute left-0 top-0 z-100 h-full w-full">
             <!-- Axis Selectors (Top Left) -->
             <div class="pointer-events-auto absolute left-4 top-4 flex gap-1 rounded-2xl bg-neutral-100/60 p-1 backdrop-blur-md dark:bg-neutral-900/60">
               <Button
@@ -845,7 +914,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     leave-to-class="opacity-0"
   >
     <div
-      v-if="false"
+      v-if="stageViewControlsEnabled && controlStripStore.interactionMode === 'drag'"
       class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden drag-region"
     >
       <div

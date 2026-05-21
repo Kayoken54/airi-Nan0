@@ -3,6 +3,7 @@ import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { CUSTOMIZER_CATALOG } from '@proj-airi/stage-ui/constants/control-customizer'
 import { useLiveSessionStore } from '@proj-airi/stage-ui/stores/modules/live-session'
 import { useSettings, useSettingsAudioDevice, useSettingsControlStrip } from '@proj-airi/stage-ui/stores/settings'
+import { useSettingsControlsIsland } from '@proj-airi/stage-ui/stores/settings/controls-island'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -12,9 +13,11 @@ const settingsStore = useSettings()
 const controlStripStore = useSettingsControlStrip()
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const liveSessionStore = useLiveSessionStore()
+const controlsIslandStore = useSettingsControlsIsland()
 
 const { buttons } = storeToRefs(controlStripStore)
 const { powerState } = storeToRefs(liveSessionStore)
+const { alwaysOnTop, fadeOnHoverEnabled } = storeToRefs(controlsIslandStore)
 
 const toggleCustomizerVisibility = useElectronEventaInvoke(electronCustomizerToggleVisibility)
 
@@ -27,7 +30,7 @@ const activeGroup = computed(() => {
   return CUSTOMIZER_CATALOG.find(g => g.id === activeGroupId.value) || CUSTOMIZER_CATALOG[0]
 })
 
-// Bound state resolvers
+// Bound state resolvers (for items with a catalog binding field)
 function isBoundActive(binding: 'chatOpen' | 'stageEnabled' | 'micEnabled' | 'captionOpen' | 'geminiSession' | undefined): boolean {
   if (!binding)
     return false
@@ -62,6 +65,32 @@ function toggleBoundState(binding: 'chatOpen' | 'stageEnabled' | 'micEnabled' | 
   }
 }
 
+// Un-bound toggle state resolvers (always-on-top, viewport-auto-hide, etc.)
+// These catalog items have no binding field but still expose a live toggle state.
+function isUnboundToggleActive(itemId: string): boolean {
+  if (itemId === 'always-on-top')
+    return alwaysOnTop.value
+  if (itemId === 'viewport-auto-hide')
+    return fadeOnHoverEnabled.value
+  return false
+}
+
+function toggleUnboundState(itemId: string) {
+  // Dispatch the action event — index.vue handles it and updates the store
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('control-strip:action', { detail: { action: itemId } }))
+  }
+}
+
+function hasToggleButton(item: (typeof CUSTOMIZER_CATALOG)[0]['items'][0]): boolean {
+  if (item.type !== 'toggle')
+    return false
+  // Show toggle button for bound items and for known unbound toggles
+  if (item.binding)
+    return true
+  return ['always-on-top', 'viewport-auto-hide'].includes(item.id)
+}
+
 const geminiDotClasses = computed(() => {
   if (powerState.value === 'busy') {
     return 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)] animate-pulse'
@@ -85,17 +114,11 @@ function isItemOnStrip(itemId: string): boolean {
 }
 
 function toggleItemOnStrip(itemId: string) {
-  console.log(`[DIAG][Toggle] Called with itemId: "${itemId}"`)
-  console.log(`[DIAG][Toggle] BEFORE — buttons ref:`, JSON.stringify(buttons.value.map(b => ({ id: b.id, enabled: b.enabled }))))
-  console.log(`[DIAG][Toggle] BEFORE — localStorage raw:`, localStorage.getItem('settings/control-strip/buttons')?.slice(0, 300))
-
   const idx = buttons.value.findIndex(b => b.id === itemId)
   if (idx !== -1) {
-    const oldEnabled = buttons.value[idx].enabled
     buttons.value = buttons.value.map((btn, i) =>
       i === idx ? { ...btn, enabled: !btn.enabled } : btn,
     )
-    console.log(`[DIAG][Toggle] Flipped "${itemId}" from ${oldEnabled} to ${!oldEnabled}`)
   }
   else {
     const catalogItem = CUSTOMIZER_CATALOG.flatMap(g => g.items).find(i => i.id === itemId)
@@ -106,19 +129,8 @@ function toggleItemOnStrip(itemId: string) {
         label: catalogItem.label,
         icon: catalogItem.icon,
       }]
-      console.log(`[DIAG][Toggle] Added new button "${itemId}" from catalog`)
-    }
-    else {
-      console.log(`[DIAG][Toggle] WARNING: "${itemId}" not found in buttons OR catalog`)
     }
   }
-
-  console.log(`[DIAG][Toggle] AFTER — buttons ref:`, JSON.stringify(buttons.value.map(b => ({ id: b.id, enabled: b.enabled }))))
-  // Check localStorage directly after assignment
-  setTimeout(() => {
-    const lsAfter = localStorage.getItem('settings/control-strip/buttons')
-    console.log(`[DIAG][Toggle] AFTER 50ms — localStorage raw:`, lsAfter?.slice(0, 300))
-  }, 50)
 }
 
 // Action triggers
@@ -203,7 +215,7 @@ async function closeWindow() {
                   <div :class="[item.icon, 'text-neutral-300 text-sm shrink-0']" />
                   <span class="text-xs text-neutral-200 font-semibold">{{ item.label }}</span>
 
-                  <!-- Dynamic State Indicator Dot -->
+                  <!-- State Indicator Dot for bound items -->
                   <span v-if="item.binding" class="flex items-center gap-1">
                     <span
                       :class="[
@@ -213,6 +225,19 @@ async function closeWindow() {
                     />
                     <span class="text-[9px] text-neutral-500 font-mono">
                       {{ item.binding === 'geminiSession' ? powerState : (isBoundActive(item.binding) ? 'active' : 'inactive') }}
+                    </span>
+                  </span>
+
+                  <!-- State Indicator Dot for unbound toggles (always-on-top, viewport-auto-hide) -->
+                  <span v-else-if="item.type === 'toggle' && hasToggleButton(item)" class="flex items-center gap-1">
+                    <span
+                      :class="[
+                        'h-2 w-2 rounded-full inline-block',
+                        isUnboundToggleActive(item.id) ? 'bg-green-500' : 'bg-red-500',
+                      ]"
+                    />
+                    <span class="text-[9px] text-neutral-500 font-mono">
+                      {{ isUnboundToggleActive(item.id) ? 'active' : 'inactive' }}
                     </span>
                   </span>
                 </div>
@@ -242,7 +267,7 @@ async function closeWindow() {
                   </button>
                 </div>
 
-                <!-- Bound state toggle switch -->
+                <!-- Toggle button: bound items -->
                 <button
                   v-if="item.type === 'toggle' && item.binding"
                   :class="[
@@ -252,6 +277,18 @@ async function closeWindow() {
                   @click="toggleBoundState(item.binding)"
                 >
                   {{ isBoundActive(item.binding) ? 'ACTIVE' : 'MUTED' }}
+                </button>
+
+                <!-- Toggle button: unbound items (always-on-top, viewport-auto-hide) -->
+                <button
+                  v-else-if="hasToggleButton(item)"
+                  :class="[
+                    isUnboundToggleActive(item.id) ? 'bg-sky-500/20 border-sky-500/40 text-sky-400' : 'bg-neutral-800/40 border-neutral-700/20 text-neutral-400',
+                    'px-2 py-0.5 rounded-md border text-[9px] font-semibold active:scale-95 transition-all',
+                  ]"
+                  @click="toggleUnboundState(item.id)"
+                >
+                  {{ isUnboundToggleActive(item.id) ? 'ACTIVE' : 'MUTED' }}
                 </button>
 
                 <!-- Trigger generic action / menu overlay -->

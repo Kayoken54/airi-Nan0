@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { useElectronEventaContext, useElectronEventaInvoke, useElectronMouseInWindow } from '@proj-airi/electron-vueuse'
 import { WhisperDock } from '@proj-airi/stage-ui/components'
 import { RendererStage } from '@proj-airi/stage-ui/components/scenes'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { useSettingsControlStrip } from '@proj-airi/stage-ui/stores/settings/control-strip'
+import { useSettingsControlsIsland } from '@proj-airi/stage-ui/stores/settings/controls-island'
 import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positioning'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
-import { electronStartDraggingWindow } from '../../shared/eventa'
+import { electron, electronStartDraggingWindow } from '../../shared/eventa'
 
 const backgroundStore = useBackgroundStore()
 const { activeBackgroundUrl } = storeToRefs(backgroundStore)
@@ -21,6 +22,9 @@ const controlStripStore = useSettingsControlStrip()
 const { stageEnabled } = storeToRefs(controlStripStore)
 
 const positioningStore = usePositioningStore()
+
+const controlsIslandStore = useSettingsControlsIsland()
+const { fadeOnHoverEnabled } = storeToRefs(controlsIslandStore)
 
 const scale = computed(() => {
   return positioningStore.getPosition(stageModelSelected.value).scale
@@ -67,13 +71,42 @@ const whisperDockIsOpen = computed(() => whisperDockRef.value?.isOpen ?? false)
 
 // Fade overlay controls on hover states
 const showControls = ref(false)
+
+// Auto-hide (fade-on-hover) for the stage window.
+// When enabled, entering the window fades the character to invisible and enables click-through.
+// The ControlStrip window always stays visible — only the actor stage window fades.
+const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
+const stageIsHidden = ref(false)
+
+const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
+const isInsideWindow = computed(() => !isOutsideWindow.value)
+
+watch(
+  [isInsideWindow, fadeOnHoverEnabled, stageEnabled],
+  ([inside, fadeEnabled, stageOn]) => {
+    if (!stageOn) {
+      stageIsHidden.value = false
+      setIgnoreMouseEvents([false, { forward: true }])
+      showControls.value = false
+      return
+    }
+
+    const shouldHide = fadeEnabled && inside
+    stageIsHidden.value = shouldHide
+    setIgnoreMouseEvents([shouldHide, { forward: true }])
+    showControls.value = inside && !shouldHide
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
   <div
-    class="relative h-full w-full flex flex-col overflow-hidden rounded-xl bg-transparent"
-    @mouseenter="showControls = true"
-    @mouseleave="showControls = false"
+    :class="[
+      'relative h-full w-full flex flex-col overflow-hidden rounded-xl bg-transparent',
+      'transition-opacity duration-300 ease-in-out',
+      stageIsHidden ? 'opacity-0' : 'opacity-100',
+    ]"
   >
     <div class="relative h-full w-full overflow-hidden rounded-2xl">
       <!-- Scene Background Layer -->
@@ -94,8 +127,7 @@ const showControls = ref(false)
       <!-- Standalone Graphics Model Scene Renderer -->
       <div class="absolute inset-0 z-10">
         <RendererStage
-          v-if="stageEnabled"
-          :paused="false"
+          :paused="!stageEnabled"
           :focus-at="{ x: 0, y: 0 }"
           :x-offset="xOffset"
           :y-offset="yOffset"

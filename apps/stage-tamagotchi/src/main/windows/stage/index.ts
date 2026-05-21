@@ -19,6 +19,12 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, load, withHashRoute } from '../../libs/electron/location'
 import { setupBaseWindowElectronInvokes, transparentWindowConfig } from '../shared/window'
 
+let isStageVisible = true
+
+export function setStageVisibleState(visible: boolean) {
+  isStageVisible = visible
+}
+
 export async function setupActorStageWindow(params: {
   appConfig: Config<typeof globalAppConfigSchema>
   serverChannel: ServerChannel
@@ -65,7 +71,9 @@ export async function setupActorStageWindow(params: {
   }
 
   window.on('ready-to-show', () => {
-    window.show()
+    if (isStageVisible) {
+      window.show()
+    }
   })
 
   await load(window, withHashRoute(baseUrl(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'renderer')), '/actor'))
