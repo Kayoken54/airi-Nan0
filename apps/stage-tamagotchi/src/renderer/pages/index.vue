@@ -143,13 +143,43 @@ const setMainWindowAlwaysOnTop = useElectronEventaInvoke(electronWindowSetAlways
 const settingsStore = useSettings()
 const positioningStore = usePositioningStore()
 const controlStripStore = useSettingsControlStrip()
-const { stageEnabled } = storeToRefs(controlStripStore)
+const { stageEnabled, captionOpen } = storeToRefs(controlStripStore)
 const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
 const liveSessionStore = useLiveSessionStore()
 
 watch(stageEnabled, (val) => {
   toggleStageVisibility(val)
 }, { immediate: true })
+
+watch(captionOpen, (val) => {
+  toggleCaptionVisibility(val)
+}, { immediate: true })
+
+// Treat stage and caption as partners when captionFollowStage is enabled
+watch(stageEnabled, (newVal) => {
+  if (settingsStore.captionFollowStage) {
+    if (captionOpen.value !== newVal) {
+      captionOpen.value = newVal
+    }
+  }
+})
+
+watch(captionOpen, (newVal) => {
+  if (settingsStore.captionFollowStage) {
+    if (stageEnabled.value !== newVal) {
+      controlStripStore.stageEnabled = newVal
+    }
+  }
+})
+
+watch(() => settingsStore.captionFollowStage, (newVal) => {
+  if (newVal) {
+    // Immediately sync caption state to stage state
+    if (captionOpen.value !== stageEnabled.value) {
+      captionOpen.value = stageEnabled.value
+    }
+  }
+})
 
 watch(alwaysOnTop, (val) => {
   setAlwaysOnTop(val)
@@ -648,8 +678,6 @@ function handleControlStripAction(e: Event) {
   }
   else if (action === 'caption') {
     controlStripStore.captionOpen = !controlStripStore.captionOpen
-    console.info(`[Main Page] [Control Strip Action] Invoking toggleCaptionVisibility(${controlStripStore.captionOpen})...`)
-    toggleCaptionVisibility(controlStripStore.captionOpen)
   }
   else if (action === 'mic') {
     settingsAudioDeviceStore.enabled = !settingsAudioDeviceStore.enabled
