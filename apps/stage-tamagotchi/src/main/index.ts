@@ -10,7 +10,7 @@ import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
-import { app, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { isLinux } from 'std-env'
 
@@ -55,6 +55,56 @@ import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
 import { setStageVisibleState, setupActorStageWindow } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
+
+// Guard BrowserWindow prototype methods against destroyed window objects to prevent "Object has been destroyed" exceptions
+const dummyWebContents = new Proxy({} as any, {
+  get(_target, prop) {
+    if (prop === 'isDestroyed')
+      return () => true
+    if (prop === 'isCrashed')
+      return () => false
+    if (prop === 'getURL')
+      return () => ''
+    return () => {}
+  },
+})
+
+const webContentsDescriptor = Object.getOwnPropertyDescriptor(BrowserWindow.prototype, 'webContents')
+if (webContentsDescriptor && webContentsDescriptor.get) {
+  const originalGet = webContentsDescriptor.get
+  Object.defineProperty(BrowserWindow.prototype, 'webContents', {
+    ...webContentsDescriptor,
+    get(this: BrowserWindow) {
+      if (this.isDestroyed()) {
+        return dummyWebContents
+      }
+      try {
+        return originalGet.call(this)
+      }
+      catch {
+        return dummyWebContents
+      }
+    },
+  })
+}
+
+const proto = BrowserWindow.prototype as any
+const methodsToGuard = ['show', 'hide', 'close', 'focus', 'restore', 'minimize', 'maximize', 'setBounds', 'setAlwaysOnTop', 'setMovable', 'setResizable', 'getBounds'] as const
+for (const method of methodsToGuard) {
+  const original = proto[method]
+  if (typeof original === 'function') {
+    proto[method] = function (this: BrowserWindow, ...args: any[]) {
+      if (this.isDestroyed()) {
+        console.warn(`[WindowManager] Guarded call to ${method} on a destroyed window.`)
+        if (method === 'getBounds') {
+          return { x: 0, y: 0, width: 0, height: 0 }
+        }
+        return
+      }
+      return original.apply(this, args)
+    }
+  }
+}
 
 function installStreamErrorGuards() {
   const guard = (error: NodeJS.ErrnoException) => {
@@ -410,7 +460,9 @@ app.whenReady().then(async () => {
   emitAppReady()
   openDebugger()
 
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window)
+  })
 }).catch((err) => {
   log.withError(err).error('Error during app initialization')
 })
