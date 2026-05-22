@@ -27,6 +27,7 @@ import {
   electronGetChatWindowState,
   electronResetWindowPositions,
   electronSetIgnoreMouseEvents,
+  electronShowToast,
   electronStageSetAlwaysOnTop,
   electronStageToggleVisibility,
 } from '../shared/eventa'
@@ -368,6 +369,23 @@ app.whenReady().then(async () => {
           else {
             deps.stageWindow.setAlwaysOnTop(false)
           }
+        }
+      })
+
+      defineInvokeHandler(context, electronShowToast, async (payload) => {
+        if (!payload)
+          return
+
+        let targetWin = await deps.chatWindow()
+        if (!targetWin || targetWin.isDestroyed() || !targetWin.isVisible()) {
+          targetWin = deps.stageWindow
+        }
+        if (!targetWin || targetWin.isDestroyed()) {
+          targetWin = deps.mainWindow
+        }
+
+        if (targetWin && !targetWin.isDestroyed()) {
+          targetWin.webContents.send('eventa:event:electron:show-toast', payload)
         }
       })
 

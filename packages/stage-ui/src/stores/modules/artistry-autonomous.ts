@@ -306,6 +306,7 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
    * Safe IPC Invoker for headless generation
    */
   const widgetsAdd = defineInvokeEventa<string | undefined, any>('eventa:invoke:electron:windows:widgets:add')
+  const electronShowToast = defineInvokeEventa<void, { message: string, description?: string, duration?: number }>('eventa:invoke:electron:show-toast')
 
   const getGenerateHeadless = () => {
     const win = window as any
@@ -314,6 +315,7 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
       return {
         generate: defineInvoke(context, artistryGenerateHeadless),
         addWidget: defineInvoke(context, widgetsAdd),
+        showToast: defineInvoke(context, electronShowToast),
       }
     }
 
@@ -329,6 +331,12 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
       addWidget: async (payload: any) => {
         artistLog('Widget spawning is disabled in Web environment.', payload)
         toast.info('Scene generated! Check your Gallery.')
+      },
+      showToast: async (payload: any) => {
+        toast(payload.message, {
+          description: payload.description,
+          duration: payload.duration || 4000,
+        })
       },
     }
   }
@@ -552,7 +560,9 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
         notificationDescription += `\n🎯 Concepts: ${selectedConcepts.join(', ')}`
       }
 
-      toast('Director\'s Decision', {
+      const invoker = getGenerateHeadless()
+      invoker.showToast({
+        message: 'Director\'s Decision',
         description: notificationDescription,
         duration: 7000,
       })

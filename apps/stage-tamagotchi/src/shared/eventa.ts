@@ -267,6 +267,14 @@ export const electronControlStripSyncState = defineInvokeEventa<void, ControlStr
 export const electronApplySizePreset = defineInvokeEventa<void, { target: 'actor' | 'chat', preset: 'mini' | 'medium' | 'large' | 'full' }>('eventa:invoke:electron:windows:apply-size-preset')
 export const electronResetWindowPositions = defineInvokeEventa<void>('eventa:invoke:electron:windows:reset-positions')
 
+export interface ElectronShowToastPayload {
+  message: string
+  description?: string
+  duration?: number
+}
+export const electronShowToast = defineInvokeEventa<void, ElectronShowToastPayload>('eventa:invoke:electron:show-toast')
+export const electronShowToastEvent = defineEventa<ElectronShowToastPayload>('eventa:event:electron:show-toast')
+
 // Internal event from main -> widgets renderer when a widget should render
 export const widgetsRenderEvent = defineEventa<WidgetSnapshot>('eventa:event:electron:windows:widgets:render')
 export const widgetsRemoveEvent = defineEventa<{ id: string }>('eventa:event:electron:windows:widgets:remove')
