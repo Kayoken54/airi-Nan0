@@ -4,6 +4,9 @@ Concise mapping of conceptual features to technical file paths for rapid context
 
 ## Core UI & Surfaces
 
+- **Control Strip Window (Main Window)**: `apps/stage-tamagotchi/src/main/windows/main/index.ts` (Electron window manager) | `packages/stage-ui/src/components/scenarios/layout/ControlStrip.vue` (UI component)
+- **Actor Stage Window**: `apps/stage-tamagotchi/src/main/windows/stage/index.ts` (Electron window manager) | `packages/stage-ui/src/components/scenes/Stage.vue` (UI component)
+- **Chatbox Window**: `apps/stage-tamagotchi/src/main/windows/chat/index.ts` (Electron window manager) | `apps/stage-tamagotchi/src/renderer/pages/chat.vue` (UI page) | `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` (Hosts input, chat history, visual indicators)
 - **Floating Island (Stage)**: `packages/stage-ui/src/components/scenes/Stage.vue` (Host for models, speech, background)
 - **Control Island (Original)**: `apps/stage-tamagotchi/src/renderer/components/stage-islands/controls-island/index.vue` (Main chevron/drag logic)
 - **Gemini Control Island**: `.../controls-island/gemini-controls.vue` (Left-side sparkle controls)
@@ -53,8 +56,9 @@ Concise mapping of conceptual features to technical file paths for rapid context
 
 ## Chatbox Elements
 - **Chat History (Host)**: `packages/stage-ui/src/components/scenarios/chat/history.vue`
-- **Assistant Bubble**: `.../chat/assistant-item.vue`
-- **User Bubble**: `.../chat/user-item.vue`
+- **Assistant Bubble / Assistant Turn**: `.../chat/assistant-item.vue`
+- **User Bubble / User Turn / Chat Bubble**: `packages/stage-ui/src/components/scenarios/chat/user-item.vue` (Handles user message rendering, text, VLM image attachments, right-click triggers, and edit mode inline editor)
+- **Bubble Actions Menu / Context Menu**: `packages/stage-ui/src/components/scenarios/chat/components/action-menu/index.vue` (Reka-based right-click/long-press menu offering copy, delete, edit, retry, fork, and journal moment options)
 - **Bubble Render Parts**: `.../chat/response-part.vue` (Text) | `.../chat/tool-call-block.vue` (Tools)
 - **Journal Strip (Chips)**: `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` (Scrollable Image/Text/Episode previews)
 - **Mood / Vibe Indicator**: `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` (Emotional baseline display)
@@ -71,9 +75,10 @@ Concise mapping of conceptual features to technical file paths for rapid context
 
 ## Nicknames Index
 
-- **"chatbox"** -> `ChatArea.vue` / `Interaction*.vue`
+- **"chatbox"** -> `ChatArea.vue` / `InteractiveArea.vue` / `renderer/pages/chat.vue`
+- **"control strip"** / **"the strip"** -> `ControlStrip.vue` / `ControlStripHost.vue` (The always-on-top status bar / mini-control tray)
 - **"the island"** -> `controls-island/index.vue` (aka original island / og island)
-- **"the floating widget"** / **"the standalone window"** / **"the tamagotchi"** -> `Stage.vue`
+- **"the floating widget"** / **"the standalone window"** / **"the tamagotchi"** -> `Stage.vue` (Actor Stage Window)
 - **"the rich journal"** -> `design-prospective-rich-journal.md`
 - **"dreaming"** -> Memory consolidation via proactive idle tasks.
 - **"vibe indicator"** -> The emotional dashboard in the chatbox.
@@ -81,4 +86,7 @@ Concise mapping of conceptual features to technical file paths for rapid context
 - **"the staging_widgets thing"** -> `apps/stage-tamagotchi/src/renderer/stores/tools/builtin/widgets.ts` (The spawning tool)
 - **"the backends"** -> `packages/stage-ui/src/stores/providers.ts`
 - **"the brain"** -> `packages/stage-ui/src/stores/modules/`
+- **"chat bubble context menu"** / **"bubble context menu"** -> Context menu triggered by right-clicking a message bubble (`action-menu/index.vue`)
+- **"bubble layer"** / **"user bubble layer"** -> `user-item.vue`
+- **"edit mode"** -> Inline editing of a user message inside `user-item.vue` (`handleEdit`, `handleCommitEdit`)
 

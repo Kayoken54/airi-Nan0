@@ -240,7 +240,7 @@ function handleEdit() {
   // Set the text manually to avoid cursor jumping with v-text/v-model
   setTimeout(() => {
     if (editorRef.value) {
-      editorRef.value.innerText = editContent.value
+      editorRef.value.textContent = editContent.value
       editorRef.value.focus()
 
       // Move cursor to the end
@@ -260,12 +260,58 @@ function handleCancelEdit() {
   isEditing.value = false
 }
 
-function handleCommitEdit() {
+async function handleCommitEdit() {
+  if (!props.message.id)
+    return
+
+  const activeSessionId = chatSession.activeSessionId
+  if (!activeSessionId)
+    return
+
   if (editorRef.value) {
-    const newText = editorRef.value.innerText
-    console.log('[Mock] Commit Edit:', newText)
-    toast.success('Mock Edit Committed! (Check console)')
+    const newText = (editorRef.value.textContent || '').trim()
+    if (!newText) {
+      toast.error('Message content cannot be empty.')
+      return
+    }
+
+    const messages = chatSession.getSessionMessages(activeSessionId)
+    const index = messages.findIndex(msg => msg.id === props.message.id)
+
+    if (index === -1)
+      return
+
+    // Construct updated content while preserving VLM image attachments
+    const raw = props.message.content
+    let updatedContent: any
+    if (typeof raw === 'string') {
+      updatedContent = newText
+    }
+    else if (Array.isArray(raw)) {
+      updatedContent = raw.map((part) => {
+        if (part && typeof part === 'object' && 'type' in part && part.type === 'text') {
+          return { ...part, text: newText }
+        }
+        return part
+      })
+    }
+    else {
+      updatedContent = newText
+    }
+
+    // Truncate subsequent messages: slice history up to the edited user message (inclusive)
+    const nextMessages = JSON.parse(JSON.stringify(messages.slice(0, index + 1)))
+    nextMessages[index].content = updatedContent
+
+    // Save history
+    await chatSession.setSessionMessages(activeSessionId, nextMessages)
+
     isEditing.value = false
+
+    // Resubmit for reply generation
+    await chatOrchestrator.ingest('', { triggerOnly: true }, activeSessionId)
+
+    toast.success('Message updated, generating response...')
   }
 }
 </script>
