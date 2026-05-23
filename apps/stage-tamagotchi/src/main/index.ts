@@ -28,6 +28,7 @@ import {
   electronResetWindowPositions,
   electronSetIgnoreMouseEvents,
   electronShowToast,
+  electronShowToastEvent,
   electronStageSetAlwaysOnTop,
   electronStageToggleVisibility,
 } from '../shared/eventa'
@@ -380,12 +381,14 @@ app.whenReady().then(async () => {
         if (!targetWin || targetWin.isDestroyed() || !targetWin.isVisible()) {
           targetWin = deps.stageWindow
         }
-        if (!targetWin || targetWin.isDestroyed()) {
+        if (!targetWin || targetWin.isDestroyed() || !targetWin.isVisible()) {
           targetWin = deps.mainWindow
         }
 
         if (targetWin && !targetWin.isDestroyed()) {
-          targetWin.webContents.send('eventa:event:electron:show-toast', payload)
+          const { context: winContext, dispose } = createContext(ipcMain, targetWin)
+          winContext.emit(electronShowToastEvent, payload)
+          dispose()
         }
       })
 

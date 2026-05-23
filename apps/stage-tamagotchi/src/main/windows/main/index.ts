@@ -167,10 +167,17 @@ export async function setupMainWindow(params: {
       return
     }
 
+    const state = (window as any).__control_strip_state
+    if (!state) {
+      // Skip saving bounds if the renderer hasn't synced the control strip state yet.
+      // This prevents startup and shutdown bounds-changed events from overwriting
+      // the correct collapsed size/orientation with default fallback values (like stripLength = 300).
+      return
+    }
+
     let savedX = newBounds.x
     let savedY = newBounds.y
-    const state = (window as any).__control_strip_state
-    const orientation = state?.orientation || existingConfig?.orientation || 'vertical'
+    const orientation = state.orientation || existingConfig?.orientation || 'vertical'
     const stripLength = state?.stripLength || 300
     const activePopover = state?.activePopover || null
     const placement = state?.lastPlacement || 'bottom'

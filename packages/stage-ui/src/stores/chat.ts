@@ -1142,6 +1142,20 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     chatLog('Ingesting message:', { sendingMessage, sessionId, sending: sending.value })
 
     if (!isMainWindow) {
+      if (options.triggerOnly) {
+        console.log(`[IngestDebug] Secondary window ingesting with triggerOnly. Bypassing verification loop.`)
+        postInput({
+          sendingMessage,
+          options: {
+            ...options,
+            chatProvider: typeof options.chatProvider === 'string' ? options.chatProvider : undefined,
+            tools: undefined,
+          },
+          targetSessionId: sessionId,
+        })
+        return Promise.resolve()
+      }
+
       const clientMessageId = nanoid()
       console.log(`[IngestDebug] Secondary window ingesting. clientMessageId: ${clientMessageId}. Target session: ${sessionId}`)
       const metadata = { ...options.metadata, clientMessageId }
