@@ -34,6 +34,7 @@ const chatOrchestrator = useChatOrchestratorStore()
 const showJournalModal = ref(false)
 
 const isEditing = ref(false)
+const isSavingEdit = ref(false)
 const editContent = ref('')
 const editorRef = useTemplateRef<HTMLDivElement>('editorRef')
 
@@ -261,7 +262,7 @@ function handleCancelEdit() {
 }
 
 async function handleCommitEdit() {
-  if (!props.message.id)
+  if (!props.message.id || isSavingEdit.value)
     return
 
   const activeSessionId = chatSession.activeSessionId
@@ -275,43 +276,53 @@ async function handleCommitEdit() {
       return
     }
 
-    const messages = chatSession.getSessionMessages(activeSessionId)
-    const index = messages.findIndex(msg => msg.id === props.message.id)
+    isSavingEdit.value = true
+    try {
+      const messages = chatSession.getSessionMessages(activeSessionId)
+      const index = messages.findIndex(msg => msg.id === props.message.id)
 
-    if (index === -1)
-      return
+      if (index === -1)
+        return
 
-    // Construct updated content while preserving VLM image attachments
-    const raw = props.message.content
-    let updatedContent: any
-    if (typeof raw === 'string') {
-      updatedContent = newText
+      // Construct updated content while preserving VLM image attachments
+      const raw = props.message.content
+      let updatedContent: any
+      if (typeof raw === 'string') {
+        updatedContent = newText
+      }
+      else if (Array.isArray(raw)) {
+        updatedContent = raw.map((part) => {
+          if (part && typeof part === 'object' && 'type' in part && part.type === 'text') {
+            return { ...part, text: newText }
+          }
+          return part
+        })
+      }
+      else {
+        updatedContent = newText
+      }
+
+      // Truncate subsequent messages: slice history up to the edited user message (inclusive)
+      const nextMessages = JSON.parse(JSON.stringify(messages.slice(0, index + 1)))
+      nextMessages[index].content = updatedContent
+
+      // Save history
+      await chatSession.setSessionMessages(activeSessionId, nextMessages)
+
+      isEditing.value = false
+
+      // Resubmit for reply generation
+      await chatOrchestrator.ingest('', { triggerOnly: true }, activeSessionId)
+
+      toast.success('Message updated, generating response...')
     }
-    else if (Array.isArray(raw)) {
-      updatedContent = raw.map((part) => {
-        if (part && typeof part === 'object' && 'type' in part && part.type === 'text') {
-          return { ...part, text: newText }
-        }
-        return part
-      })
+    catch (err) {
+      console.error('[EditCommit] Failed:', err)
+      toast.error('Failed to update message.')
     }
-    else {
-      updatedContent = newText
+    finally {
+      isSavingEdit.value = false
     }
-
-    // Truncate subsequent messages: slice history up to the edited user message (inclusive)
-    const nextMessages = JSON.parse(JSON.stringify(messages.slice(0, index + 1)))
-    nextMessages[index].content = updatedContent
-
-    // Save history
-    await chatSession.setSessionMessages(activeSessionId, nextMessages)
-
-    isEditing.value = false
-
-    // Resubmit for reply generation
-    await chatOrchestrator.ingest('', { triggerOnly: true }, activeSessionId)
-
-    toast.success('Message updated, generating response...')
   }
 }
 </script>
@@ -375,15 +386,17 @@ async function handleCommitEdit() {
             class="absolute z-10 flex gap-1 border border-neutral-200 rounded-full bg-white/95 p-1 shadow-md backdrop-blur-sm -bottom-3 -right-3 dark:border-neutral-700 dark:bg-neutral-800/95"
           >
             <button
+              :disabled="isSavingEdit"
               title="Cancel (Esc)"
-              class="h-6 w-6 flex items-center justify-center rounded-full text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/50"
+              class="h-6 w-6 flex items-center justify-center rounded-full text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/50"
               @click="handleCancelEdit"
             >
               <div class="i-solar:close-circle-bold text-sm" />
             </button>
             <button
+              :disabled="isSavingEdit"
               title="Commit (Shift+Enter)"
-              class="h-6 w-6 flex items-center justify-center rounded-full text-emerald-500 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+              class="h-6 w-6 flex items-center justify-center rounded-full text-emerald-500 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:hover:bg-emerald-950/50"
               @click="handleCommitEdit"
             >
               <div class="i-solar:check-circle-bold text-sm" />

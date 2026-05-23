@@ -333,14 +333,14 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       }
     }
 
-    // 4. Broadcast session-refreshed if any previous messages were removed
+    // 4. Persist
+    await persistSession(sessionId)
+
+    // 5. Broadcast session-refreshed if any previous messages were removed
     const removedAny = prev.some(m => m.id && !nextWithIds.some(n => n.id === m.id))
     if (removedAny) {
       broadcastStreamEvent({ type: 'session-refreshed', sessionId })
     }
-
-    // 5. Persist
-    await persistSession(sessionId)
   }
 
   function inscribeTurn(message: ChatHistoryItem, sessionId = activeSessionId.value) {
@@ -513,7 +513,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       ensureSession(activeId)
 
       // NOTICE: Ensure prompt is up to date immediately after card-switch context is resolved.
-      refreshActiveSystemMessage({
+      await refreshActiveSystemMessage({
         sessionId: activeId,
         characterId,
         prompt: systemPrompt.value,
@@ -644,7 +644,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
    * current character settings without resetting the chat history.
    * This ensures that even mid-chat system injections remain consistent with the Acting tab.
    */
-  function refreshActiveSystemMessage(options?: { sessionId?: string, characterId?: string, prompt?: string, force?: boolean }) {
+  async function refreshActiveSystemMessage(options?: { sessionId?: string, characterId?: string, prompt?: string, force?: boolean }) {
     const sessionId = options?.sessionId ?? activeSessionId.value
     if (!sessionId || !ready.value)
       return
@@ -733,7 +733,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
         newCount: finalMessages.length,
         personaCount: personaIndices.length,
       })
-      setSessionMessages(sessionId, finalMessages)
+      await setSessionMessages(sessionId, finalMessages)
       broadcastStreamEvent({ type: 'session-refreshed', sessionId })
     }
     else {
