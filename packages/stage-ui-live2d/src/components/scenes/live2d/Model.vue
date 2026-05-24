@@ -483,6 +483,9 @@ async function loadModel() {
 
     // --- Interaction
 
+    const declaredHitAreas = (live2DModel.internalModel?.settings as any)?.hitAreas || []
+    console.info(`[Live2D Tactile] Loaded model has ${declaredHitAreas.length} hitboxes:`, declaredHitAreas.map((h: any) => `${h.Name || h.name} -> ${h.Id || h.id}`))
+
     model.value.on('hit', (hitAreas) => {
       if (model.value && hitAreas.includes('body'))
         model.value.motion('tap_body')
@@ -1188,13 +1191,16 @@ function onCanvasMouseMove(event: MouseEvent) {
   const mouseX = event.clientX - rect.left
   const mouseY = event.clientY - rect.top
 
-  // pixi-live2d-display hitTest takes screen/clientX/clientY coordinates
-  const hitAreas = model.value.hitTest(event.clientX, event.clientY)
+  const globalX = mouseX * (props.app.screen.width / rect.width)
+  const globalY = mouseY * (props.app.screen.height / rect.height)
+
+  const hitAreas = model.value.hitTest(globalX, globalY)
 
   if (hitAreas && hitAreas.length > 0) {
     const hitArea = hitAreas[0]
     if (hoveredArea !== hitArea) {
       hoveredArea = hitArea
+      console.info(`[Live2D Tactile] Hovered hit area: ${hitArea} at global(${globalX.toFixed(1)}, ${globalY.toFixed(1)})`)
       emits('hitAreaHover', { name: hitArea, x: mouseX, y: mouseY, hovered: true })
     }
     else {
@@ -1212,10 +1218,21 @@ function onCanvasClick(event: MouseEvent) {
   if (interactionMode.value !== 'tactile' || !model.value || !props.app)
     return
 
-  const hitAreas = model.value.hitTest(event.clientX, event.clientY)
+  const canvasEl = props.app.view as HTMLCanvasElement
+  if (!canvasEl)
+    return
+
+  const rect = canvasEl.getBoundingClientRect()
+  const mouseX = event.clientX - rect.left
+  const mouseY = event.clientY - rect.top
+
+  const globalX = mouseX * (props.app.screen.width / rect.width)
+  const globalY = mouseY * (props.app.screen.height / rect.height)
+
+  const hitAreas = model.value.hitTest(globalX, globalY)
   if (hitAreas && hitAreas.length > 0) {
     const hitArea = hitAreas[0]
-    console.info(`[Live2D Tactile] Clicked hit area: ${hitArea}`)
+    console.info(`[Live2D Tactile] Clicked hit area: ${hitArea} at global(${globalX.toFixed(1)}, ${globalY.toFixed(1)})`)
 
     const internalModel = model.value.internalModel
     const motionManager = internalModel?.motionManager
@@ -1223,7 +1240,26 @@ function onCanvasClick(event: MouseEvent) {
       return
 
     const groups = Object.keys(motionManager.definitions || {})
-    const matchedGroup = groups.find(g => g.toLowerCase().startsWith(hitArea.toLowerCase()))
+
+    // Smart matching rules for hitArea mapping to motion definitions:
+    // 1. Exact match (case insensitive)
+    let matchedGroup = groups.find(g => g.toLowerCase() === hitArea.toLowerCase())
+    // 2. Definition group starts with hitArea
+    if (!matchedGroup) {
+      matchedGroup = groups.find(g => g.toLowerCase().startsWith(hitArea.toLowerCase()))
+    }
+    // 3. HitArea starts with definition group
+    if (!matchedGroup) {
+      matchedGroup = groups.find(g => hitArea.toLowerCase().startsWith(g.toLowerCase()))
+    }
+    // 4. Definition group contains hitArea
+    if (!matchedGroup) {
+      matchedGroup = groups.find(g => g.toLowerCase().includes(hitArea.toLowerCase()))
+    }
+    // 5. HitArea contains definition group
+    if (!matchedGroup) {
+      matchedGroup = groups.find(g => hitArea.toLowerCase().includes(g.toLowerCase()))
+    }
 
     if (matchedGroup) {
       const definitions = motionManager.definitions[matchedGroup]
@@ -1234,7 +1270,7 @@ function onCanvasClick(event: MouseEvent) {
       }
     }
     else {
-      console.warn(`[Live2D Tactile] No matching motion group found starting with hitArea: ${hitArea}`)
+      console.warn(`[Live2D Tactile] No matching motion group found starting with or related to hitArea: ${hitArea}`)
       if (hitArea.toLowerCase().includes('body')) {
         model.value.motion('tap_body')
       }
