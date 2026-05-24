@@ -11,6 +11,7 @@ import { until } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toast } from 'vue-sonner'
 
 import '@proj-airi/stage-ui-live2d/utils/live2d-zip-loader'
 import '@proj-airi/stage-ui-live2d/utils/live2d-opfs-registration'
@@ -253,11 +254,20 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
         }
 
         if (modernModels.length >= 2) {
+          toast.info(`Multi-model Live2D ZIP detected! Extracting ${modernModels.length} models...`)
           console.log(`[DisplayModels] Multi-model ZIP detected! Splitting into ${modernModels.length} models:`)
 
+          let index = 1
           for (const model of modernModels) {
             const manifestBasename = model.manifestPath.split(/[\\/]/).pop()!
             const modelName = manifestBasename.replace(/\.model3\.json$/i, '').replace(/\.json$/i, '')
+
+            if (index > 1) {
+              toast.info(`[${index}/${modernModels.length}] Extracting next model "${modelName}"...`)
+            }
+            else {
+              toast.info(`[${index}/${modernModels.length}] Extracting and compiling "${modelName}"...`)
+            }
             const subZip = new JSZip()
 
             const manifestDir = model.manifestPath.split(/[\\/]/).slice(0, -1).join('/')
@@ -291,8 +301,12 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
 
             console.log(`[DisplayModels] Splitted sub-model created: ${subZipFile.name} (${(subZipBlob.size / 1024 / 1024).toFixed(2)} MB)`)
 
+            toast.info(`[${index}/${modernModels.length}] Ingesting "${modelName}" into catalog...`)
+
             // Add the splitted model recursively (which gets treated as single-model zip)
             await addDisplayModel(DisplayModelFormat.Live2dZip, subZipFile)
+            toast.success(`[${index}/${modernModels.length}] Successfully imported: ${modelName}`)
+            index++
           }
 
           // Return early to bypass the parent zip import
