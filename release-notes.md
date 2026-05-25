@@ -1,44 +1,36 @@
-# Release Notes: AIRI v0.9.2-stable
+# Release Notes: AIRI v0.9.3-stable
 
-Welcome to **AIRI v0.9.2-stable**! This update delivers massive structural upgrades to our UI layering, a highly-customizable modular Control Strip, significant reliability improvements to long-term memory retrieval, and robust fixes for application crashes and window lifecycles.
+Welcome to **AIRI v0.9.3-stable**! This release brings a massive overhaul to our Live2D model integration, introducing interactive tactile feedback, in-memory multi-model Zip splitting, and motion audio playback. It also resolves critical text-streaming issues with tool calls, fixes emoji corruption, and adds several UX polish wins.
 
 ## 🚀 Key Highlights
 
-### 🎭 Decoupled Actor Stage & Modular Control Strip
-* **Standalone Actor Window**: Decoupled the character renderer from the main controls, allowing for a dedicated standalone window with premium rounded-xl borders, a bottom-right drag handle, and optimal aspect ratio rendering.
-* **Control Strip Customizer & Window Manager**: Introduced a brand new customizer window manager with a bottom-placement popover, master button catalog, and an option for left-sidebar layout configurations.
-* **Smart Window Snapping & Position Persistence**: Windows now feature smart edge-snapping behavior and remember their last position across application restarts.
-* **Interactive Status Dot Indicators**: Added explicit state-driven indicators on the control strip, including red/green microphone toggles and a 5-way speech session indicator.
+### 🎭 Live2D Tactile Mode & Multi-Model Ingestion
+* **Full Tactile Mode & Hover Glow**: Implemented an interactive tactile feedback mode for Live2D models, including highly precise hit-test coordinate translation, smart `hitArea` motion mappings, and an aesthetic hover glow overlay indicating interactive zones.
+* **In-Memory Zip Splitting & Discovery**: Designed an in-memory multi-model Zip file splitter with real-time toast feedback. It automatically discovers motions, fixes manifest naming errors, and heals motions dictionaries on the fly.
+* **Motion Audio Playback**: Enabled motion-associated audio playback for both Live2D and Spine characters on the actor route, ensuring referenced audio assets are correctly packaged during ingestion.
+* **LocalStorage Quota Fix**: Converted parameter metadata and available motions to reactive refs to prevent browser `QuotaExceededError` issues in `localStorage`.
 
-### 💬 Reliable Ingestion & Cross-Window Chat
-* **Draft Salvaging & Timeout Prevention**: Implemented highly-robust cross-window message acknowledgment that broadcasts chat updates before database persistence, preventing frustrating draft timeouts.
-* **Message Editing & Deduplication**: Added the ability to edit user messages in the chatbox, and eliminated duplicate chat bubble rendering.
-* **Unified Chat Input Routing**: Streamlined input routing between different application surfaces via serialization-friendly hooks.
+### 🛠️ Streamed Text & Tool Call Polish
+* **Dynamic Parser Recreation**: Solved the issue where text arriving immediately after a native tool call was dropped by dynamically recreating the parser and interceptor instances.
+* **Text Buffer Flushing**: Fixed text slicing bugs by forcefully flushing parser buffers before enqueuing tool calls.
+* **Emoji Recovery**: Enhanced `healMozibake` to correctly handle surrogate pairs, preventing emoji corruption.
 
-### 🧠 Semantic Search Refinement
-* **Advanced Memory Retrieval**: Upgraded the local semantic search engine with **Reciprocal Rank Fusion (RRF)** and **Maximal Marginal Relevance (MMR)** to balance search relevance and diversity.
-* **Multilingual Expansion**: Integrated native **CJK (Chinese, Japanese, Korean) Tokenization** to ensure accurate memory retrieval across multiple languages.
-
-### 🎨 Live2D & UI Polishing
-* **Expression Persistence**: Resolved issues with Live2D character expression memory and applied essential artmesh rendering patches.
-* **AIRI Card Layouts**: Re-engineered Card Editor layouts to enforce square image crops, consistent toolbars/labels, and light fallback backgrounds.
-
-### 🛡️ System Stability & Lifecycle Safeguards
-* **Crash-on-Quit Prevention**: Deployed a global prototype-level guard against accessing destroyed `BrowserWindow` and `webContents` instances, resolving the most prominent crash during quit transitions.
-* **Caption Visibility Synchronization**: Added support for caption windows to dynamically align with and follow the visibility of the primary stage.
+### 🖼️ UI/UX Polish & Stability
+* **Fullscreen Lightbox Picker**: Added a gorgeous fullscreen preview lightbox within the stage background picker.
+* **Stabilized Window Behavior**: Removed the resource-intensive always-on-top watcher loop from the main window to improve responsiveness and eliminated infinite bounds-clobbering loops.
+* **Cross-Window Syncing**: Added cross-window synchronization for session deletions, and resolved state-sync race conditions when editing messages.
 
 ***
 
 ## 📝 Detailed Changelog
 
 ### 🖥️ Desktop (stage-tamagotchi) & Electron Main Process
-* Implemented standalone control strip sizing, dragging, and customizer menu layouts.
-* Enforced window boundaries and edge-snapping logic.
-* Global prototype-level safety wrapper on Electron windows to preemptively block "Object has been destroyed" crashes on close.
-* Premium design tweaks for caption window styling and docking indicators.
+* Removed always-on-top watcher from the main window to stabilize bounds.
+* Resolved state synchronization loops and Shift+Enter double-ingestion bugs.
+* Synchronized chat session deletions across multiple open windows.
 
 ### 📦 UI & Shared Modules (stage-ui / stage-shared)
-* Refined semantic search indexing algorithm to support CJK text and MMR/RRF rank merging.
-* Fixed duplicate rendering issues in the conversational history stream.
-* Enabled live broadcast of chat updates prior to DB write completion to prevent UI locks.
-* Persisted Live2D artmesh fixes and expressions correctly.
+* Implemented unified ingestion and self-healing cleansing pipelines for complex Live2D models.
+* Ported AvailableMotions to refs, removing LocalStorage write spikes.
+* Resolved motion audio playback in actor routes.
+* Stabilized runtime motion cycling and layout overflows.
