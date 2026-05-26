@@ -101,6 +101,26 @@ function parsePropsOffset() {
   }
 }
 
+function showHtml5Notification(title: string, body: string) {
+  try {
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') {
+        new Notification(title, { body, silent: true })
+      }
+      else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then((permission) => {
+          if (permission === 'granted') {
+            new Notification(title, { body, silent: true })
+          }
+        })
+      }
+    }
+  }
+  catch (e) {
+    console.warn('[Live2D Notification] Failed to show web notification:', e)
+  }
+}
+
 const modelSrcRef = toRef(() => props.modelSrc)
 
 const modelLoading = ref(false)
@@ -856,6 +876,27 @@ async function loadModel() {
             toast(resolvedTextDef.text, {
               description: resolvedTextDef.language ? `Localized (${resolvedTextDef.language})` : 'Original Transcript',
             })
+          }
+          else {
+            const title = 'AIRI'
+            const body = resolvedTextDef.text
+            const hasElectron = typeof window !== 'undefined' && (window as any).electron?.ipcRenderer
+            if (hasElectron) {
+              try {
+                (window as any).electron.ipcRenderer.send('show-os-notification', {
+                  title,
+                  body,
+                  silent: true,
+                })
+              }
+              catch (e) {
+                console.warn('[Live2D Notification] Failed to send show-os-notification IPC:', e)
+                showHtml5Notification(title, body)
+              }
+            }
+            else {
+              showHtml5Notification(title, body)
+            }
           }
         }
         else {

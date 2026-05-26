@@ -12,7 +12,7 @@ import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
-import { app, BrowserWindow, ipcMain, screen, session } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification, screen, session } from 'electron'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { isLinux } from 'std-env'
 
@@ -390,6 +390,27 @@ app.whenReady().then(async () => {
           const { context: winContext, dispose } = createContext(ipcMain, targetWin)
           winContext.emit(electronShowToastEvent, payload)
           dispose()
+        }
+      })
+
+      ipcMain.on('show-os-notification', (_event, payload: { title: string, body: string, silent?: boolean }) => {
+        if (!payload)
+          return
+        try {
+          if (Notification.isSupported()) {
+            const notification = new Notification({
+              title: payload.title,
+              body: payload.body,
+              silent: payload.silent !== false,
+            })
+            notification.show()
+          }
+          else {
+            console.warn('[Notification] Native notifications are not supported on this platform.')
+          }
+        }
+        catch (error) {
+          console.error('[Notification] Failed to show native notification:', error)
         }
       })
 
