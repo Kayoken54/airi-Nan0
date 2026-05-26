@@ -211,7 +211,7 @@ function handlePointerMove(event: PointerEvent) {
   const deltaY = event.clientY - dragStartY
 
   const newX = initialOffsetX + deltaX
-  const newY = initialOffsetY + deltaY
+  const newY = initialOffsetY - deltaY
 
   emit('offsetChange', { x: newX, y: newY })
 }
