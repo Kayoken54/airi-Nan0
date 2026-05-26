@@ -142,6 +142,7 @@ defineExpose({
       :model-src="stageModelSelectedUrl"
       :model-identity="stageModelSelected"
       :idle-animation="props.vrmActiveAnimation"
+      :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       :idle-cycle-enabled="props.vrmEffectiveIdleCycleEnabled"
       :render-scale-override="isWindowResizing ? reducedRenderScale : undefined"
       :class="['min-w-50% <lg:full min-h-100 sm:100', 'h-full w-full flex-1']"

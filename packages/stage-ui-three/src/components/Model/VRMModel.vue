@@ -59,6 +59,7 @@ import { loadVrm } from '../../composables/vrm/core'
 import { useVRMEmote } from '../../composables/vrm/expression'
 import { useVRMLipSync } from '../../composables/vrm/lip-sync'
 import { useVRMClothInteraction } from '../../composables/vrm/use-vrm-cloth-interaction'
+import { useCustomVrmAnimationsStore } from '../../stores/custom-vrm-animations'
 import { useModelStore } from '../../stores/model-store'
 
 /*
@@ -79,6 +80,7 @@ const props = withDefaults(defineProps<{
   lastModelSrc?: string
   lastModelIdentity?: string
   idleAnimation: string
+  idleAnimations?: string[]
   idleCycleEnabled?: boolean
   // loadAnimations?: string[]
   paused?: boolean
@@ -128,8 +130,6 @@ const {
   modelIdentity,
   lastModelSrc,
   lastModelIdentity,
-  idleAnimation,
-  idleCycleEnabled,
   // loadAnimations, // TBC
   paused,
 
@@ -197,8 +197,11 @@ useEventListener('mouseup', () => {
   }
 })
 
-// Animation related ref
-const vrmAnimationMixer = ref<AnimationMixer>()
+// Animation related state — kept as plain variables (NOT Vue reactive) because
+// Three.js objects must not be wrapped in Vue proxies. The deep proxy created by
+// ref() causes identity mismatches: e.action !== currentAction even when they
+// represent the same AnimationAction, breaking the cycle's finished-event guard.
+let vrmAnimationMixer: AnimationMixer | undefined
 const { onBeforeRender, stop, start } = useLoop()
 
 type VrmFrameHook = (vrm: VRM, delta: number) => void
@@ -260,15 +263,178 @@ function componentCleanUp() {
   modelStore.activeVrm = null
   modelStore.activeVrmIdentity = ''
 
-  vrmAnimationMixer.value?.removeEventListener('finished', onAnimationFinished)
+  cycleAdvancePending = false
+  clipCache.clear()
+  currentAction = null
+  vrmAnimationMixer?.removeEventListener('finished', onAnimationFinished)
+  vrmAnimationMixer = undefined
 }
 
 const clipCache = new Map<string, AnimationClip>()
-const currentAction = shallowRef<AnimationAction | null>(null)
+let currentAction: AnimationAction | null = null
+
+const customVrmAnimationsStore = useCustomVrmAnimationsStore()
+
+const resolvedActiveIdleUrl = computed(() => {
+  return customVrmAnimationsStore.resolveAnimationUrl(modelStore.vrmIdleAnimation)
+})
+
+const activeAnimationUrl = computed(() => {
+  if (props.idleAnimation && props.idleAnimation !== new URL('../../assets/vrm/animations/idle_loop.vrma', import.meta.url).href) {
+    return props.idleAnimation
+  }
+  return resolvedActiveIdleUrl.value
+})
+
+function parseVrmCycleAnimations(idleAnimations: string[] | undefined) {
+  if (!idleAnimations)
+    return []
+  return idleAnimations.filter(key => !key.startsWith('live2d:') && !key.startsWith('spine:'))
+}
+
+const vrmCycleAnimationUrls = computed(() => {
+  const keys = parseVrmCycleAnimations(props.idleAnimations)
+  return keys.map(key => customVrmAnimationsStore.resolveAnimationUrl(key))
+})
+
+async function playBaseAnimation() {
+  if (!vrm.value || !vrmAnimationMixer)
+    return
+
+  const url = activeAnimationUrl.value
+  if (!url)
+    return
+
+  try {
+    let clip = clipCache.get(url)
+    if (!clip) {
+      const animation = await loadVRMAnimation(url)
+      const loadedClip = await clipFromVRMAnimation(vrm.value, animation)
+      if (!loadedClip)
+        return
+
+      reAnchorRootPositionTrack(loadedClip, vrm.value, initialHipWorldPosition.value ?? undefined)
+      loadedClip.tracks = loadedClip.tracks.filter(track => !track.name.includes('blendShapes') && !track.name.includes('expressions'))
+      clipCache.set(url, loadedClip)
+      clip = loadedClip
+    }
+
+    const newAction = vrmAnimationMixer!.clipAction(clip)
+    const fadeDuration = 0.8
+
+    newAction.setLoop(LoopRepeat, Infinity)
+    newAction.clampWhenFinished = false
+    newAction.reset()
+    newAction.setEffectiveWeight(1)
+    newAction.play()
+
+    emit('playStatus', {
+      duration: clip.duration,
+      url,
+    })
+
+    if (currentAction && currentAction !== newAction) {
+      newAction.crossFadeFrom(currentAction, fadeDuration, true)
+    }
+    else {
+      newAction.fadeIn(fadeDuration)
+    }
+
+    currentAction = newAction
+  }
+  catch (err) {
+    console.error('[VRMModel] Failed to play base animation:', err)
+  }
+}
+
+async function playNextIdleCycleAnimation() {
+  if (!vrm.value || !vrmAnimationMixer)
+    return
+
+  const cycle = vrmCycleAnimationUrls.value
+  if (cycle.length === 0) {
+    playBaseAnimation()
+    return
+  }
+
+  let nextAnimUrl = cycle[0]
+  if (cycle.length > 1) {
+    const currentClip = currentAction?.getClip()
+    const choices = cycle.filter((url) => {
+      const clip = clipCache.get(url)
+      return !clip || clip !== currentClip
+    })
+    const targetChoices = choices.length > 0 ? choices : cycle
+    nextAnimUrl = targetChoices[Math.floor(Math.random() * targetChoices.length)]
+  }
+
+  try {
+    let clip = clipCache.get(nextAnimUrl)
+    if (!clip) {
+      const animation = await loadVRMAnimation(nextAnimUrl)
+      const loadedClip = await clipFromVRMAnimation(vrm.value, animation)
+      if (!loadedClip)
+        return
+
+      reAnchorRootPositionTrack(loadedClip, vrm.value, initialHipWorldPosition.value ?? undefined)
+      loadedClip.tracks = loadedClip.tracks.filter(track => !track.name.includes('blendShapes') && !track.name.includes('expressions'))
+      clipCache.set(nextAnimUrl, loadedClip)
+      clip = loadedClip
+    }
+
+    const newAction = vrmAnimationMixer!.clipAction(clip)
+    const fadeDuration = 0.8
+
+    if (cycle.length === 1) {
+      newAction.setLoop(LoopRepeat, Infinity)
+      newAction.clampWhenFinished = false
+    }
+    else {
+      newAction.setLoop(LoopOnce, 1)
+      newAction.clampWhenFinished = true
+    }
+
+    newAction.reset()
+    newAction.setEffectiveWeight(1)
+    newAction.play()
+
+    emit('playStatus', {
+      duration: clip.duration,
+      url: nextAnimUrl,
+    })
+
+    if (currentAction && currentAction !== newAction) {
+      newAction.crossFadeFrom(currentAction, fadeDuration, true)
+    }
+    else {
+      newAction.fadeIn(fadeDuration)
+    }
+
+    currentAction = newAction
+  }
+  catch (err) {
+    console.error('[VRMModel] Failed to play next cycle animation:', err)
+  }
+}
+
+// Flag to prevent double-advancing when multiple finished events arrive in one frame
+let cycleAdvancePending = false
 
 function onAnimationFinished(e: any) {
-  if (e.action === currentAction.value) {
-    emit('finished')
+  if (e.action !== currentAction)
+    return
+
+  emit('finished')
+
+  const cycle = vrmCycleAnimationUrls.value
+  if (cycle.length > 1 && !cycleAdvancePending) {
+    cycleAdvancePending = true
+    // Defer out of the Three.js mixer.update() call stack — calling clipAction()/play()
+    // synchronously from within a finished event can cause internal mixer state issues.
+    setTimeout(() => {
+      cycleAdvancePending = false
+      playNextIdleCycleAnimation()
+    }, 0)
   }
 }
 
@@ -436,45 +602,17 @@ async function loadModel() {
       /*
         * Animation setting
       */
-      const animation = await loadVRMAnimation(idleAnimation.value)
-      const clip = await clipFromVRMAnimation(_vrm, animation)
-      if (!clip) {
-        console.warn('No VRM animation loaded')
-        return
-      }
-      // Re-anchor the root position track to the model origin
-      reAnchorRootPositionTrack(clip, _vrm, initialHipWorldPosition.value ?? undefined)
-
-      // Strip expression/blendShape tracks from the idle animation.
-      // The idle loop should only drive bone transforms, not facial expressions.
-      // Without this, the animation overrides our expression system each frame.
-      const originalCount = clip.tracks.length
-      clip.tracks = clip.tracks.filter((track) => {
-        const isExpression = track.name.includes('blendShapes') || track.name.includes('expressions')
-        return !isExpression
-      })
-      if (clip.tracks.length !== originalCount) {
-        // eslint-disable-next-line no-console
-        console.log(`[VRMModel] Stripped ${originalCount - clip.tracks.length} expression tracks from idle animation`)
-      }
-
-      clipCache.set(idleAnimation.value, clip)
-
       // play animation
-      vrmAnimationMixer.value = new AnimationMixer(_vrm.scene)
-      vrmAnimationMixer.value.addEventListener('finished', onAnimationFinished)
+      vrmAnimationMixer = new AnimationMixer(_vrm.scene)
+      vrmAnimationMixer.addEventListener('finished', onAnimationFinished)
 
-      const action = vrmAnimationMixer.value.clipAction(clip)
-      if (idleCycleEnabled.value) {
-        action.setLoop(LoopOnce, 1)
-        action.clampWhenFinished = true
+      const cycle = vrmCycleAnimationUrls.value
+      if (cycle.length > 0) {
+        await playNextIdleCycleAnimation()
       }
       else {
-        action.setLoop(LoopRepeat, Infinity)
-        action.clampWhenFinished = false
+        await playBaseAnimation()
       }
-      action.play()
-      currentAction.value = action
 
       vrmEmote.value = useVRMEmote(_vrm)
 
@@ -516,7 +654,7 @@ async function loadModel() {
           vrmClothTug.update(vrm.value, delta, vrmEmote.value)
 
           // Update mixer
-          vrmAnimationMixer.value?.update(delta)
+          vrmAnimationMixer?.update(delta)
         }
         const activeVrm = vrm.value
         if (!activeVrm)
@@ -669,83 +807,31 @@ onMounted(async () => {
     }
   }, { deep: true })
 
-  // watch for cycle toggle
-  watch(() => idleCycleEnabled?.value, (enabled) => {
-    if (!vrmAnimationMixer.value)
-      return
-
-    const activeActions = (vrmAnimationMixer.value as any)._actions || []
-    activeActions.forEach((action: any) => {
-      if (action.isRunning()) {
-        if (enabled) {
-          action.setLoop(LoopOnce, 1)
-          action.clampWhenFinished = true
-        }
-        else {
-          action.setLoop(LoopRepeat, Infinity)
-          action.clampWhenFinished = false
-        }
-      }
-    })
+  // watch if the idle animation should be updated
+  watch(activeAnimationUrl, () => {
+    playBaseAnimation()
   })
 
-  // watch if the idle animation should be updated
-  watch(() => props.idleAnimation, async (newAnimUrl, oldAnimUrl) => {
-    // Guard: ignore if URL hasn't changed or isn't provided
-    if (!newAnimUrl || newAnimUrl === oldAnimUrl)
+  // watch cycle animations playlist changes
+  watch(vrmCycleAnimationUrls, (urls) => {
+    if (!vrm.value || !vrmAnimationMixer)
       return
 
-    if (!vrm.value || !vrmAnimationMixer.value)
-      return
-
-    try {
-      let clip = clipCache.get(newAnimUrl)
-      if (!clip) {
-        const animation = await loadVRMAnimation(newAnimUrl)
-        const loadedClip = await clipFromVRMAnimation(vrm.value, animation)
-        if (!loadedClip)
-          return
-
-        reAnchorRootPositionTrack(loadedClip, vrm.value, initialHipWorldPosition.value ?? undefined)
-        loadedClip.tracks = loadedClip.tracks.filter(track => !track.name.includes('blendShapes') && !track.name.includes('expressions'))
-        clipCache.set(newAnimUrl, loadedClip)
-        clip = loadedClip
-      }
-
-      const newAction = vrmAnimationMixer.value.clipAction(clip)
-      const fadeDuration = 0.8 // Premium cross-fade
-
-      if (idleCycleEnabled.value) {
-        newAction.setLoop(LoopOnce, 1)
-      }
-      else {
-        newAction.setLoop(LoopRepeat, Infinity)
-      }
-
-      newAction.clampWhenFinished = true
-      newAction.reset()
-      newAction.setEffectiveWeight(1)
-      newAction.play()
-
-      // Emit duration for the proactive scheduler in Stage.vue
-      emit('playStatus', {
-        duration: clip.duration,
-        url: newAnimUrl,
+    if (urls.length > 0) {
+      const currentClip = currentAction?.getClip()
+      const isPlayingCycleItem = urls.some((url) => {
+        const clip = clipCache.get(url)
+        return clip && clip === currentClip
       })
 
-      if (currentAction.value && currentAction.value !== newAction) {
-        newAction.crossFadeFrom(currentAction.value, fadeDuration, true)
+      if (!isPlayingCycleItem) {
+        playNextIdleCycleAnimation()
       }
-      else {
-        newAction.fadeIn(fadeDuration)
-      }
-
-      currentAction.value = newAction
     }
-    catch (err) {
-      console.error('[VRMModel] Failed to switch idle animation:', err)
+    else {
+      playBaseAnimation()
     }
-  }, { immediate: true })
+  }, { deep: true })
 })
 
 onUnmounted(() => {
@@ -782,7 +868,7 @@ defineExpose({
     }
   },
   stopAnimations() {
-    vrmAnimationMixer.value?.stopAllAction()
+    vrmAnimationMixer?.stopAllAction()
   },
   restoreDefaultExpressions() {
     if (!vrm.value?.expressionManager)

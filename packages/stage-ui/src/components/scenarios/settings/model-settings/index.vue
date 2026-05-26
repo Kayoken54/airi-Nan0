@@ -242,6 +242,7 @@ function handleOffsetChange(offset: { x: number, y: number }) {
         ref="threeSceneRef"
         :model-src="stageModelSelectedUrl"
         :model-identity="stageModelSelected"
+        :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
         @binary-loaded="vhackStore.setSourceArrayBuffer"
       />
     </div>

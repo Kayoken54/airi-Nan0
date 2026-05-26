@@ -41,6 +41,7 @@ const props = withDefaults(defineProps<{
   skyBoxSrc?: string
   showAxes?: boolean
   idleAnimation?: string
+  idleAnimations?: string[]
   idleCycleEnabled?: boolean
   paused?: boolean
   renderScaleOverride?: number
@@ -50,6 +51,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   showAxes: false,
   idleAnimation: new URL('../assets/vrm/animations/idle_loop.vrma', import.meta.url).href,
+  idleAnimations: () => [],
   paused: false,
 })
 
@@ -417,6 +419,7 @@ defineExpose({
           :last-model-src="lastModelSrc"
           :last-model-identity="lastModelIdentity"
           :idle-animation="props.idleAnimation"
+          :idle-animations="props.idleAnimations"
           :idle-cycle-enabled="props.idleCycleEnabled"
           :paused="props.paused"
           :env-select="envSelect"
