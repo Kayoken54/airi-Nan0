@@ -77,7 +77,7 @@ function handlePointerMove(event: PointerEvent) {
     return
 
   const deltaX = event.clientX - dragStartX
-  const deltaY = event.clientY - dragStartY
+  const deltaY = dragStartY - event.clientY // Inverted Y axis for WebGL coordinate space
 
   const newX = initialOffsetX + deltaX
   const newY = initialOffsetY + deltaY
