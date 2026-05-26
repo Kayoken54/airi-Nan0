@@ -62,7 +62,33 @@ function clampBoundsWithinRect(bounds: Rectangle, rect: Rectangle): Rectangle {
 
 function computeInitialCaptionBounds(params: { stageWindow: BrowserWindow, captionOptions?: Partial<Rectangle> }): Rectangle {
   const mainBounds = params.stageWindow.getBounds()
-  const displayWorkArea = screen.getDisplayMatching(mainBounds).workArea
+
+  let mainX = mainBounds.x
+  let mainY = mainBounds.y
+  let mainWidth = mainBounds.width
+  let mainHeight = mainBounds.height
+  if (mainX === undefined || isNaN(mainX))
+    mainX = 0
+  if (mainY === undefined || isNaN(mainY))
+    mainY = 0
+  if (!mainWidth || isNaN(mainWidth) || mainWidth <= 0)
+    mainWidth = 450
+  if (!mainHeight || isNaN(mainHeight) || mainHeight <= 0)
+    mainHeight = 600
+
+  const sanitizedMain = { x: mainX, y: mainY, width: mainWidth, height: mainHeight }
+
+  let targetDisplay: Electron.Display | undefined
+  try {
+    targetDisplay = screen.getDisplayMatching(sanitizedMain)
+  }
+  catch (e) {
+    targetDisplay = screen.getPrimaryDisplay()
+  }
+  if (!targetDisplay) {
+    targetDisplay = screen.getPrimaryDisplay()
+  }
+  const displayWorkArea = targetDisplay.workArea || screen.getPrimaryDisplay().workArea
 
   // Base sizing from display width with sensible caps
   const width = mapForBreakpoints(
@@ -79,15 +105,15 @@ function computeInitialCaptionBounds(params: { stageWindow: BrowserWindow, capti
 
   const margin = 16
   // Prefer to the right of stage window, else to the left, else bottom centered
-  let x = mainBounds.x + mainBounds.width + margin
-  let y = mainBounds.y + mainBounds.height - height
+  let x = sanitizedMain.x + sanitizedMain.width + margin
+  let y = sanitizedMain.y + sanitizedMain.height - height
 
   const rightEdge = x + width
   const displayRight = displayWorkArea.x + displayWorkArea.width
 
   if (rightEdge > displayRight) {
     // Place to the left
-    x = mainBounds.x - width - margin
+    x = sanitizedMain.x - width - margin
   }
 
   // If still out of bounds horizontally, fallback to bottom center
@@ -180,18 +206,44 @@ export function setupCaptionWindowManager(params: {
   function computeRelativeOffset(win: BrowserWindow): { dx: number, dy: number } {
     const caption = win.getBounds()
     const main = params.stageWindow.getBounds()
-    return { dx: caption.x - main.x, dy: caption.y - main.y }
+    let dx = caption.x - main.x
+    let dy = caption.y - main.y
+    if (isNaN(dx) || isNaN(dy)) {
+      dx = 466
+      dy = 420
+    }
+    return { dx, dy }
   }
 
   function calculateDockingBounds(win: BrowserWindow, dock?: 'top' | 'bottom'): Rectangle {
     const main = params.stageWindow.getBounds()
     const b = win.getBounds()
 
+    let mainX = main.x
+    let mainY = main.y
+    let mainWidth = main.width
+    let mainHeight = main.height
+    if (mainX === undefined || isNaN(mainX))
+      mainX = 0
+    if (mainY === undefined || isNaN(mainY))
+      mainY = 0
+    if (!mainWidth || isNaN(mainWidth) || mainWidth <= 0)
+      mainWidth = 450
+    if (!mainHeight || isNaN(mainHeight) || mainHeight <= 0)
+      mainHeight = 600
+
+    let winWidth = b.width
+    let winHeight = b.height
+    if (!winWidth || isNaN(winWidth) || winWidth <= 0)
+      winWidth = 480
+    if (!winHeight || isNaN(winHeight) || winHeight <= 0)
+      winHeight = 180
+
     if (dock === 'bottom') {
       return {
-        x: main.x,
-        y: Math.round(main.y + main.height), // Flush with bottom of Stage
-        width: main.width,
+        x: mainX,
+        y: Math.round(mainY + mainHeight), // Flush with bottom of Stage
+        width: mainWidth,
         height: 300,
       }
     }
@@ -199,14 +251,19 @@ export function setupCaptionWindowManager(params: {
     if (dock === 'top') {
       const topHeight = 240
       return {
-        x: main.x,
-        y: Math.round(main.y - topHeight), // Flush with top of Stage
-        width: main.width,
+        x: mainX,
+        y: Math.round(mainY - topHeight), // Flush with top of Stage
+        width: mainWidth,
         height: topHeight,
       }
     }
 
-    return b
+    return {
+      x: mainX,
+      y: mainY,
+      width: winWidth,
+      height: winHeight,
+    }
   }
 
   function syncGlobalConfig() {
@@ -292,17 +349,60 @@ export function setupCaptionWindowManager(params: {
       }
       else {
         const stored = getConfig()?.matrices[matrixHash]?.relativeToMain ?? initialOffset
+        let dx = stored?.dx
+        let dy = stored?.dy
         const main = params.stageWindow.getBounds()
         const b = win.getBounds()
+
+        let mainWidth = main.width
+        let mainHeight = main.height
+        if (!mainWidth || isNaN(mainWidth) || mainWidth <= 0)
+          mainWidth = 450
+        if (!mainHeight || isNaN(mainHeight) || mainHeight <= 0)
+          mainHeight = 600
+
+        let winWidth = b.width
+        let winHeight = b.height
+        if (!winWidth || isNaN(winWidth) || winWidth <= 0)
+          winWidth = 480
+        if (!winHeight || isNaN(winHeight) || winHeight <= 0)
+          winHeight = 180
+
+        if (dx === undefined || dy === undefined || isNaN(dx) || isNaN(dy)) {
+          dx = initialOffset?.dx
+          dy = initialOffset?.dy
+          if (dx === undefined || dy === undefined || isNaN(dx) || isNaN(dy)) {
+            dx = mainWidth + 16
+            dy = mainHeight - winHeight
+          }
+        }
+
+        let mainX = main.x
+        let mainY = main.y
+        if (mainX === undefined || isNaN(mainX))
+          mainX = 0
+        if (mainY === undefined || isNaN(mainY))
+          mainY = 0
+
         target = {
-          x: main.x + stored.dx,
-          y: main.y + stored.dy,
-          width: b.width,
-          height: b.height,
+          x: mainX + dx,
+          y: mainY + dy,
+          width: winWidth,
+          height: winHeight,
         }
       }
 
-      const workArea = screen.getDisplayMatching(target).workArea
+      let targetDisplay: Electron.Display | undefined
+      try {
+        targetDisplay = screen.getDisplayMatching(target)
+      }
+      catch (e) {
+        targetDisplay = screen.getPrimaryDisplay()
+      }
+      if (!targetDisplay) {
+        targetDisplay = screen.getPrimaryDisplay()
+      }
+      const workArea = targetDisplay.workArea || screen.getPrimaryDisplay().workArea
       const clamped = clampBoundsWithinRect(target, workArea)
 
       if (lastTarget && Math.abs(lastTarget.x - clamped.x) < 1 && Math.abs(lastTarget.y - clamped.y) < 1 && Math.abs(lastTarget.width - clamped.width) < 1 && Math.abs(lastTarget.height - clamped.height) < 1)

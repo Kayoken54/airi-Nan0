@@ -33,7 +33,7 @@ export function setupChatWindowReusableFunc(params: {
     let initialX = chatConfig?.x
     let initialY = chatConfig?.y
 
-    if (initialX !== undefined && initialY !== undefined) {
+    if (initialX !== undefined && initialY !== undefined && !isNaN(initialX) && !isNaN(initialY)) {
       const valid = ensureWindowInVisibleBounds({
         x: Math.round(initialX),
         y: Math.round(initialY),
@@ -67,7 +67,7 @@ export function setupChatWindowReusableFunc(params: {
       const y = currentChatConfig?.y
       const width = currentChatConfig?.width ?? 600.0
       const height = currentChatConfig?.height ?? 800.0
-      if (x !== undefined && y !== undefined) {
+      if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
         const valid = ensureWindowInVisibleBounds({
           x: Math.round(x),
           y: Math.round(y),

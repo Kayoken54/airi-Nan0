@@ -261,10 +261,16 @@ export interface ControlStripStatePayload {
   activePopover: string | null
   lastPlacement: string
   orientation: 'vertical' | 'horizontal'
-  stripLength: number
 }
 export const electronControlStripSyncState = defineInvokeEventa<void, ControlStripStatePayload>('eventa:invoke:electron:windows:control-strip:sync-state')
-export const electronApplySizePreset = defineInvokeEventa<void, { target: 'actor' | 'chat', preset: 'mini' | 'medium' | 'large' | 'full' }>('eventa:invoke:electron:windows:apply-size-preset')
+export interface ApplySizePresetPayload {
+  target: 'actor' | 'chat'
+  preset?: 'mini' | 'medium' | 'large' | 'full'
+  monitorIndex?: number
+  alignment?: 'top-left' | 'top' | 'top-right' | 'left' | 'center' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right'
+}
+export const electronApplySizePreset = defineInvokeEventa<void, ApplySizePresetPayload>('eventa:invoke:electron:windows:apply-size-preset')
+export const electronGetMonitorCount = defineInvokeEventa<number>('eventa:invoke:electron:windows:get-monitor-count')
 export const electronResetWindowPositions = defineInvokeEventa<void>('eventa:invoke:electron:windows:reset-positions')
 
 export interface ElectronShowToastPayload {

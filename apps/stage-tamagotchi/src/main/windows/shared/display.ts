@@ -166,31 +166,53 @@ export function heightFrom(bounds: Rectangle, sizeOptions: Size & { min?: Size, 
 
 export function ensureWindowInVisibleBounds(bounds: Rectangle): Rectangle {
   const displays = screen.getAllDisplays()
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const workArea = primaryDisplay.workArea
+
+  let width = bounds.width
+  let height = bounds.height
+  if (!width || isNaN(width) || width <= 0)
+    width = 450
+  if (!height || isNaN(height) || height <= 0)
+    height = 600
+
+  let x = bounds.x
+  let y = bounds.y
+  if (x === undefined || x === null || isNaN(x)) {
+    x = Math.round(workArea.x + (workArea.width - width) / 2)
+  }
+  if (y === undefined || y === null || isNaN(y)) {
+    y = Math.round(workArea.y + (workArea.height - height) / 2)
+  }
+
+  const sanitized = {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height),
+  }
 
   const hasOverlap = displays.some((display) => {
     const db = display.bounds
     return (
-      bounds.x < db.x + db.width
-      && bounds.x + bounds.width > db.x
-      && bounds.y < db.y + db.height
-      && bounds.y + bounds.height > db.y
+      sanitized.x < db.x + db.width
+      && sanitized.x + sanitized.width > db.x
+      && sanitized.y < db.y + db.height
+      && sanitized.y + sanitized.height > db.y
     )
   })
 
   if (hasOverlap) {
-    return bounds
+    return sanitized
   }
 
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const workArea = primaryDisplay.workArea
-
-  const x = Math.round(workArea.x + (workArea.width - bounds.width) / 2)
-  const y = Math.round(workArea.y + (workArea.height - bounds.height) / 2)
+  const newX = Math.round(workArea.x + (workArea.width - sanitized.width) / 2)
+  const newY = Math.round(workArea.y + (workArea.height - sanitized.height) / 2)
 
   return {
-    x,
-    y,
-    width: bounds.width,
-    height: bounds.height,
+    x: newX,
+    y: newY,
+    width: sanitized.width,
+    height: sanitized.height,
   }
 }

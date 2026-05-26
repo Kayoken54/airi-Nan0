@@ -25,6 +25,7 @@ import {
   electronCaptionToggleVisibility,
   electronGetCaptionWindowState,
   electronGetChatWindowState,
+  electronGetMonitorCount,
   electronResetWindowPositions,
   electronSetIgnoreMouseEvents,
   electronShowToast,
@@ -395,103 +396,177 @@ app.whenReady().then(async () => {
       defineInvokeHandler(context, electronApplySizePreset, async (payload) => {
         if (!payload)
           return
-        const { target, preset } = payload
-        console.log(`[@proj-airi/stage-tamagotchi] [Main] Apply size preset: ${preset} for target: ${target}`)
+        const { target, preset, monitorIndex, alignment } = payload
+        console.log(`[@proj-airi/stage-tamagotchi] [Main] Apply size preset: ${preset} for target: ${target}, monitor: ${monitorIndex}, align: ${alignment}`)
 
-        let centerX: number | undefined
-        let centerY: number | undefined
-        let targetDisplay: any | undefined
-
+        let targetWin: BrowserWindow | null = null
         if (target === 'actor') {
-          const win = deps.stageWindow
-          if (win && !win.isDestroyed()) {
-            const bounds = win.getBounds()
-            centerX = bounds.x + bounds.width / 2
-            centerY = bounds.y + bounds.height / 2
-            targetDisplay = screen.getDisplayMatching(bounds)
-          }
+          targetWin = deps.stageWindow
         }
         else if (target === 'chat') {
-          const win = await deps.chatWindow()
-          if (win && !win.isDestroyed() && win.isVisible()) {
-            const bounds = win.getBounds()
-            centerX = bounds.x + bounds.width / 2
-            centerY = bounds.y + bounds.height / 2
+          targetWin = await deps.chatWindow()
+        }
+
+        if (!targetWin || targetWin.isDestroyed())
+          return
+
+        const bounds = targetWin.getBounds()
+
+        // Get fallback from config or default if bounds are invalid
+        const presetAppConfig = deps.appConfig.get()
+        const winConfig = presetAppConfig?.windows?.find((w: any) => w.tag === target)
+
+        let width = bounds?.width || winConfig?.width || (target === 'actor' ? 450 : 600)
+        let height = bounds?.height || winConfig?.height || (target === 'actor' ? 600 : 800)
+
+        // Ensure they are valid numbers
+        if (!width || isNaN(width) || width <= 0)
+          width = target === 'actor' ? 450 : 600
+        if (!height || isNaN(height) || height <= 0)
+          height = target === 'actor' ? 600 : 800
+
+        let targetDisplay: Electron.Display | undefined
+        if (monitorIndex !== undefined && monitorIndex !== null) {
+          const displays = screen.getAllDisplays()
+          targetDisplay = displays[monitorIndex - 1]
+        }
+        if (!targetDisplay) {
+          try {
             targetDisplay = screen.getDisplayMatching(bounds)
           }
-        }
-
-        const appConfig = deps.appConfig.get()
-        const winConfig = appConfig?.windows?.find((w: any) => w.tag === target)
-        if (centerX === undefined || centerY === undefined || !targetDisplay) {
-          if (winConfig && winConfig.x !== undefined && winConfig.y !== undefined && winConfig.width !== undefined && winConfig.height !== undefined) {
-            centerX = winConfig.x + winConfig.width / 2
-            centerY = winConfig.y + winConfig.height / 2
-            targetDisplay = screen.getDisplayNearestPoint({ x: Math.round(centerX), y: Math.round(centerY) })
+          catch (e) {
+            targetDisplay = screen.getPrimaryDisplay()
           }
         }
-
-        if (centerX === undefined || centerY === undefined || !targetDisplay) {
+        if (!targetDisplay) {
           targetDisplay = screen.getPrimaryDisplay()
-          const workArea = targetDisplay.workArea
-          centerX = workArea.x + workArea.width / 2
-          centerY = workArea.y + workArea.height / 2
         }
 
-        const workArea = targetDisplay.workArea
-        let width = 0
-        let height = 0
+        const workArea = targetDisplay.workArea || screen.getPrimaryDisplay().workArea
 
-        if (target === 'actor') {
-          switch (preset) {
-            case 'mini':
-              width = 220
-              height = 315
+        if (preset && (preset as any) !== 'undefined') {
+          if (target === 'actor') {
+            switch (preset) {
+              case 'mini':
+                width = 220
+                height = 315
+                break
+              case 'medium':
+                width = 450
+                height = 600
+                break
+              case 'large':
+                width = 800
+                height = 1000
+                break
+              case 'full':
+                width = workArea.width
+                height = workArea.height
+                break
+            }
+          }
+          else if (target === 'chat') {
+            switch (preset) {
+              case 'mini':
+                width = 400
+                height = 500
+                break
+              case 'medium':
+                width = 600
+                height = 800
+                break
+              case 'large':
+                width = 900
+                height = 900
+                break
+              case 'full':
+                width = Math.max(400, workArea.width - 80)
+                height = Math.max(500, workArea.height - 80)
+                break
+            }
+          }
+        }
+
+        let newX = bounds?.x
+        let newY = bounds?.y
+        if (newX === undefined || isNaN(newX))
+          newX = workArea.x
+        if (newY === undefined || isNaN(newY))
+          newY = workArea.y
+
+        if (alignment) {
+          switch (alignment) {
+            case 'top-left':
+              newX = workArea.x
+              newY = workArea.y
               break
-            case 'medium':
-              width = 450
-              height = 600
+            case 'top':
+              newX = workArea.x + (workArea.width - width) / 2
+              newY = workArea.y
               break
-            case 'large':
-              width = 800
-              height = 1000
+            case 'top-right':
+              newX = workArea.x + workArea.width - width
+              newY = workArea.y
               break
-            case 'full':
-              width = workArea.width
-              height = workArea.height
+            case 'left':
+              newX = workArea.x
+              newY = workArea.y + (workArea.height - height) / 2
+              break
+            case 'center':
+              newX = workArea.x + (workArea.width - width) / 2
+              newY = workArea.y + (workArea.height - height) / 2
+              break
+            case 'right':
+              newX = workArea.x + workArea.width - width
+              newY = workArea.y + (workArea.height - height) / 2
+              break
+            case 'bottom-left':
+              newX = workArea.x
+              newY = workArea.y + workArea.height - height
+              break
+            case 'bottom':
+              newX = workArea.x + (workArea.width - width) / 2
+              newY = workArea.y + workArea.height - height
+              break
+            case 'bottom-right':
+              newX = workArea.x + workArea.width - width
+              newY = workArea.y + workArea.height - height
               break
           }
         }
-        else if (target === 'chat') {
-          switch (preset) {
-            case 'mini':
-              width = 400
-              height = 500
-              break
-            case 'medium':
-              width = 600
-              height = 800
-              break
-            case 'large':
-              width = 900
-              height = 900
-              break
-            case 'full':
-              width = Math.max(400, workArea.width - 80)
-              height = Math.max(500, workArea.height - 80)
-              break
+        else {
+          if (monitorIndex !== undefined && monitorIndex !== null) {
+            newX = workArea.x + (workArea.width - width) / 2
+            newY = workArea.y + (workArea.height - height) / 2
+          }
+          else {
+            const currentX = (bounds?.x === undefined || isNaN(bounds.x)) ? workArea.x : bounds.x
+            const currentY = (bounds?.y === undefined || isNaN(bounds.y)) ? workArea.y : bounds.y
+            const currentW = (bounds?.width === undefined || isNaN(bounds.width) || bounds.width <= 0) ? width : bounds.width
+            const currentH = (bounds?.height === undefined || isNaN(bounds.height) || bounds.height <= 0) ? height : bounds.height
+            newX = currentX + (currentW - width) / 2
+            newY = currentY + (currentH - height) / 2
           }
         }
+
+        // Final safety check against NaN/undefined
+        if (newX === undefined || isNaN(newX))
+          newX = workArea.x + (workArea.width - width) / 2
+        if (newY === undefined || isNaN(newY))
+          newY = workArea.y + (workArea.height - height) / 2
 
         const newBounds = ensureWindowInVisibleBounds({
-          x: Math.round(centerX! - width / 2),
-          y: Math.round(centerY! - height / 2),
-          width,
-          height,
+          x: Math.round(newX),
+          y: Math.round(newY),
+          width: Math.round(width),
+          height: Math.round(height),
         })
 
-        if (appConfig) {
-          const windows = appConfig.windows || []
+        console.log(`[@proj-airi/stage-tamagotchi] [Main] Final calculated newBounds:`, newBounds)
+
+        const appConfigToSave = deps.appConfig.get()
+        if (appConfigToSave) {
+          const windows = appConfigToSave.windows || []
           const idx = windows.findIndex((w: any) => w.tag === target)
           if (idx !== -1) {
             windows[idx] = {
@@ -512,21 +587,17 @@ app.whenReady().then(async () => {
               height: newBounds.height,
             })
           }
-          appConfig.windows = windows
-          deps.appConfig.update(appConfig)
+          appConfigToSave.windows = windows
+          deps.appConfig.update(appConfigToSave)
         }
 
-        if (target === 'actor') {
-          if (deps.stageWindow && !deps.stageWindow.isDestroyed()) {
-            deps.stageWindow.setBounds(newBounds)
-          }
+        if (targetWin && !targetWin.isDestroyed()) {
+          targetWin.setBounds(newBounds)
         }
-        else if (target === 'chat') {
-          const win = await deps.chatWindow()
-          if (win && !win.isDestroyed() && win.isVisible()) {
-            win.setBounds(newBounds)
-          }
-        }
+      })
+
+      defineInvokeHandler(context, electronGetMonitorCount, async () => {
+        return screen.getAllDisplays().length
       })
 
       defineInvokeHandler(context, electronResetWindowPositions, async () => {

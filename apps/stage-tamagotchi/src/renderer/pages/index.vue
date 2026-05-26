@@ -296,8 +296,8 @@ watch(
 )
 
 async function handleApplySizePreset(e: Event) {
-  const { target, preset } = (e as CustomEvent).detail
-  await applySizePreset({ target, preset })
+  const { target, preset, monitorIndex, alignment } = (e as CustomEvent).detail
+  await applySizePreset({ target, preset, monitorIndex, alignment })
 }
 
 const hearingDialogOpen = ref(false)

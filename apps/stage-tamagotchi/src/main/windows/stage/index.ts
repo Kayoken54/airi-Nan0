@@ -45,7 +45,7 @@ export async function setupActorStageWindow(params: {
   let initialX = actorConfig?.x
   let initialY = actorConfig?.y
 
-  if (initialX !== undefined && initialY !== undefined) {
+  if (initialX !== undefined && initialY !== undefined && !isNaN(initialX) && !isNaN(initialY)) {
     const valid = ensureWindowInVisibleBounds({
       x: Math.round(initialX),
       y: Math.round(initialY),
@@ -102,7 +102,7 @@ export async function setupActorStageWindow(params: {
     const y = currentActorConfig?.y
     const width = currentActorConfig?.width ?? 450.0
     const height = currentActorConfig?.height ?? 600.0
-    if (x !== undefined && y !== undefined) {
+    if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
       const valid = ensureWindowInVisibleBounds({
         x: Math.round(x),
         y: Math.round(y),
