@@ -14,14 +14,24 @@ import type { SpineVersion } from './spine-version'
  * - The full spine-webgl module namespace for that version.
  */
 export async function loadSpineRuntime(version: SpineVersion): Promise<typeof import('@esotericsoftware/spine-webgl')> {
+  let runtime: typeof import('@esotericsoftware/spine-webgl')
   switch (version) {
     case '4.0':
-      return await import('@esotericsoftware/spine-webgl-4-0') as unknown as typeof import('@esotericsoftware/spine-webgl')
+      runtime = await import('@esotericsoftware/spine-webgl-4-0') as unknown as typeof import('@esotericsoftware/spine-webgl')
+      break
     case '4.1':
-      return await import('@esotericsoftware/spine-webgl-4-1') as unknown as typeof import('@esotericsoftware/spine-webgl')
+      runtime = await import('@esotericsoftware/spine-webgl-4-1') as unknown as typeof import('@esotericsoftware/spine-webgl')
+      break
     case '4.2':
-      return await import('@esotericsoftware/spine-webgl')
+      runtime = await import('@esotericsoftware/spine-webgl')
+      break
     default:
       throw new Error(`Spine version ${version} is not supported yet.`)
   }
+
+  if (runtime.GLTexture) {
+    (runtime.GLTexture as any).DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = true
+  }
+
+  return runtime
 }
