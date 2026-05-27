@@ -33,25 +33,29 @@ const dynamicBackground = ref<{ light: string, dark: string } | null>(null)
 
 const latestSelfie = computed(() => getLatestSelfie(props.cardId))
 
-watch(() => props.displayModelId, async (id) => {
-  if (!id) {
-    iconUrl.value = null
-    dynamicBackground.value = null
-    return
-  }
+watch(
+  [() => props.displayModelId, () => displayModelsStore.displayModels],
+  async ([id]) => {
+    if (!id) {
+      iconUrl.value = null
+      dynamicBackground.value = null
+      return
+    }
 
-  // Extract Zip Icon
-  iconUrl.value = await extractModelIcon(id)
+    // Extract Zip Icon
+    iconUrl.value = await extractModelIcon(id)
 
-  // Extract Background Colors from preview image if this is the 2nd tier
-  const model = displayModelsStore.displayModels.find(m => m.id === id)
-  if (model?.previewImage) {
-    dynamicBackground.value = await extractComplementaryColors(model.previewImage)
-  }
-  else {
-    dynamicBackground.value = null
-  }
-}, { immediate: true })
+    // Extract Background Colors from preview image if this is the 2nd tier
+    const model = displayModelsStore.displayModels.find(m => m.id === id)
+    if (model?.previewImage) {
+      dynamicBackground.value = await extractComplementaryColors(model.previewImage)
+    }
+    else {
+      dynamicBackground.value = null
+    }
+  },
+  { immediate: true },
+)
 
 const portraitInfo = computed(() => {
   if (latestSelfie.value)
