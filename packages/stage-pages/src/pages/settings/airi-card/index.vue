@@ -121,11 +121,18 @@ watch(
   (query) => {
     const cardId = query.cardId as string
     const tab = query.tab as string
+    const edit = query.edit as string
 
     if (cardId && cards.value.has(cardId)) {
-      selectedCardId.value = cardId
-      initialTab.value = tab || undefined
-      isCardDialogOpen.value = true
+      if (edit === 'true') {
+        editingCardId.value = cardId
+        isCardCreationDialogOpen.value = true
+      }
+      else {
+        selectedCardId.value = cardId
+        initialTab.value = tab || undefined
+        isCardDialogOpen.value = true
+      }
 
       // Clear query params after handling
       router.replace({ query: {} })

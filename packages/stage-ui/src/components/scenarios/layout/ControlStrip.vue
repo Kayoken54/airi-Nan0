@@ -180,7 +180,7 @@ function handleEditActiveCard() {
   if (!activeCardId.value)
     return
   window.dispatchEvent(new CustomEvent('control-strip:open-settings', {
-    detail: { route: `/settings/airi-card?cardId=${activeCardId.value}` },
+    detail: { route: `/settings/airi-card?cardId=${activeCardId.value}&edit=true` },
   }))
   activePopover.value = null
 }
@@ -1264,43 +1264,178 @@ function getShortLabel(btnId: string): string {
         <!-- CHARACTERS POPOVER -->
         <div v-if="activePopover === 'actor-characters'" class="flex flex-col gap-2">
           <div class="flex items-center justify-between border-b border-neutral-200 pb-2 dark:border-neutral-800">
-            <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Characters</span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Characters</span>
+              <button
+                class="flex cursor-pointer items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 dark:hover:text-neutral-200"
+                title="Toggle view mode"
+                @click="characterViewMode = characterViewMode === 'list' ? 'grid' : 'list'"
+              >
+                <span :class="characterViewMode === 'list' ? 'i-solar:grid-bold text-xs' : 'i-solar:list-bold text-xs'" />
+              </button>
+            </div>
             <button class="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" @click="activePopover = null">
               <span class="i-solar:close-circle-outline text-lg" />
             </button>
           </div>
-          <div class="max-h-48 flex flex-col gap-1.5 overflow-y-auto py-1 scrollbar-thin">
-            <button
-              v-for="[id, card] in cards"
+
+          <!-- FAVORITES SECTION (GRID) -->
+          <div v-if="charFavIds.length > 0" class="flex flex-col gap-1">
+            <span class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Favorites</span>
+            <div class="grid grid-cols-3 gap-1">
+              <div
+                v-for="[id, card] in charFavEntries"
+                :key="id"
+                :class="[
+                  'group relative aspect-square cursor-pointer overflow-hidden border rounded-xl bg-neutral-200/10 dark:bg-neutral-800/10 hover:ring-2 hover:ring-amber-500/50 transition-all duration-200',
+                  id === activeCardId ? 'border-amber-400 ring-2 ring-amber-400/50' : 'border-neutral-200/40 dark:border-neutral-800/40',
+                ]"
+                @click="cardStore.activateCard(id); activePopover = null"
+              >
+                <img
+                  v-if="typeof card.metadata?.avatar === 'string'"
+                  :src="card.metadata.avatar"
+                  class="h-full w-full object-cover"
+                >
+                <div v-else :class="['h-full w-full flex items-center justify-center text-lg font-bold tracking-wide uppercase', cardInitialColor(card.name)]">
+                  {{ card.name.charAt(0) }}
+                </div>
+                <div class="absolute bottom-0 left-0 right-0 truncate bg-black/60 px-1 py-0.5 text-center text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  {{ card.name }}
+                </div>
+                <!-- Star Corner Favorite Button -->
+                <button
+                  class="absolute right-0.5 top-0.5 h-4 w-4 flex items-center justify-center rounded-full bg-black/40 text-amber-400 hover:bg-black/60"
+                  @click.stop="toggleCharFav(id)"
+                >
+                  <span class="i-solar:star-bold text-[10px]" />
+                </button>
+              </div>
+            </div>
+            <div class="my-1 border-b border-neutral-200/50 dark:border-neutral-800/50" />
+          </div>
+
+          <!-- SEARCH INPUT -->
+          <div class="relative py-1">
+            <span class="i-solar:magnifer-linear absolute left-2.5 top-3 text-xs text-neutral-400" />
+            <input
+              v-model="characterSearch"
+              type="text"
+              placeholder="Search characters..."
+              class="w-full border border-neutral-200/10 rounded-xl bg-neutral-200/40 py-1 pl-7 pr-2.5 text-[11px] text-neutral-700 dark:border-neutral-800/10 dark:bg-neutral-800/40 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+            >
+          </div>
+
+          <!-- LIST VIEW -->
+          <div v-if="characterViewMode === 'list'" class="max-h-48 flex flex-col gap-1 overflow-y-auto py-1 scrollbar-thin">
+            <div
+              v-for="[id, card] in sortedCharacters"
               :key="id"
               :class="[
-                'w-full flex items-center gap-2 cursor-pointer border rounded-xl px-3 py-2 text-left text-xs transition-all duration-200',
+                'group w-full flex items-center justify-between cursor-pointer border rounded-xl px-2.5 py-1.5 text-left text-xs transition-all duration-200',
                 id === activeCardId
-                  ? 'bg-sky-500/20 border-sky-400/50 text-sky-600 dark:text-sky-300'
+                  ? 'bg-amber-500/15 border-amber-400/40 text-amber-600 dark:text-amber-300 font-semibold'
                   : 'bg-neutral-50/50 dark:bg-neutral-800/40 border-neutral-200/50 dark:border-neutral-800/20 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50',
               ]"
               @click="cardStore.activateCard(id); activePopover = null"
             >
-              <div class="w-4 flex flex-shrink-0 items-center justify-center">
-                <span v-if="id === activeCardId" class="i-solar:check-circle-bold text-sm text-sky-500" />
+              <div class="flex items-center gap-2 truncate">
+                <!-- Left tile -->
+                <div class="h-8 w-8 flex-shrink-0 overflow-hidden border border-neutral-200/10 rounded-lg">
+                  <img
+                    v-if="typeof card.metadata?.avatar === 'string'"
+                    :src="card.metadata.avatar"
+                    class="h-full w-full object-cover"
+                  >
+                  <div v-else :class="['h-full w-full flex items-center justify-center font-bold uppercase text-xs', cardInitialColor(card.name)]">
+                    {{ card.name.charAt(0) }}
+                  </div>
+                </div>
+                <span class="truncate font-semibold">{{ card.name }}</span>
+                <span v-if="id === activeCardId" class="scale-90 border border-amber-500/30 rounded bg-amber-500/20 px-1 py-0.5 text-[8px] text-amber-600 font-bold uppercase dark:text-amber-400">Active</span>
               </div>
-              <span class="truncate font-medium">{{ card.name }}</span>
-            </button>
+              <!-- Right Star Toggle -->
+              <button
+                class="h-5 w-5 flex cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                :class="[
+                  isCharFav(id) ? 'text-amber-400 opacity-100' : 'opacity-0 group-hover:opacity-100',
+                ]"
+                @click.stop="toggleCharFav(id)"
+              >
+                <span :class="isCharFav(id) ? 'i-solar:star-bold text-xs' : 'i-solar:star-linear text-xs'" />
+              </button>
+            </div>
+            <div v-if="sortedCharacters.length === 0" class="flex flex-col items-center justify-center py-6 text-center opacity-40">
+              <span class="i-solar:user-bold-duotone text-xl" />
+              <span class="mt-1 text-[9px]">No characters found</span>
+            </div>
           </div>
-          <div class="grid grid-cols-2 gap-2 border-t border-neutral-200 pt-2 dark:border-neutral-800">
+
+          <!-- GRID VIEW (3 col) -->
+          <div v-else class="max-h-48 overflow-y-auto py-1 scrollbar-thin">
+            <div class="grid grid-cols-3 gap-1">
+              <div
+                v-for="[id, card] in sortedCharacters"
+                :key="id"
+                :class="[
+                  'group relative aspect-square border rounded-xl overflow-hidden cursor-pointer bg-neutral-200/10 dark:bg-neutral-800/10 transition-all duration-200',
+                  id === activeCardId
+                    ? 'border-amber-400 ring-2 ring-amber-400/50'
+                    : 'border-neutral-200/40 dark:border-neutral-800/40 hover:ring-2 hover:ring-amber-500/50',
+                ]"
+                @click="cardStore.activateCard(id); activePopover = null"
+              >
+                <img
+                  v-if="typeof card.metadata?.avatar === 'string'"
+                  :src="card.metadata.avatar"
+                  class="h-full w-full object-cover"
+                >
+                <div v-else :class="['h-full w-full flex items-center justify-center text-lg font-bold tracking-wide uppercase', cardInitialColor(card.name)]">
+                  {{ card.name.charAt(0) }}
+                </div>
+                <div class="absolute bottom-0 left-0 right-0 truncate bg-black/60 px-1 py-0.5 text-center text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  {{ card.name }}
+                </div>
+                <!-- Hover Favorite Star -->
+                <button
+                  :class="[
+                    'absolute top-0.5 right-0.5 h-4 w-4 flex items-center justify-center rounded-full bg-black/40 hover:bg-black/60 transition-opacity cursor-pointer',
+                    isCharFav(id) ? 'text-amber-400 opacity-100' : 'text-white opacity-0 group-hover:opacity-100',
+                  ]"
+                  @click.stop="toggleCharFav(id)"
+                >
+                  <span :class="isCharFav(id) ? 'i-solar:star-bold text-[10px]' : 'i-solar:star-linear text-[10px]'" />
+                </button>
+              </div>
+              <div v-if="sortedCharacters.length === 0" class="col-span-3 flex flex-col items-center justify-center py-6 text-center opacity-40">
+                <span class="i-solar:user-bold-duotone text-xl" />
+                <span class="mt-1 text-[9px]">No characters found</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- FOOTER -->
+          <div class="grid grid-cols-3 gap-1 border-t border-neutral-200 pt-2 dark:border-neutral-800">
             <button
-              class="flex items-center justify-center gap-1.5 rounded-xl bg-sky-500/10 px-2 py-1.5 text-[11px] text-sky-600 font-semibold transition-colors hover:bg-sky-500/20 dark:text-sky-400"
+              class="flex cursor-pointer items-center justify-center gap-1 rounded-xl bg-sky-500/10 py-1.5 text-[10px] text-sky-600 font-semibold transition-colors hover:bg-sky-500/20 dark:text-sky-400"
               @click="handleViewGallery"
             >
-              <span class="i-solar:gallery-linear text-sm" />
+              <span class="i-solar:gallery-linear text-xs" />
               Gallery
             </button>
             <button
-              class="flex items-center justify-center gap-1.5 rounded-xl bg-purple-500/10 px-2 py-1.5 text-[11px] text-purple-600 font-semibold transition-colors hover:bg-purple-500/20 dark:text-purple-400"
+              class="flex cursor-pointer items-center justify-center gap-1 rounded-xl bg-amber-500/10 py-1.5 text-[10px] text-amber-600 font-semibold transition-colors hover:bg-amber-500/20 dark:text-amber-400"
+              @click="handleEditActiveCard"
+            >
+              <span class="i-solar:pen-linear text-xs" />
+              Edit
+            </button>
+            <button
+              class="flex cursor-pointer items-center justify-center gap-1 rounded-xl bg-purple-500/10 py-1.5 text-[10px] text-purple-600 font-semibold transition-colors hover:bg-purple-500/20 dark:text-purple-400"
               @click="handleManageProfiles"
             >
-              <span class="i-solar:settings-outline text-sm" />
-              Profiles
+              <span class="i-solar:settings-outline text-xs" />
+              Cards
             </button>
           </div>
         </div>

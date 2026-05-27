@@ -93,7 +93,13 @@ export function setupSettingsWindowReusableFunc(params: {
       settingsContext.emit(electronSettingsNavigate, { route })
     }
 
-    toggleWindowShow(window)
+    if (window.isVisible()) {
+      window.show()
+      window.focus()
+    }
+    else {
+      toggleWindowShow(window)
+    }
   }
 
   return {

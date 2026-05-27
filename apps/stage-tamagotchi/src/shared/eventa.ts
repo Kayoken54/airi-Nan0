@@ -261,6 +261,9 @@ export interface ControlStripStatePayload {
   activePopover: string | null
   lastPlacement: string
   orientation: 'vertical' | 'horizontal'
+  collapsed?: boolean
+  backgroundColor?: string
+  stripLength?: number
 }
 export const electronControlStripSyncState = defineInvokeEventa<void, ControlStripStatePayload>('eventa:invoke:electron:windows:control-strip:sync-state')
 export interface ApplySizePresetPayload {

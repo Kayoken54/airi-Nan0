@@ -302,7 +302,7 @@ function getModuleDisplayValue(value: string | undefined, defaultValue: string |
             <!-- Card content tabs -->
             <div class="mt-4">
               <div class="border-b border-neutral-200 dark:border-neutral-700">
-                <div class="flex justify-center -mb-px sm:justify-start space-x-1">
+                <div class="flex flex-wrap justify-center gap-x-1 gap-y-1.5 -mb-px sm:justify-start">
                   <button
                     v-for="tab in tabs"
                     :key="tab.id"

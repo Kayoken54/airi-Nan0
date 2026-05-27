@@ -44,6 +44,7 @@ import {
   electronPluginSetEnabled,
   electronPluginUnload,
   electronPluginUpdateCapability,
+  electronSettingsNavigate,
   electronShowToastEvent,
   electronStartTrackMousePosition,
   i18nSetLocale,
@@ -250,6 +251,13 @@ onMounted(async () => {
         description: payload.description,
         duration: payload.duration || 4000,
       })
+    })
+    ctx.on(electronSettingsNavigate, (event) => {
+      const payload = event?.body
+      if (payload?.route) {
+        console.log('[Settings] Navigating to:', payload.route)
+        router.push(payload.route)
+      }
     })
   }, { immediate: true })
 })
