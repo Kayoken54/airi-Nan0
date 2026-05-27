@@ -1002,6 +1002,10 @@ function openSparkleGenerator(fieldId: string) {
     generatorFieldLabel.value = 'Speech Tags / Audio Expressions'
     generatorFieldValue.value = selectedActingSpeechExpressionPrompt.value
   }
+  else if (fieldId === 'artistryPromptPrefix') {
+    generatorFieldLabel.value = 'Artistry Prompt Default Prefix'
+    generatorFieldValue.value = selectedArtistryPromptPrefix.value
+  }
   showGeneratorModal.value = true
 }
 
@@ -1032,6 +1036,9 @@ function handleGeneratorSave(newValue: string) {
   }
   else if (generatorFieldId.value === 'actingSpeechExpression') {
     selectedActingSpeechExpressionPrompt.value = newValue
+  }
+  else if (generatorFieldId.value === 'artistryPromptPrefix') {
+    selectedArtistryPromptPrefix.value = newValue
   }
 }
 </script>
@@ -1170,6 +1177,7 @@ function handleGeneratorSave(newValue: string) {
             v-model:selected-artistry-config-str="selectedArtistryConfigStr"
             :artistry-provider-options="artistryProviderOptions"
             :default-artistry-provider-placeholder="getDefaultPlaceholder(defaultArtistryProvider)"
+            @sparkle-click="openSparkleGenerator"
           />
           <CardCreationTabProactivity
             v-else-if="activeTab === 'proactivity'"

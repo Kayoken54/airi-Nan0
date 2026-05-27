@@ -157,6 +157,16 @@ const guidanceConfig: Record<string, FieldGuidance> = {
       { id: 'parentheses', label: 'Parentheses', prompt: 'Write TTS optimization guidelines using Parentheses format (e.g., (smiling gently) Hello!).' },
     ],
   },
+  artistryPromptPrefix: {
+    title: 'Artistry Prompt Default Prefix',
+    prose: 'The physical description tags sent to the Stable Diffusion image generator. These visual prompt weights make sure generated backgrounds and drawings look identical to your companion.',
+    systemInstruction: 'You are an expert prompt crafter. Your task is to extract key physical traits from the companion\'s description and personality, then convert them into high-quality, comma-separated Stable Diffusion prompt tags with weights (e.g. (((short brown bob hair:1.5))), ((amber eyes:1.4))). Follow the style specified by the template prompt strictly.',
+    templates: [
+      { id: 'default', label: 'Style & Look & Outfit', prompt: 'Generates general style tags (medium, lighting, aesthetic) + facial/body description + default attire and clothing accessories, represented as weighted comma-separated tags.' },
+      { id: 'style_look_base', label: 'Style & Look (Base Character DNA)', prompt: 'Generates style tags + facial/body description (e.g., hair color/length, eye color, height) as weighted tags. Intentionally excludes clothing and outfits to allow modular outfit swaps.' },
+      { id: 'pure_style', label: 'Pure Style', prompt: 'Generates only media/aesthetic style tokens (e.g., cell-shaded anime style, 8k resolution, soft studio lighting) without describing the character itself.' },
+    ],
+  },
 }
 
 const currentGuidance = computed<FieldGuidance>(() => {

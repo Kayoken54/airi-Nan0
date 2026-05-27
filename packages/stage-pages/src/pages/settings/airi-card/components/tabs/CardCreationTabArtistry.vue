@@ -10,6 +10,9 @@ defineProps<{
   artistryProviderOptions: { value: string, label: string }[]
   defaultArtistryProviderPlaceholder: string
 }>()
+const emit = defineEmits<{
+  (e: 'sparkle-click', fieldId: string): void
+}>()
 const selectedArtistryProvider = defineModel<string>('selectedArtistryProvider', { required: true })
 const selectedArtistryModel = defineModel<string>('selectedArtistryModel', { required: true })
 const selectedArtistryPromptPrefix = defineModel<string>('selectedArtistryPromptPrefix', { required: true })
@@ -383,12 +386,35 @@ function applyTokenTemplate() {
           </div>
         </div>
 
-        <FieldInput
-          v-model="selectedArtistryPromptPrefix"
-          label="Artistry Prompt Default Prefix"
-          description="Pre-pended to every prompt sent to the image generator."
-          placeholder="e.g. Masterpiece, high quality, 1girl, anime,"
-        />
+        <div class="max-w-full">
+          <label class="flex flex-col gap-4">
+            <div>
+              <div class="flex items-center gap-1 text-sm font-medium">
+                Artistry Prompt Default Prefix
+              </div>
+              <div class="text-xs text-neutral-500 dark:text-neutral-400">
+                Pre-pended to every prompt sent to the image generator.
+              </div>
+            </div>
+            <div class="relative w-full">
+              <textarea
+                v-model="selectedArtistryPromptPrefix"
+                rows="6"
+                placeholder="e.g. Masterpiece, high quality, 1girl, anime,"
+                class="focus:primary-300 dark:focus:primary-400/50 text-disabled:neutral-400 dark:text-disabled:neutral-600 cursor-disabled:not-allowed w-full border-2 border-neutral-100 rounded-lg border-solid bg-neutral-50 py-1.5 pl-2 pr-9 text-sm shadow-sm outline-none transition-all duration-200 ease-in-out dark:border-neutral-900 dark:bg-neutral-950 focus:bg-neutral-50 dark:focus:bg-neutral-900"
+              />
+              <button
+                type="button"
+                style="position: absolute; top: 8px; right: 8px; z-index: 50; display: flex; height: 32px; width: 32px; align-items: center; justify-content: center; border-radius: 8px; border: none; cursor: pointer; background: transparent;"
+                class="text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-primary-500 dark:hover:bg-neutral-800 dark:hover:text-primary-400"
+                title="Optimize with AI"
+                @click.prevent="emit('sparkle-click', 'artistryPromptPrefix')"
+              >
+                <span i-ph:sparkle class="i-ph:sparkle animate-pulse text-lg" style="display: inline-block; width: 1.2em; height: 1.2em;" />
+              </button>
+            </div>
+          </label>
+        </div>
 
         <div class="mb-2 flex items-center gap-2">
           <button
