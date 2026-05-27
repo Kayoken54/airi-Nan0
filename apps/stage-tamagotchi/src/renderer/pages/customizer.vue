@@ -72,52 +72,76 @@ const DEFAULT_ORDER = [
   'gemini-manual-capture',
 ]
 
-const dragIndex = ref<number | null>(null)
-const dragOverIndex = ref<number | null>(null)
+// ── Preview strip — pointer-event drag-to-sort (HTML5 DnD is broken in Electron) ────────
+const stripDragIndex = ref<number | null>(null)
+// Insert-before position: 0 = before first, activeButtons.length = after last
+const stripInsertAt = ref<number | null>(null)
+// Ghost icon position (follows cursor during drag)
+const stripGhostPos = ref<{ x: number, y: number } | null>(null)
+// Refs to each rendered strip icon, populated by :ref binding in template
+const stripIconRefs = ref<(HTMLElement | null)[]>([])
 
-function onDragStart(index: number, event: DragEvent) {
-  dragIndex.value = index
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.dropEffect = 'move'
-    event.dataTransfer.setData('text/plain', index.toString())
-  }
+function setStripIconRef(el: HTMLElement | null, index: number) {
+  stripIconRefs.value[index] = el
 }
 
-function onDragOver(index: number, event: DragEvent) {
-  event.preventDefault()
-  if (dragIndex.value === null)
+/** True when this insert position is a no-op (dragged item stays in place) */
+function isNoOp(pos: number): boolean {
+  const from = stripDragIndex.value
+  if (from === null)
+    return false
+  return pos === from || pos === from + 1
+}
+
+/** Compute insert-before index from cursor X against rendered icon rects */
+function computeInsertAt(clientX: number): number {
+  const icons = stripIconRefs.value
+  for (let i = 0; i < icons.length; i++) {
+    const el = icons[i]
+    if (!el)
+      continue
+    const rect = el.getBoundingClientRect()
+    if (clientX < rect.left + rect.width / 2)
+      return i
+  }
+  return icons.length
+}
+
+function onStripMouseDown(index: number, event: MouseEvent) {
+  if (event.button !== 0)
     return
-  dragOverIndex.value = index
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move'
-  }
-}
-
-function onDragLeave(index: number) {
-  if (dragOverIndex.value === index) {
-    dragOverIndex.value = null
-  }
-}
-
-function onDrop(index: number, event: DragEvent) {
   event.preventDefault()
-  if (dragIndex.value !== null && dragIndex.value !== index) {
-    const activeList = [...activeButtons.value]
-    const draggedItem = activeList[dragIndex.value]
-    activeList.splice(dragIndex.value, 1)
-    activeList.splice(index, 0, draggedItem)
+  stripDragIndex.value = index
+  stripInsertAt.value = index // start with no-op position
+  stripGhostPos.value = { x: event.clientX, y: event.clientY }
+  document.addEventListener('mousemove', onStripMouseMove)
+  document.addEventListener('mouseup', onStripMouseUp)
+}
 
+function onStripMouseMove(event: MouseEvent) {
+  if (stripDragIndex.value === null)
+    return
+  stripGhostPos.value = { x: event.clientX, y: event.clientY }
+  stripInsertAt.value = computeInsertAt(event.clientX)
+}
+
+function onStripMouseUp() {
+  const from = stripDragIndex.value
+  const to = stripInsertAt.value
+  if (from !== null && to !== null && !isNoOp(to)) {
+    const activeList = [...activeButtons.value]
+    const [draggedItem] = activeList.splice(from, 1)
+    // Adjust target index since we removed one item before it
+    const adjustedTo = from < to ? to - 1 : to
+    activeList.splice(adjustedTo, 0, draggedItem)
     const disabledList = buttons.value.filter(btn => !btn.enabled)
     buttons.value = [...activeList, ...disabledList]
   }
-  dragIndex.value = null
-  dragOverIndex.value = null
-}
-
-function onDragEnd() {
-  dragIndex.value = null
-  dragOverIndex.value = null
+  stripDragIndex.value = null
+  stripInsertAt.value = null
+  stripGhostPos.value = null
+  document.removeEventListener('mousemove', onStripMouseMove)
+  document.removeEventListener('mouseup', onStripMouseUp)
 }
 
 function resetOrderOnly() {
@@ -298,6 +322,12 @@ onMounted(() => {
     })
   }
 })
+
+// Cleanup pointer listeners if component is unmounted mid-drag
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onStripMouseMove)
+  document.removeEventListener('mouseup', onStripMouseUp)
+})
 </script>
 
 <template>
@@ -389,38 +419,82 @@ onMounted(() => {
 
                 <!-- Interactive Strip Mockup -->
                 <div
-                  class="pointer-events-none h-14 flex flex-row items-center gap-2.5 border border-white/25 rounded-full px-4 py-2 shadow-2xl backdrop-blur-xl transition-all duration-300 dark:border-neutral-800/60"
+                  class="h-14 flex flex-row select-none items-center gap-2.5 border border-white/25 rounded-full px-4 py-2 shadow-2xl backdrop-blur-xl transition-all duration-300 dark:border-neutral-800/60"
                   :style="{
                     backgroundColor: backgroundTint,
                     opacity: 0.85,
                   }"
                 >
-                  <!-- Mock Drag Endcap Handle -->
-                  <div class="h-8 w-8 flex items-center justify-center border border-white/5 rounded-full bg-white/10 text-neutral-400">
+                  <!-- Mock Drag Endcap Handle (non-interactive) -->
+                  <div class="pointer-events-none h-8 w-8 flex shrink-0 items-center justify-center border border-white/5 rounded-full bg-white/10 text-neutral-400">
                     <span class="i-solar:double-alt-arrow-down-linear rotate-90 text-base" />
                   </div>
 
-                  <!-- Render active buttons -->
-                  <div class="flex flex-row items-center gap-2.5">
-                    <div
-                      v-for="btn in activeButtons"
-                      :key="btn.id"
-                      class="relative h-8 w-8 flex items-center justify-center border border-white/15 rounded-full bg-white/10 text-neutral-200"
-                    >
-                      <span :class="[getButtonIcon(btn.id, btn.icon), 'text-base']" />
-                    </div>
+                  <!-- Pointer-draggable strip icons with insertion indicator -->
+                  <div class="flex flex-row items-center gap-1.5">
+                    <!-- Indicator: before first item -->
+                    <transition name="insert-indicator">
+                      <div
+                        v-if="stripInsertAt === 0 && stripDragIndex !== null && !isNoOp(0)"
+                        class="h-7 w-0.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]"
+                      />
+                    </transition>
+
+                    <template v-for="(btn, index) in activeButtons" :key="btn.id">
+                      <div
+                        :ref="(el) => setStripIconRef(el as HTMLElement | null, index)"
+                        class="relative h-8 w-8 flex shrink-0 select-none items-center justify-center border rounded-full bg-white/10 text-neutral-200 transition-all duration-150"
+                        :class="[
+                          stripDragIndex === index
+                            ? 'opacity-20 scale-75 border-white/10 cursor-grabbing'
+                            : stripDragIndex !== null
+                              ? 'border-white/25 cursor-grabbing ring-1 ring-emerald-400/25'
+                              : 'border-white/15 cursor-grab hover:border-emerald-400/50 hover:bg-white/15',
+                        ]"
+                        @mousedown="onStripMouseDown(index, $event)"
+                      >
+                        <span :class="[getButtonIcon(btn.id, btn.icon), 'text-base pointer-events-none']" />
+                      </div>
+
+                      <!-- Indicator: after this item -->
+                      <transition name="insert-indicator">
+                        <div
+                          v-if="stripInsertAt === index + 1 && stripDragIndex !== null && !isNoOp(index + 1)"
+                          class="h-7 w-0.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]"
+                        />
+                      </transition>
+                    </template>
                   </div>
                 </div>
 
-                <div class="pointer-events-none mt-3 text-[9px] text-neutral-500 font-medium tracking-wide">
-                  Control Strip Real-Time Mock
+                <div class="pointer-events-none mt-3 flex items-center gap-1.5 text-[9px] text-neutral-500 font-medium">
+                  <span class="i-solar:hand-shake-linear text-xs" />
+                  Drag the icons above to reorder your strip
                 </div>
+
+                <!-- Ghost icon that follows the cursor during drag -->
+                <Teleport to="body">
+                  <transition name="ghost">
+                    <div
+                      v-if="stripGhostPos && stripDragIndex !== null && activeButtons[stripDragIndex]"
+                      class="pointer-events-none fixed z-[9999] h-8 w-8 flex items-center justify-center border border-emerald-400/70 rounded-full bg-neutral-900/95 text-neutral-100 shadow-lg ring-1 ring-emerald-400/40"
+                      :style="{
+                        left: `${stripGhostPos.x - 16}px`,
+                        top: `${stripGhostPos.y - 16}px`,
+                        transform: 'scale(1.2)',
+                        transition: 'transform 0.1s ease',
+                      }"
+                    >
+                      <span :class="[getButtonIcon(activeButtons[stripDragIndex].id, activeButtons[stripDragIndex].icon), 'text-base']" />
+                    </div>
+                  </transition>
+                </Teleport>
               </div>
 
               <!-- Two-Column Grid -->
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <!-- Left Column: Active Items Sorting -->
-                <div class="relative flex flex-col gap-3 border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
+                <div class="relative flex flex-col gap-2 border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
                   <div class="flex items-center justify-between border-b border-white/5 pb-2">
                     <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Active Buttons</span>
 
@@ -441,47 +515,32 @@ onMounted(() => {
                     </div>
                   </div>
 
-                  <!-- Draggable Active Slots List -->
-                  <div class="scrollbar-hide max-h-[300px] overflow-y-auto py-1 pr-1 space-y-2">
+                  <!-- Sub-blurb -->
+                  <p class="text-[9px] text-neutral-500 leading-relaxed">
+                    Quickly remove unused buttons
+                  </p>
+
+                  <!-- Toggle-only Active Slots List -->
+                  <div class="scrollbar-hide max-h-[300px] overflow-y-auto pr-1 space-y-1">
                     <transition-group name="list">
                       <div
-                        v-for="(btn, index) in activeButtons"
+                        v-for="btn in activeButtons"
                         :key="btn.id"
-                        draggable="true"
-                        style="-webkit-user-drag: element;"
-                        class="group flex items-center justify-between border border-white/5 rounded-xl bg-black/25 px-3 py-2 transition-all duration-200 hover:border-white/10 hover:bg-black/45"
-                        :class="{
-                          'drag-over-top': dragOverIndex === index && dragIndex !== null && index < dragIndex,
-                          'drag-over-bottom': dragOverIndex === index && dragIndex !== null && index > dragIndex,
-                        }"
-                        @dragstart="onDragStart(index, $event)"
-                        @dragover="onDragOver(index, $event)"
-                        @dragleave="onDragLeave(index)"
-                        @drop="onDrop(index, $event)"
-                        @dragend="onDragEnd"
+                        class="flex items-center justify-between border border-white/5 rounded-lg bg-black/25 px-2.5 py-1.5 transition-all duration-200 hover:border-white/10 hover:bg-black/40"
                       >
-                        <!-- Left Handlebar -->
+                        <!-- Icon and Label -->
                         <div class="flex items-center gap-2">
-                          <div
-                            class="flex cursor-grab items-center justify-center px-0.5 py-1 text-neutral-500 transition-colors hover:text-neutral-300"
-                          >
-                            <span class="i-lucide:grip-vertical text-sm" />
-                          </div>
-
-                          <!-- Icon and Label -->
-                          <div class="flex items-center gap-2">
-                            <div :class="[getButtonIcon(btn.id, btn.icon), 'text-neutral-300 text-sm shrink-0']" />
-                            <span class="text-xs text-neutral-200 font-medium">{{ btn.label }}</span>
-                          </div>
+                          <div :class="[getButtonIcon(btn.id, btn.icon), 'text-neutral-400 text-sm shrink-0']" />
+                          <span class="text-xs text-neutral-300 font-medium">{{ btn.label }}</span>
                         </div>
 
-                        <!-- Right Close "x" to Disable -->
+                        <!-- Right ✕ to Disable -->
                         <button
-                          class="cursor-pointer p-1 text-red-500 transition-colors hover:text-red-400"
-                          title="Disable button"
+                          class="cursor-pointer rounded p-0.5 text-neutral-600 transition-colors hover:text-red-400"
+                          title="Remove from strip"
                           @click="disableButton(btn.id)"
                         >
-                          <span class="i-lucide:x block text-base" />
+                          <span class="i-lucide:x block text-sm" />
                         </button>
                       </div>
                     </transition-group>
@@ -707,11 +766,23 @@ onMounted(() => {
   transform: translateY(12px);
 }
 
-.drag-over-top {
-  box-shadow: inset 0 2px 0 0 #34d399 !important;
+.insert-indicator-enter-active,
+.insert-indicator-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
 }
-.drag-over-bottom {
-  box-shadow: inset 0 -2px 0 0 #34d399 !important;
+.insert-indicator-enter-from,
+.insert-indicator-leave-to {
+  opacity: 0;
+  transform: scaleY(0.4);
+}
+
+.ghost-enter-active,
+.ghost-leave-active {
+  transition: opacity 0.08s ease;
+}
+.ghost-enter-from,
+.ghost-leave-to {
+  opacity: 0;
 }
 </style>
 
