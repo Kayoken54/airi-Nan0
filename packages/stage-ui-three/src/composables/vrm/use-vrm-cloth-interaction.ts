@@ -39,7 +39,9 @@ export function useVRMClothInteraction() {
   const tetherPosBuffer = new Float32Array(6) // Reuse this buffer
   lineGeom.setAttribute('position', new THREE.BufferAttribute(tetherPosBuffer, 3))
   const lineMat = new THREE.LineBasicMaterial({ color: 0x00FFFF, transparent: true, opacity: 0.4 })
-  const tetherLine = shallowRef<Line>(new Line(lineGeom, lineMat))
+  const line = new Line(lineGeom, lineMat)
+  line.visible = false
+  const tetherLine = shallowRef<Line>(line)
   const basePosition = new Vector3()
   const currentTension = ref(0)
   const maxStretch = 0.15 // 15cm max pull
