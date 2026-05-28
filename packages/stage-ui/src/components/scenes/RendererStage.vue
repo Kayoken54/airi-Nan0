@@ -147,7 +147,7 @@ defineExpose({
       :render-scale-override="isWindowResizing ? reducedRenderScale : undefined"
       :class="['min-w-50% <lg:full min-h-100 sm:100', 'h-full w-full flex-1']"
       :paused="paused"
-      :show-axes="stageViewControlsEnabled"
+      :show-axes="false"
       :current-audio-source="currentAudioSource"
       :scale="scale !== undefined ? Number(scale) : undefined"
       :x-offset="xOffset !== undefined ? Number(xOffset) : undefined"

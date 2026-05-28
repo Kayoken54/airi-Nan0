@@ -411,25 +411,9 @@ export function useVRMClothInteraction() {
   }
 
   function updateTether(vrm: VRM) {
-    if (!tetherLine.value || !isDragging.value || !targetBone.value) {
-      if (tetherLine.value)
-        tetherLine.value.visible = false
-      return
+    if (tetherLine.value) {
+      tetherLine.value.visible = false
     }
-
-    const mouthPoint = new Vector3()
-    const anchor = nodes.jaw || nodes.head
-    if (anchor)
-      anchor.getWorldPosition(mouthPoint)
-    else vrm.scene.getWorldPosition(mouthPoint)
-
-    const bonePos = new Vector3()
-    targetBone.value.getWorldPosition(bonePos)
-
-    // Note: Line geometry setFromPoints is fine for prototype
-    tetherLine.value.visible = true
-    const geometry = tetherLine.value.geometry as THREE.BufferGeometry
-    geometry.setFromPoints([mouthPoint, bonePos])
   }
 
   return {
