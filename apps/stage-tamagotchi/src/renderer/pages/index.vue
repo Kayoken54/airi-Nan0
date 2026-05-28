@@ -751,9 +751,11 @@ onMounted(async () => {
   const h = controlStripStore.orientation === 'vertical' ? stripLength.value : 56
   const current = await getBounds()
   if (current) {
+    const targetX = (mainConfig?.x !== undefined && !isNaN(mainConfig.x)) ? mainConfig.x : current.x
+    const targetY = (mainConfig?.y !== undefined && !isNaN(mainConfig.y)) ? mainConfig.y : current.y
     await setBounds([{
-      x: current.x,
-      y: current.y,
+      x: Math.round(targetX),
+      y: Math.round(targetY),
       width: w,
       height: h,
     }])
