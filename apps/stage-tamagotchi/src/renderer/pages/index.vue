@@ -200,10 +200,10 @@ const activeButtons = computed(() => {
 
 const stripLength = computed(() => {
   if (collapsed.value) {
-    return 60
+    return 52
   }
   const N = activeButtons.value.length
-  return N === 0 ? 60 : 60 + 46 * N
+  return N === 0 ? 52 : 52 + 44 * N
 })
 
 async function applyBoundsUpdate(nextPopover: string | null, nextPlacement: 'left' | 'right' | 'top' | 'bottom') {
@@ -214,18 +214,18 @@ async function applyBoundsUpdate(nextPopover: string | null, nextPlacement: 'lef
   // 1. Calculate the unexpanded strip bounds from the current window bounds
   let x = current.x
   let y = current.y
-  const w = lastOrientation.value === 'vertical' ? 56 : stripLength.value
-  const h = lastOrientation.value === 'vertical' ? stripLength.value : 56
+  const w = lastOrientation.value === 'vertical' ? 48 : stripLength.value
+  const h = lastOrientation.value === 'vertical' ? stripLength.value : 48
 
   if (activePopover.value) {
     const placement = lastPlacement.value || 'bottom'
     if (lastOrientation.value === 'vertical') {
-      x = current.x + (placement === 'left' ? 268 : 0)
+      x = current.x + (placement === 'left' ? 276 : 0)
       y = current.y + (current.height - stripLength.value) / 2
     }
     else {
       x = current.x + (current.width - stripLength.value) / 2
-      y = current.y + (placement === 'top' ? 280 : 0)
+      y = current.y + (placement === 'top' ? 288 : 0)
     }
   }
 
@@ -239,14 +239,14 @@ async function applyBoundsUpdate(nextPopover: string | null, nextPlacement: 'lef
     if (controlStripStore.orientation === 'vertical') {
       targetW = 324
       targetH = Math.max(336, h)
-      targetX = x - (nextPlacement === 'left' ? 268 : 0)
+      targetX = x - (nextPlacement === 'left' ? 276 : 0)
       targetY = y - (targetH - h) / 2
     }
     else {
       targetW = Math.max(336, w)
       targetH = 336
       targetX = x - (targetW - w) / 2
-      targetY = y - (nextPlacement === 'top' ? 280 : 0)
+      targetY = y - (nextPlacement === 'top' ? 288 : 0)
     }
   }
 
@@ -267,8 +267,8 @@ watch([stripLength, () => controlStripStore.orientation], async ([newLength, new
     await applyBoundsUpdate(activePopover.value, lastPlacement.value || 'bottom')
   }
   else {
-    const w = newOrientation === 'vertical' ? 56 : newLength
-    const h = newOrientation === 'vertical' ? newLength : 56
+    const w = newOrientation === 'vertical' ? 48 : newLength
+    const h = newOrientation === 'vertical' ? newLength : 48
     const current = await getBounds()
     if (current) {
       await setBounds([{
@@ -747,13 +747,15 @@ onMounted(async () => {
 
   // Resize window to fit Control Strip initially
   lastOrientation.value = controlStripStore.orientation
-  const w = controlStripStore.orientation === 'vertical' ? 56 : stripLength.value
-  const h = controlStripStore.orientation === 'vertical' ? stripLength.value : 56
+  const w = controlStripStore.orientation === 'vertical' ? 48 : stripLength.value
+  const h = controlStripStore.orientation === 'vertical' ? stripLength.value : 48
   const current = await getBounds()
   if (current) {
+    const targetX = (mainConfig?.x !== undefined && !isNaN(mainConfig.x)) ? mainConfig.x : current.x
+    const targetY = (mainConfig?.y !== undefined && !isNaN(mainConfig.y)) ? mainConfig.y : current.y
     await setBounds([{
-      x: current.x,
-      y: current.y,
+      x: Math.round(targetX),
+      y: Math.round(targetY),
       width: w,
       height: h,
     }])

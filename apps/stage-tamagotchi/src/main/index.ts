@@ -649,6 +649,9 @@ app.whenReady().then(async () => {
         }
 
         if (targetWin && !targetWin.isDestroyed()) {
+          if (targetWin.isMaximized()) {
+            targetWin.unmaximize()
+          }
           targetWin.setBounds(newBounds)
         }
       })

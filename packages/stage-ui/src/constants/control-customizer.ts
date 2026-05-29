@@ -311,10 +311,10 @@ export const CUSTOMIZER_CATALOG: CustomizerGroup[] = [
       },
       {
         id: 'gemini-voice',
-        label: 'Voice Cycle',
-        description: 'Cycles through active character text-to-speech output voices.',
+        label: 'Voice Switch',
+        description: 'Swaps speech configuration or active Gemini voice.',
         icon: 'i-solar:user-speak-linear',
-        type: 'cycler',
+        type: 'menu',
         defaultOnStrip: false,
       },
       {

@@ -1065,6 +1065,8 @@ export const useLiveSessionStore = defineStore('live-session', () => {
     messages,
     lastTranscript,
     totalTokens,
+    voiceTokens,
+    inferenceTokens,
     tokenDetails,
     voiceName,
     isGroundingEnabled,

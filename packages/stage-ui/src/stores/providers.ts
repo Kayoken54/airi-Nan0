@@ -70,8 +70,8 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
+import { getKokoroAdapter } from '../libs/inference/adapters/kokoro'
 import { appLocalAudioTranscription } from '../libs/providers/providers/transcription/app-local-audio-transcription'
-import { getKokoroWorker } from '../workers/kokoro'
 import { getDefaultKokoroModel, KOKORO_MODELS, kokoroModelsToModelInfo } from '../workers/kokoro/constants'
 import { createAliyunNLSProvider as createAliyunNlsStreamProvider } from './providers/aliyun/stream-transcription'
 import { models as elevenLabsModels } from './providers/elevenlabs/list-models'
@@ -2654,8 +2654,8 @@ export const useProvidersStore = defineStore('providers', () => {
       },
 
       createProvider: async (_config) => {
-        // Import the worker manager
-        const workerManagerPromise = getKokoroWorker()
+        // Import the adapter
+        const adapterPromise = getKokoroAdapter()
 
         const provider: SpeechProvider = {
           speech: () => {
@@ -2676,19 +2676,19 @@ export const useProvidersStore = defineStore('providers', () => {
                     throw new Error('Voice parameter is required')
                   }
 
-                  const workerManager = await workerManagerPromise
+                  const adapter = await adapterPromise
 
                   // Ensure the model is loaded before generating speech
                   const modelId = _config.model as string
                   if (modelId) {
                     const modelDef = KOKORO_MODELS.find(m => m.id === modelId)
                     if (modelDef) {
-                      await workerManager.loadModel(modelDef.quantization, modelDef.platform)
+                      await adapter.loadModel(modelDef.quantization, modelDef.platform)
                     }
                   }
 
                   // Generate audio in the worker thread
-                  const buffer = await workerManager.generate(text, voice)
+                  const buffer = await adapter.generate(text, voice)
 
                   return new Response(buffer, {
                     status: 200,
@@ -2736,8 +2736,20 @@ export const useProvidersStore = defineStore('providers', () => {
           }
 
           try {
-            const workerManager = await getKokoroWorker()
-            await workerManager.loadModel(modelDef.quantization, modelDef.platform, { onProgress: _hooks?.onProgress })
+            const adapter = await getKokoroAdapter()
+            const onProgress = _hooks?.onProgress
+              ? (p: any) => {
+                  _hooks.onProgress!({
+                    status: 'progress',
+                    file: p.file || '',
+                    name: p.file || '',
+                    progress: p.percent,
+                    loaded: p.loaded ?? 0,
+                    total: p.total ?? 0,
+                  })
+                }
+              : undefined
+            await adapter.loadModel(modelDef.quantization, modelDef.platform, { onProgress })
           }
           catch (error) {
             console.error('Failed to load Kokoro model:', error)
@@ -2761,14 +2773,14 @@ export const useProvidersStore = defineStore('providers', () => {
                 }
 
                 // Load the model
-                const workerManager = await getKokoroWorker()
-                await workerManager.loadModel(modelDef.quantization, modelDef.platform)
+                const adapter = await getKokoroAdapter()
+                await adapter.loadModel(modelDef.quantization, modelDef.platform)
               }
             }
 
-            // Get worker manager and fetch voices from the model
-            const workerManager = await getKokoroWorker()
-            const modelVoices = workerManager.getVoices()
+            // Get adapter and fetch voices from the model
+            const adapter = await getKokoroAdapter()
+            const modelVoices = adapter.getVoices()
 
             // Language code mapping
             const languageMap: Record<string, { code: string, title: string }> = {

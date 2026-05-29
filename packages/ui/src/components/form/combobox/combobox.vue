@@ -17,10 +17,13 @@ import {
   ComboboxViewport,
 } from 'reka-ui'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   options: { groupLabel: string, children?: { label: string, value: T }[] }[]
   placeholder?: string
-}>()
+  openOnClick?: boolean
+}>(), {
+  openOnClick: true,
+})
 
 const modelValue = defineModel<T>({ required: false })
 
@@ -31,7 +34,11 @@ function toDisplayValue(value: T): string {
 </script>
 
 <template>
-  <ComboboxRoot v-model="modelValue" :class="['relative', 'w-full', 'h-fit']">
+  <ComboboxRoot
+    v-model="modelValue"
+    :open-on-click="props.openOnClick"
+    :class="['relative', 'w-full', 'h-fit']"
+  >
     <ComboboxAnchor
       :class="[
         'w-full inline-flex items-center justify-between rounded-xl border px-3 leading-none h-9 gap-[5px] outline-none',

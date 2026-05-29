@@ -72,11 +72,17 @@ export async function setupActorStageWindow(params: {
     },
     type: 'panel',
     alwaysOnTop: true,
+    maximizable: false,
     ...transparentWindowConfig(),
   })
 
   window.setMovable(true)
   window.setResizable(true)
+
+  ;(window as any).on('maximize', (e: any) => {
+    e.preventDefault()
+    window.unmaximize()
+  })
 
   const { context } = createContext(ipcMain, window)
   await setupBaseWindowElectronInvokes({ context, window, serverChannel: params.serverChannel, i18n: params.i18n })

@@ -20,7 +20,7 @@ import { useArtistryStore } from './artistry'
 import { useConsciousnessStore } from './consciousness'
 import { useSpeechStore } from './speech'
 
-const artistLog = import.meta.env.DEV ? console.log.bind(console, '[AutonomousArtist]') : () => {}
+function artistLog(..._args: any[]) {}
 
 export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () => {
   const llmStore = useLLM()
@@ -752,7 +752,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
                 })
               }
               catch (widgetErr) {
-                console.warn('[AutonomousArtist] Failed to spawn Result widget', widgetErr)
+                artistLog('Failed to spawn Result widget', widgetErr)
               }
               break
 
@@ -811,7 +811,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
                 })
               }
               catch (widgetErr) {
-                console.warn('[AutonomousArtist] Failed to spawn Result widget', widgetErr)
+                artistLog('Failed to spawn Result widget', widgetErr)
               }
               break
           }

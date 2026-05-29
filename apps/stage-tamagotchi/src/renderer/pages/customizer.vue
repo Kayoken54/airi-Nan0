@@ -309,6 +309,11 @@ async function closeWindow() {
   await toggleCustomizerVisibility(false)
 }
 
+function resetStats() {
+  liveSessionStore.voiceTokens = 0
+  liveSessionStore.inferenceTokens = 0
+}
+
 onMounted(() => {
   if (window.electron?.ipcRenderer) {
     const handleSetGroup = (_event: any, group: string) => {
@@ -382,6 +387,18 @@ onUnmounted(() => {
 
           <!-- Divider & Preview Option -->
           <hr class="my-2 border-white/10">
+          <button
+            :class="[
+              activeGroupId === 'stats'
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-semibold'
+                : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-neutral-200',
+              'w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all duration-200 cursor-pointer text-xs',
+            ]"
+            @click="activeGroupId = 'stats'"
+          >
+            <div class="i-solar:chart-linear shrink-0 text-base" />
+            <span class="truncate">Usage Stats</span>
+          </button>
           <button
             :class="[
               activeGroupId === 'preview'
@@ -601,6 +618,121 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="activeGroupId === 'stats'">
+            <div class="space-y-4">
+              <!-- Category Banner Header -->
+              <div class="border-b border-white/5 pb-2.5 space-y-1">
+                <h2 class="flex items-center gap-2 text-xs text-neutral-100 font-bold tracking-wide">
+                  <div class="i-solar:chart-linear text-sm text-emerald-400" />
+                  Usage Stats
+                </h2>
+                <p class="text-[10px] text-neutral-400/80 leading-relaxed">
+                  Lifetime LLM usage metrics, voice session token accumulation, and historical visualization.
+                </p>
+              </div>
+
+              <!-- Stats Cards Grid -->
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <!-- Card 1: Global Inference Tokens -->
+                <div class="flex flex-col justify-between border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-neutral-400 font-semibold tracking-wider uppercase">Inference Tokens</span>
+                    <span class="i-solar:chat-square-linear text-base text-emerald-400" />
+                  </div>
+                  <div class="mt-4">
+                    <span class="text-2xl text-neutral-100 font-bold tracking-tight">
+                      {{ Number(liveSessionStore.inferenceTokens || 0).toLocaleString() }}
+                    </span>
+                    <p class="mt-1 text-[9px] text-neutral-500">
+                      Global accumulated chat tokens
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Card 2: Voice Tokens -->
+                <div class="flex flex-col justify-between border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-neutral-400 font-semibold tracking-wider uppercase">Voice Tokens</span>
+                    <span class="i-solar:microphone-large-linear text-base text-sky-400" />
+                  </div>
+                  <div class="mt-4">
+                    <span class="text-2xl text-neutral-100 font-bold tracking-tight">
+                      {{ Number(liveSessionStore.voiceTokens || 0).toLocaleString() }}
+                    </span>
+                    <p class="mt-1 text-[9px] text-neutral-500">
+                      Gemini Live Bidi session tokens
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Card 3: Total Combined Tokens -->
+                <div class="flex flex-col justify-between border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-neutral-400 font-semibold tracking-wider uppercase">Total Tokens</span>
+                    <span class="i-solar:calculator-linear text-base text-purple-400" />
+                  </div>
+                  <div class="mt-4">
+                    <span class="text-2xl text-neutral-100 font-bold tracking-tight">
+                      {{ Number(liveSessionStore.totalTokens || 0).toLocaleString() }}
+                    </span>
+                    <p class="mt-1 text-[9px] text-neutral-500">
+                      Combined token usage
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Usage Chart Visualization -->
+              <div class="border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
+                <div class="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Last 7 Days Usage</span>
+                  <span class="text-[9px] text-neutral-500 font-mono">Mock Data</span>
+                </div>
+
+                <!-- Beautiful SVG Line Chart -->
+                <div class="mt-4 h-48 w-full">
+                  <svg class="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
+                        <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <!-- Grid Lines -->
+                    <line x1="0" y1="20" x2="100" y2="20" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" />
+                    <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" />
+                    <line x1="0" y1="80" x2="100" y2="80" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" />
+
+                    <!-- Area Under Curve -->
+                    <path d="M 0 80 Q 15 50 30 65 T 60 30 T 90 20 T 100 25 L 100 100 L 0 100 Z" fill="url(#chartGrad)" />
+
+                    <!-- Line Path -->
+                    <path d="M 0 80 Q 15 50 30 65 T 60 30 T 90 20 T 100 25" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </div>
+
+                <div class="mt-2 flex justify-between text-[8px] text-neutral-500 font-medium font-mono">
+                  <span>7d ago</span>
+                  <span>6d ago</span>
+                  <span>5d ago</span>
+                  <span>4d ago</span>
+                  <span>3d ago</span>
+                  <span>Yesterday</span>
+                  <span>Today</span>
+                </div>
+              </div>
+
+              <!-- Reset Actions -->
+              <div class="flex justify-end border-t border-white/5 pt-4">
+                <button
+                  class="cursor-pointer border border-red-500/20 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 font-bold tracking-wide uppercase transition-all duration-200 active:scale-95 hover:bg-red-500/20"
+                  @click="resetStats"
+                >
+                  Reset Counters
+                </button>
               </div>
             </div>
           </template>

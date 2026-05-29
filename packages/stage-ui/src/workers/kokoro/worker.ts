@@ -16,10 +16,15 @@ import type {
 } from '../../libs/inference/protocol'
 import type { VoiceKey, Voices } from './types'
 
+import { env } from '@huggingface/transformers'
 import { KokoroTTS } from 'kokoro-js'
 
 import { MODEL_IDS, MODEL_NAMES } from '../../libs/inference/constants'
 import { classifyError, isRecoverable } from '../../libs/inference/protocol'
+
+// Configure transformers.js environment for Web Worker / browser runtime
+env.allowLocalModels = false
+env.useBrowserCache = true
 
 // ---------------------------------------------------------------------------
 // Inference-specific input/output types
@@ -119,6 +124,28 @@ function sendError(requestId: string, error: unknown, phase?: 'load' | 'inferenc
 async function loadModel(request: LoadModelRequest): Promise<void> {
   const { requestId, device, dtype } = request
   const quantization = dtype ?? 'fp32'
+
+  // Smart cache detection to avoid network checking if already cached
+  try {
+    if (typeof caches !== 'undefined') {
+      const cache = await caches.open('transformers-cache')
+      const keys = await cache.keys()
+      const isCached = keys.some(request => request.url.includes(MODEL_IDS.KOKORO))
+      if (isCached) {
+        console.info('[Kokoro Worker] Model files found in cache. Disabling remote checks to load offline.')
+        env.allowLocalModels = true
+        env.allowRemoteModels = false
+      }
+      else {
+        console.info('[Kokoro Worker] Model files not found in cache. Enabling remote checks.')
+        env.allowLocalModels = false
+        env.allowRemoteModels = true
+      }
+    }
+  }
+  catch (e) {
+    console.warn('[Kokoro Worker] Cache check failed, proceeding with default settings:', e)
+  }
 
   try {
     // Check if we already have the correct model loaded
