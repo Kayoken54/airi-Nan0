@@ -74,6 +74,7 @@ import { useModelStore } from '../../stores/model-store'
   * - modelRotationY: The rotation of the model (y-axis)
 */
 const props = withDefaults(defineProps<{
+  mouthOpenSize?: number
   currentAudioSource?: AudioBufferSourceNode
   modelSrc?: string
   modelIdentity?: string
@@ -125,6 +126,7 @@ const emit = defineEmits<{
 }>()
 
 const {
+  mouthOpenSize,
   currentAudioSource,
   modelSrc,
   modelIdentity,
@@ -667,7 +669,13 @@ async function loadModel() {
         blink.update(activeVrm, delta)
         idleEyeSaccades.update(activeVrm, lookAtTarget, delta)
         vrmEmote.value?.update(delta)
-        vrmLipSync.update(activeVrm, delta)
+
+        if (mouthOpenSize.value !== undefined) {
+          activeVrm.expressionManager?.setValue('aa', mouthOpenSize.value * 0.75)
+        }
+        else {
+          vrmLipSync.update(activeVrm, delta)
+        }
 
         // 3. Apply expression updates to meshes
         activeVrm.expressionManager?.update()

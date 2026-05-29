@@ -35,6 +35,7 @@ import { SkyBox } from './Environment'
 import { VRMModel } from './Model'
 
 const props = withDefaults(defineProps<{
+  mouthOpenSize?: number
   currentAudioSource?: AudioBufferSourceNode
   modelSrc?: string
   modelIdentity?: string
@@ -482,6 +483,7 @@ function handlePointerUp(event: PointerEvent) {
         <VRMModel
           ref="modelRef"
 
+          :mouth-open-size="props.mouthOpenSize"
           :current-audio-source="props.currentAudioSource"
           :model-src="props.modelSrc"
           :model-identity="props.modelIdentity"
