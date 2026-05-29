@@ -135,8 +135,10 @@ defineExpose({
     />
     <ThreeScene
       v-if="stageModelRenderer === 'vrm' && stageModelSelectedUrl"
+      v-slot
       ref="vrmViewerRef"
       v-model:state="componentState"
+      :mouth-open-size="mouthOpenSize"
       :model-src="stageModelSelectedUrl"
       :model-identity="stageModelSelected"
       :idle-animation="props.vrmActiveAnimation"
