@@ -14,7 +14,19 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const hasReasoning = computed(() => !!props.message.categorization?.reasoning?.trim())
+const hasReasoning = computed(() => {
+  const reasoning = props.message.categorization?.reasoning?.trim()
+  const content = props.message.content
+  let contentText = ''
+  if (typeof content === 'string') {
+    contentText = content.trim()
+  }
+  else if (Array.isArray(content)) {
+    const textPart = content.find(part => part && typeof part === 'object' && 'type' in part && part.type === 'text') as { text?: string } | undefined
+    contentText = textPart?.text?.trim() || ''
+  }
+  return !!reasoning && reasoning !== contentText
+})
 
 const containerClasses = computed(() => [
   'mt-2',
