@@ -405,6 +405,11 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
       return
     }
 
+    if (isProcessing.value) {
+      artistLog('Skipping: artist task already in progress. Dropping this trigger.')
+      return
+    }
+
     const threshold = artistry.autonomousThreshold ?? 70
     const cardId = cardStore.activeCardId
 

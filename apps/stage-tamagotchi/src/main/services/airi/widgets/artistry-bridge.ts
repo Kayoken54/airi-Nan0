@@ -57,6 +57,10 @@ artistryProviders.set('nanobanana', new NanoBananaProvider())
 // Deduplication map for headless requests
 const pendingHeadlessRequests = new Map<string, Promise<{ imageUrl?: string, base64?: string, error?: string }>>()
 
+// Concurrency cap: only one headless generation job at a time
+let activeHeadlessCount = 0
+const MAX_CONCURRENT_HEADLESS = 1
+
 export async function generateHeadless(params: {
   prompt: string
   model?: string
@@ -81,6 +85,11 @@ export async function generateHeadless(params: {
   if (pendingHeadlessRequests.has(fingerprint)) {
     log.log(`[Headless] Deduplicating identical request: ${params.prompt.slice(0, 30)}...`)
     return pendingHeadlessRequests.get(fingerprint)!
+  }
+
+  if (activeHeadlessCount >= MAX_CONCURRENT_HEADLESS) {
+    log.log(`[Headless] Concurrency cap reached (${activeHeadlessCount}/${MAX_CONCURRENT_HEADLESS}). Dropping request.`)
+    return { error: 'Concurrency cap reached. A generation is already in progress.' }
   }
 
   const executionPromise = (async () => {
@@ -181,6 +190,7 @@ export async function generateHeadless(params: {
     }
   })()
 
+  activeHeadlessCount++
   pendingHeadlessRequests.set(fingerprint, executionPromise)
 
   try {
@@ -190,6 +200,7 @@ export async function generateHeadless(params: {
     return { error: err instanceof Error ? err.message : String(err) }
   }
   finally {
+    activeHeadlessCount--
     // Remove from map after completion so it can be re-triggered later
     pendingHeadlessRequests.delete(fingerprint)
   }
