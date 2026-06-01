@@ -254,6 +254,30 @@ describe('useLlmmarkerParser', async () => {
     expect(collectedLiterals.join('')).toBe(' Hello there.')
   })
 
+  it('should normalize malformed ACT markers closed with curly brace |} and continue emitting literals', async () => {
+    const input = '<|ACT:"emotion":{"name":"happy","intensity":0.3}|} Hello there.'
+    const collectedLiterals: string[] = []
+    const collectedSpecials: string[] = []
+
+    const parser = useLlmmarkerParser({
+      onLiteral(literal) {
+        collectedLiterals.push(literal)
+      },
+      onSpecial(special) {
+        collectedSpecials.push(special)
+      },
+    })
+
+    for (const char of input) {
+      await parser.consume(char)
+    }
+
+    await parser.end()
+
+    expect(collectedSpecials).toEqual(['<|ACT:"emotion":{"name":"happy","intensity":0.3}|>'])
+    expect(collectedLiterals.join('')).toBe(' Hello there.')
+  })
+
   it('should call onEnd with full text', async () => {
     const fullText = 'Hello, world!'
     let endText = ''

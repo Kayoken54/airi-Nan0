@@ -81,6 +81,8 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
       return token
     if (token.endsWith(TAG_CLOSE))
       return token
+    if (token.endsWith('|}'))
+      return `${token.slice(0, -2)}${TAG_CLOSE}`
     if (token.endsWith(LEGACY_TAG_CLOSE))
       return `${token.slice(0, -1)}${TAG_CLOSE}`
     return token
@@ -143,14 +145,31 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
         }
         else {
           const closeTagIndex = buffer.indexOf(TAG_CLOSE)
-          const legacyCloseTagIndex = closeTagIndex < 0 ? findLegacyCloseTagIndex() : -1
-          if (closeTagIndex < 0 && legacyCloseTagIndex < 0)
+          const curlyCloseTagIndex = buffer.indexOf('|}')
+
+          let resolvedCloseTagIndex = -1
+          let resolvedCloseTagLength = 0
+
+          if (closeTagIndex >= 0 && (curlyCloseTagIndex < 0 || closeTagIndex < curlyCloseTagIndex)) {
+            resolvedCloseTagIndex = closeTagIndex
+            resolvedCloseTagLength = TAG_CLOSE.length
+          }
+          else if (curlyCloseTagIndex >= 0) {
+            resolvedCloseTagIndex = curlyCloseTagIndex
+            resolvedCloseTagLength = 2 // '|}'.length
+          }
+          else {
+            const legacyIndex = findLegacyCloseTagIndex()
+            if (legacyIndex >= 0) {
+              resolvedCloseTagIndex = legacyIndex
+              resolvedCloseTagLength = LEGACY_TAG_CLOSE.length
+            }
+          }
+
+          if (resolvedCloseTagIndex < 0)
             break
 
-          const endIndex = closeTagIndex >= 0
-            ? closeTagIndex + TAG_CLOSE.length
-            : legacyCloseTagIndex + LEGACY_TAG_CLOSE.length
-
+          const endIndex = resolvedCloseTagIndex + resolvedCloseTagLength
           const emit = normalizeSpecialToken(buffer.slice(0, endIndex))
           buffer = buffer.slice(endIndex)
           await onSpecial(emit)
@@ -198,7 +217,9 @@ function createLlmMarkerStream(input: ReadableStream<string>, options?: MarkerPa
           write({ type: 'literal', value: literal })
         },
         async (special) => {
-          write({ type: 'special', value: special })
+          if (special.endsWith(TAG_CLOSE)) {
+            write({ type: 'special', value: special })
+          }
         },
       )
       close()
