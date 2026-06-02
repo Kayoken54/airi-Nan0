@@ -175,6 +175,14 @@ function toggleConcept(conceptId: string) {
                     'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400',
                   ]"
                 >LAYER</span>
+                <div
+                  v-if="asset.manifestation && (asset.manifestation.modelId || asset.manifestation.mood || asset.manifestation.backgroundId || asset.manifestation.active_expressions)"
+                  class="i-solar:t-shirt-outline shrink-0 text-sm text-neutral-300"
+                />
+                <div
+                  v-if="asset.speech && asset.speech.voice_id"
+                  class="i-solar:volume-loud-outline shrink-0 text-sm text-neutral-300"
+                />
               </div>
               <div class="flex items-center gap-2">
                 <div v-if="activeConcepts.includes(id as string)" class="i-solar:check-circle-bold text-xs text-primary-500" />

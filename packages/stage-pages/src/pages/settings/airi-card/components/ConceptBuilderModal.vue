@@ -122,6 +122,45 @@ watch(() => [props.modelValue, props.conceptId, props.initialData], () => {
   }
 }, { immediate: true })
 
+const manifestationSearch = ref('')
+const manifestationFormatFilter = ref<'all' | 'live2d' | 'vrm' | 'spine' | 'mmd'>('all')
+
+const mapFormatRenderer: Record<string, string> = {
+  'live2d-zip': 'Live2D',
+  'live2d-directory': 'Live2D',
+  'vrm': 'VRM',
+  'spine-zip': 'Spine',
+  'pmx-directory': 'MMD',
+  'pmx-zip': 'MMD',
+  'pmd': 'MMD',
+}
+
+const filteredManifestationModels = computed(() => {
+  let result = [...displayModelsStore.displayModels]
+
+  if (manifestationSearch.value.trim()) {
+    const q = manifestationSearch.value.toLowerCase()
+    result = result.filter(m => m.name.toLowerCase().includes(q))
+  }
+
+  if (manifestationFormatFilter.value !== 'all') {
+    result = result.filter((m) => {
+      const fmt = m.format.toLowerCase()
+      if (manifestationFormatFilter.value === 'live2d')
+        return fmt.includes('live2d')
+      if (manifestationFormatFilter.value === 'vrm')
+        return fmt === 'vrm'
+      if (manifestationFormatFilter.value === 'spine')
+        return fmt.includes('spine')
+      if (manifestationFormatFilter.value === 'mmd')
+        return fmt.includes('pmx') || fmt === 'pmd'
+      return true
+    })
+  }
+
+  return result
+})
+
 const providerOptions = [
   { value: 'inherit', label: 'Inherit Global' },
   { value: 'replicate', label: 'Replicate' },
@@ -378,56 +417,96 @@ function handleSave() {
           </div>
 
           <!-- Manifestation Tab -->
-          <div v-if="activeTab === 'manifestation'" class="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+          <div v-if="activeTab === 'manifestation'" class="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
             <div class="flex flex-col gap-2">
               <label class="text-sm text-neutral-700 font-bold dark:text-neutral-300">Physical Model Override</label>
-              <Select v-model="selectedModelId" :options="displayModelOptions" />
-              <p class="text-[10px] text-neutral-500 italic">
-                Forces a base model swap (Live2D/VRM) when this concept is active.
-              </p>
-            </div>
 
-            <div class="border-t border-neutral-100 pt-4 dark:border-neutral-800">
-              <div class="mb-3 flex items-center justify-between">
-                <div class="flex flex-col">
-                  <label class="text-sm text-neutral-700 font-bold dark:text-neutral-300">Expression Gallery (Wardrobe)</label>
-                  <p class="text-[10px] text-neutral-500 leading-relaxed italic">
-                    Toggle internal model blendshapes or clothing triggers to lock them.
-                  </p>
+              <!-- Search & Filter Controls -->
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1">
+                  <span class="i-solar:magnifer-linear absolute left-2.5 top-1/2 translate-y-[-50%] text-xs text-neutral-400" />
+                  <input
+                    v-model="manifestationSearch"
+                    type="text"
+                    placeholder="Search models..."
+                    class="w-full border border-neutral-200 rounded-lg bg-neutral-50 py-1.5 pl-8 pr-2.5 text-[11px] text-neutral-700 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+                  >
                 </div>
-                <button
-                  v-if="Object.keys(selectedExpressions).length > 0"
-                  class="text-[10px] text-red-500 font-bold tracking-wider uppercase transition-colors hover:text-red-600"
-                  @click="clearAllExpressions"
+                <select
+                  v-model="manifestationFormatFilter"
+                  class="cursor-pointer border border-neutral-200 rounded-lg bg-neutral-50 px-2 py-1.5 text-[11px] font-medium outline-none dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-300"
                 >
-                  Clear All
-                </button>
+                  <option value="all">
+                    All Formats
+                  </option>
+                  <option value="live2d">
+                    Live2D
+                  </option>
+                  <option value="vrm">
+                    VRM
+                  </option>
+                  <option value="spine">
+                    Spine
+                  </option>
+                  <option value="mmd">
+                    MMD
+                  </option>
+                </select>
               </div>
 
-              <div v-if="modelStore.availableExpressions.length" class="max-h-64 flex flex-wrap gap-2 overflow-y-auto pb-2 pr-2">
-                <button
-                  v-for="name in modelStore.availableExpressions"
-                  :key="name"
-                  class="border rounded-full px-3 py-1 text-[10px] font-medium transition-all"
-                  :class="[
-                    selectedExpressions[name] === 1
-                      ? 'bg-primary-500 text-white border-primary-500 shadow-md shadow-primary-500/20'
-                      : 'border-neutral-200 text-neutral-500 hover:border-primary-300 dark:border-neutral-700 dark:text-neutral-400',
-                  ]"
-                  @click="toggleExpression(name)"
-                >
-                  {{ name }}
-                </button>
+              <!-- Compact Models Grid -->
+              <div class="max-h-64 overflow-y-auto pr-1">
+                <div class="grid grid-cols-3 gap-2">
+                  <!-- Inherit Default Card -->
+                  <div
+                    :class="[
+                      'group relative aspect-square border rounded-xl overflow-hidden cursor-pointer flex flex-col items-center justify-center p-2 text-center transition-all duration-200',
+                      selectedModelId === 'inherit'
+                        ? 'border-primary-500 ring-2 ring-primary-500/40 bg-primary-500/5 dark:bg-primary-500/10'
+                        : 'border-neutral-200/40 dark:border-neutral-800/40 hover:ring-2 hover:ring-primary-500/50 bg-neutral-50/50 dark:bg-neutral-800/40',
+                    ]"
+                    @click="selectedModelId = 'inherit'"
+                  >
+                    <span class="i-solar:restart-bold-duotone mb-1 text-2xl text-neutral-400" />
+                    <span class="text-[9px] text-neutral-600 font-bold dark:text-neutral-300">Inherit Default</span>
+                  </div>
+
+                  <!-- Display Models Cards -->
+                  <div
+                    v-for="model in filteredManifestationModels"
+                    :key="model.id"
+                    :class="[
+                      'group relative aspect-square border rounded-xl overflow-hidden cursor-pointer bg-neutral-200/10 dark:bg-neutral-800/10 transition-all duration-200',
+                      selectedModelId === model.id
+                        ? 'border-primary-500 ring-2 ring-primary-500/40'
+                        : 'border-neutral-200/40 dark:border-neutral-800/40 hover:ring-2 hover:ring-primary-500/50',
+                    ]"
+                    @click="selectedModelId = model.id"
+                  >
+                    <img
+                      v-if="model.previewImage"
+                      :src="model.previewImage"
+                      class="h-full w-full object-cover"
+                      loading="lazy"
+                    >
+                    <div v-else class="h-full w-full flex items-center justify-center bg-neutral-500/10 text-neutral-400">
+                      <span class="i-solar:user-bold-duotone text-lg" />
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-center text-[8px] text-white">
+                      <div class="truncate font-semibold">
+                        {{ model.name }}
+                      </div>
+                      <div class="text-[6px] font-mono opacity-75">
+                        {{ mapFormatRenderer[model.format] }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div v-else class="border border-neutral-200 rounded-xl border-dashed bg-neutral-50/50 p-8 text-center dark:border-neutral-700 dark:bg-black/20">
-                <div class="i-solar:ghost-broken mx-auto mb-2 text-3xl text-neutral-300" />
-                <p class="text-xs text-neutral-400">
-                  No expressions found.
-                </p>
-                <p class="mt-1 text-[10px] text-neutral-500">
-                  Load the character on stage to populate this gallery.
-                </p>
-              </div>
+
+              <p class="mt-1 text-[10px] text-neutral-500 italic">
+                Forces a base model swap (Live2D/VRM/Spine/MMD) when this concept is active.
+              </p>
             </div>
           </div>
 
