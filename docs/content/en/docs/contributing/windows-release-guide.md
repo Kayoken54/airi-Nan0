@@ -49,6 +49,11 @@ gh release create [tag] [artifact_path] --repo moeru-ai/airi --title "[Title]" -
 > [!IMPORTANT]
 > **Authentication Scope**: Ensure your `gh` CLI session has the `workflow` scope. This is required for creating releases. If you see a "Failed to create release" error despite having permissions, run:
 > `gh auth refresh -h github.com -s workflow`
+>
+> [!TIP]
+> **Invalid GITHUB_TOKEN Environment Override**: If you encounter an `HTTP 401` error when running `gh release create`, an invalid `GITHUB_TOKEN` environment variable in your session may be overriding your active `gh` CLI keyring credentials. You can temporarily clear it for the command:
+> * **PowerShell**: `$env:GITHUB_TOKEN="" ; gh release create ...`
+> * **Bash / Unix**: `GITHUB_TOKEN="" gh release create ...`
 
 ---
 
