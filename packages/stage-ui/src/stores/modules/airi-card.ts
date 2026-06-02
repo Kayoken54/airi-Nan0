@@ -841,11 +841,10 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
   }
 
-  function initialize() {
-    // Compact and normalize all cards on startup
-    cards.value = compactAllCardsMap(cards.value)
-
-    const nextCards = new Map(cards.value)
+  async function initialize() {
+    // Compact and normalize all cards on startup and persist any changes back to IndexedDB
+    const compacted = compactAllCardsMap(cards.value)
+    const nextCards = new Map(compacted)
     let changed = false
 
     if (!nextCards.has('default')) {
@@ -989,7 +988,11 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
 
     if (changed) {
-      cards.value = nextCards
+      await persistCards(nextCards)
+    }
+    else {
+      // Still update in-memory ref if compaction changed anything
+      cards.value = compacted
     }
 
     if (!activeCardId.value)
@@ -997,7 +1000,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   async function seedDefaults(selectedId: string) {
-    initialize()
+    await initialize()
 
     if (selectedId && cards.value.has(selectedId)) {
       await activateCard(selectedId, true)
