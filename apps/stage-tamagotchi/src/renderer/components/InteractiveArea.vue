@@ -11,8 +11,10 @@ import {
   ChatSessionModal,
   JournalPreviewModal,
   MarkdownRenderer,
+  ProducerGuidanceModal,
   StageBackgroundDialogPicker,
 } from '@proj-airi/stage-ui/components'
+import { useProducer } from '@proj-airi/stage-ui/composables'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatMaintenanceStore } from '@proj-airi/stage-ui/stores/chat/maintenance'
@@ -194,6 +196,74 @@ const showSessions = ref(false)
 
 const characterName = computed(() => activeCard.value?.name || 'AIRI')
 const effectiveSystemPrompt = computed(() => buildSystemPrompt(activeCard.value))
+
+const isProducerModalOpen = ref(false)
+const producerSuggestion = ref<{ type: 'producer-suggestion', choices: Array<{ title: string, message: string }>, loading?: boolean, createdAt: number } | null>(null)
+const { generateSuggestions } = useProducer()
+const lastProducerConfig = ref<{ guidance: string, contextDepth: number } | null>(null)
+
+async function handleProducerSubmit(payload: { guidance: string, contextDepth: number }) {
+  lastProducerConfig.value = payload
+  producerSuggestion.value = {
+    type: 'producer-suggestion',
+    choices: [],
+    loading: true,
+    createdAt: Date.now(),
+  }
+
+  try {
+    const choices = await generateSuggestions({
+      characterName: characterName.value,
+      messages: messages.value as unknown as ChatHistoryItem[],
+      guidance: payload.guidance,
+      contextDepth: payload.contextDepth,
+    })
+
+    producerSuggestion.value = {
+      type: 'producer-suggestion',
+      choices,
+      loading: false,
+      createdAt: Date.now(),
+    }
+  }
+  catch (err) {
+    producerSuggestion.value = null
+    toast.error('Failed to generate suggestions. Please check your provider settings.')
+  }
+}
+
+async function handleRetryProducer() {
+  if (!lastProducerConfig.value) {
+    isProducerModalOpen.value = true
+    return
+  }
+  await handleProducerSubmit(lastProducerConfig.value)
+}
+
+function handleDeleteProducer() {
+  producerSuggestion.value = null
+}
+
+function handleChooseOption(choice: { title: string, message: string }) {
+  messageInput.value = choice.message
+
+  // Focus the textarea
+  const textarea = document.querySelector('.ph-no-capture textarea') as HTMLTextAreaElement | null
+  if (textarea) {
+    textarea.focus()
+  }
+
+  // Auto-send if checked
+  const autoSend = localStorage.getItem('airi:producer:auto-send') === 'true'
+  if (autoSend) {
+    handleSend()
+  }
+}
+
+watch(activeCardId, () => {
+  producerSuggestion.value = null
+  lastProducerConfig.value = null
+})
 
 function handleTrashClick() {
   const today = formatLocalDayKey(new Date())
@@ -438,7 +508,13 @@ onAfterMessageComposed(async () => {
   attachments.value = []
 })
 
-const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+const historyMessages = computed(() => {
+  const base = messages.value as unknown as ChatHistoryItem[]
+  if (producerSuggestion.value) {
+    return [...base, producerSuggestion.value]
+  }
+  return base
+})
 
 const hasVisibleMessages = computed(() => {
   return messages.value.some(m => m.role === 'user' || m.role === 'assistant')
@@ -455,12 +531,15 @@ const sendButtonLabel = computed(() => {
 const sessionTokenCount = computed(() => {
   let total = 0
   for (const message of historyMessages.value) {
-    if (typeof message.content === 'string') {
-      total += estimateTokens(message.content)
+    if ('type' in message && (message as any).type === 'producer-suggestion')
+      continue
+    const msg = message as ChatHistoryItem
+    if (typeof msg.content === 'string') {
+      total += estimateTokens(msg.content)
     }
-    else if (Array.isArray(message.content)) {
-      const textOnly = message.content
-        .map((part) => {
+    else if (Array.isArray(msg.content)) {
+      const textOnly = msg.content
+        .map((part: any) => {
           if (typeof part === 'string')
             return part
           if (part && typeof part === 'object' && 'text' in part && !('image_url' in part))
@@ -627,6 +706,9 @@ watch(modalSearchTerm, (term) => {
         :messages="historyMessages"
         :sending="sending"
         :streaming-message="streamingMessage"
+        @choose="handleChooseOption"
+        @retry-producer="handleRetryProducer"
+        @delete-producer="handleDeleteProducer"
       />
     </div>
 
@@ -829,6 +911,15 @@ watch(modalSearchTerm, (term) => {
         @view-journal="stageBackgroundDialogOpen = true"
         @open-studio="navigateToConceptStudio"
       />
+
+      <!-- Producer Sparkle Button -->
+      <button
+        class="max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md bg-neutral-100 p-2 text-lg text-neutral-500 outline-none transition-colors transition-transform active:scale-95 dark:bg-neutral-800 dark:text-neutral-400 hover:text-primary-500 dark:hover:text-primary-400"
+        title="Suggest responses"
+        @click="isProducerModalOpen = true"
+      >
+        <div class="i-solar:magic-stick-3-bold-duotone" />
+      </button>
 
       <!-- Clear Messages (with safety hook) -->
       <button
@@ -1069,6 +1160,13 @@ watch(modalSearchTerm, (term) => {
         </DialogContent>
       </DialogPortal>
     </DialogRoot>
+
+    <!-- Producer Guidance Modal -->
+    <ProducerGuidanceModal
+      v-model="isProducerModalOpen"
+      :character-name="characterName"
+      @submit="handleProducerSubmit"
+    />
   </div>
 </template>
 

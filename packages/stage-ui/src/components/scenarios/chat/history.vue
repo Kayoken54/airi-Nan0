@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import ChatAssistantItem from './assistant-item.vue'
 import DirectorNoteBubble from './DirectorNoteBubble.vue'
 import ChatErrorItem from './error-item.vue'
+import ProducerChoiceBubble from './ProducerChoiceBubble.vue'
 import ChatUserItem from './user-item.vue'
 
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
@@ -16,7 +17,7 @@ import { useSettingsChat } from '../../../stores/settings'
 import { chatScrollContainerKey } from './constants'
 
 const props = withDefaults(defineProps<{
-  messages: ChatHistoryItem[]
+  messages: any[]
   streamingMessage?: ChatAssistantMessage & { createdAt?: number }
   sending?: boolean
   assistantLabel?: string
@@ -27,6 +28,12 @@ const props = withDefaults(defineProps<{
   sending: false,
   variant: 'desktop',
 })
+
+const emit = defineEmits<{
+  (e: 'choose', choice: { title: string, message: string }): void
+  (e: 'retry-producer'): void
+  (e: 'delete-producer'): void
+}>()
 
 const chatHistoryRef = ref<HTMLDivElement>()
 const isAtBottom = ref(true)
@@ -173,6 +180,15 @@ const renderMessages = computed<(ChatHistoryItem | DirectorNote)[]>(() => {
     <template v-for="(message, index) in renderMessages" :key="'id' in message && message.id ? message.id : ('createdAt' in message && message.createdAt ? `ts-${message.createdAt}` : `idx-${index}`)">
       <div v-if="'type' in message && message.type === 'director-note'">
         <DirectorNoteBubble :note="message" />
+      </div>
+
+      <div v-else-if="'type' in message && (message as any).type === 'producer-suggestion'">
+        <ProducerChoiceBubble
+          :message="message as any"
+          @choose="emit('choose', $event)"
+          @retry="emit('retry-producer')"
+          @delete="emit('delete-producer')"
+        />
       </div>
 
       <div v-else-if="'role' in message && message.role === 'error'">
