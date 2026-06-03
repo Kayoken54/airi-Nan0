@@ -2,7 +2,7 @@
 import type { ChatAssistantMessage, ChatHistoryItem, ContextMessage } from '../../../types/chat'
 import type { DirectorNote } from '../../../types/director'
 
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ChatAssistantItem from './assistant-item.vue'
@@ -60,7 +60,7 @@ function handleScroll() {
 }
 
 // Use a ResizeObserver to catch changes even during v-auto-animate transitions
-onMounted(() => {
+onMounted(async () => {
   if (!chatHistoryRef.value)
     return
 
@@ -72,16 +72,28 @@ onMounted(() => {
 
   // We observe the container itself; as it animates/resizes, we keep pinned
   observer.observe(chatHistoryRef.value)
-  // Also observe children if they are the ones causing scrollHeight changes
-  // But usually observing the div with overflow-y-auto is sufficient for ResizeObserver
-  // because its scrollHeight changes trigger the callback if we track content.
 
+  // Force scroll to bottom after initial mount DOM generation
+  await nextTick()
   scrollToBottom(true)
+
+  // Ensure scroll is correct even if dynamic styling or images cause height shifts
+  setTimeout(() => scrollToBottom(true), 50)
+  setTimeout(() => scrollToBottom(true), 150)
 
   onUnmounted(() => observer.disconnect())
 })
 
 watch([() => props.messages, () => props.streamingMessage], () => scrollToBottom(), { deep: true, flush: 'post' })
+watch(() => props.messages.length, (newLen, oldLen) => {
+  if (oldLen === 0 && newLen > 0) {
+    nextTick(() => {
+      scrollToBottom(true)
+      setTimeout(() => scrollToBottom(true), 50)
+      setTimeout(() => scrollToBottom(true), 150)
+    })
+  }
+})
 watch(() => props.sending, (val) => {
   if (!val) {
     // When sending finishes, ensure we are at the bottom
