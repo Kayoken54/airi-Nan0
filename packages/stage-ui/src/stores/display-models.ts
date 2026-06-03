@@ -7,10 +7,10 @@ import { loadLive2DModelPreview as generateLive2DPreview } from '@proj-airi/stag
 import { loadMmdModelPreview as generateMmdPreview } from '@proj-airi/stage-ui-mmd/utils/mmd-preview'
 import { loadSpineModelPreview as generateSpinePreview } from '@proj-airi/stage-ui-spine/utils/spine-preview'
 import { loadVrmModelPreview as generateVrmPreview } from '@proj-airi/stage-ui-three/utils/vrm-preview'
-import { until } from '@vueuse/core'
+import { until, useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 import { storage } from '../database/storage'
@@ -69,13 +69,22 @@ const displayModelsPresets: DisplayModel[] = [
 
 export const useDisplayModelsStore = defineStore('display-models', () => {
   const displayModels = ref<DisplayModel[]>([])
-
   const displayModelsFromIndexedDBLoading = ref(false)
 
-  async function loadDisplayModelsFromIndexedDB() {
+  const { data: modelsSyncSignal, post: broadcastModelsSync } = useBroadcastChannel({ name: 'airi:display-models-sync' })
+
+  watch(modelsSyncSignal, (val) => {
+    if (val) {
+      console.log('[DisplayModels] Received display models sync signal, reloading from IndexedDB...')
+      void loadDisplayModelsFromIndexedDB(true)
+    }
+  })
+
+  async function loadDisplayModelsFromIndexedDB(silent = false) {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
 
-    displayModelsFromIndexedDBLoading.value = true
+    if (!silent)
+      displayModelsFromIndexedDBLoading.value = true
     const models = [...displayModelsPresets]
 
     try {
@@ -94,7 +103,8 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
 
     displayModels.value = models.sort((a, b) => b.importedAt - a.importedAt)
-    displayModelsFromIndexedDBLoading.value = false
+    if (!silent)
+      displayModelsFromIndexedDBLoading.value = false
   }
 
   async function getDisplayModel(id: string) {
@@ -600,8 +610,9 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
 
     displayModels.value.unshift(newDisplayModel)
 
-    localforage.setItem<DisplayModelFile>(newDisplayModel.id, newDisplayModel)
+    await localforage.setItem<DisplayModelFile>(newDisplayModel.id, newDisplayModel)
       .catch(err => console.error(err))
+    broadcastModelsSync(Date.now())
   }
 
   async function addDisplayModelWithTextures(format: DisplayModelFormat, modelFile: File, textureFiles: MmdTextureFile[]) {
@@ -628,6 +639,8 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       await localforage.setItem(`${newDisplayModel.id}-textures`, textureFiles)
         .catch(err => console.error(err))
     }
+
+    broadcastModelsSync(Date.now())
 
     return newDisplayModel
   }
@@ -662,6 +675,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     // Persist if it's a file-based model
     if (id.startsWith('display-model-')) {
       await localforage.setItem(id, displayModel)
+      broadcastModelsSync(Date.now())
     }
   }
 
@@ -672,6 +686,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     // Track deletion for sync propagation
     await storage.setItemRaw(`local:sync-metadata/deleted-models/${id}`, true)
     displayModels.value = displayModels.value.filter(model => model.id !== id)
+    broadcastModelsSync(Date.now())
   }
 
   async function resetDisplayModels() {
@@ -682,6 +697,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
 
     displayModels.value = [...displayModelsPresets].sort((a, b) => b.importedAt - a.importedAt)
+    broadcastModelsSync(Date.now())
   }
 
   return {

@@ -3,9 +3,10 @@ import type { ChatProvider } from '@xsai-ext/providers/utils'
 import type { ProvisioningSession } from '../database/repos/provisioning-session.repo'
 import type { LifetimeMemoryArtifact } from '../types/lifetime-memory'
 
+import { useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
 import { lifetimeMemoryRepo } from '../database/repos/lifetime-memory.repo'
@@ -308,6 +309,16 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
   const llmStore = useLLM()
 
   const artifacts = ref<Map<string, LifetimeMemoryArtifact>>(new Map())
+
+  const { data: lifetimeSyncSignal, post: broadcastLifetimeSync } = useBroadcastChannel<{ characterId: string }>({ name: 'airi:lifetime-memory-sync' })
+
+  watch(lifetimeSyncSignal, (val) => {
+    if (val?.characterId) {
+      console.log(`[MemoryLifetime] Received lifetime sync signal for character: ${val.characterId}, reloading...`)
+      void loadForCharacter(val.characterId)
+    }
+  })
+
   const activeSession = ref<ProvisioningSession | null>(null)
   const loading = ref(false)
   const isProvisioning = ref(false)
@@ -845,6 +856,7 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
         progress.value.phase = 'success'
         progress.value.completedCalls = totalCalls
         progress.value.message = 'Lifetime history successfully provisioned.'
+        broadcastLifetimeSync({ characterId })
       }
     }
     catch (err) {

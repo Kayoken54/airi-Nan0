@@ -7,9 +7,10 @@ import type { ShortTermMemoryBlock } from '../types/short-term-memory'
 import type { AiriCard } from './modules/airi-card'
 
 import { estimateTokens } from '@proj-airi/stage-shared'
+import { useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { chatSessionsRepo } from '../database/repos/chat-sessions.repo'
 import { shortTermMemoryRepo } from '../database/repos/short-term-memory.repo'
@@ -192,12 +193,22 @@ export const useShortTermMemoryStore = defineStore('short-term-memory', () => {
       .map(item => item.block)
   }
 
-  async function load() {
+  const { data: stmSyncSignal, post: broadcastStmSync } = useBroadcastChannel({ name: 'airi:short-term-memory-sync' })
+
+  watch(stmSyncSignal, (val) => {
+    if (val) {
+      console.log('[ShortTermMemory] Received short-term memory sync signal, reloading...')
+      void load(true, true)
+    }
+  })
+
+  async function load(force = false, silent = false) {
     const currentUserId = getCurrentUserId()
-    if (initializedForUserId.value === currentUserId)
+    if ((!force && initializedForUserId.value === currentUserId) || loading.value)
       return
 
-    loading.value = true
+    if (!silent)
+      loading.value = true
     error.value = null
 
     try {
@@ -209,7 +220,8 @@ export const useShortTermMemoryStore = defineStore('short-term-memory', () => {
       throw loadError
     }
     finally {
-      loading.value = false
+      if (!silent)
+        loading.value = false
     }
   }
 
@@ -221,6 +233,7 @@ export const useShortTermMemoryStore = defineStore('short-term-memory', () => {
       await shortTermMemoryRepo.saveAll(currentUserId, snapshot)
       blocks.value = snapshot
       initializedForUserId.value = currentUserId
+      broadcastStmSync(Date.now())
     }
     catch (persistError) {
       console.error('[ShortTermMemory] Failed to persist short-term blocks.', {
