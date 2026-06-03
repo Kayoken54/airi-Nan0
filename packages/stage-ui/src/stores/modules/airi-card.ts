@@ -3,7 +3,7 @@ import type { Card, ccv3 } from '@proj-airi/ccc'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useLive2d } from '@proj-airi/stage-ui-live2d'
 import { useModelStore } from '@proj-airi/stage-ui-three'
-import { until } from '@vueuse/core'
+import { until, useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { safeParse } from 'valibot'
@@ -260,8 +260,9 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
   }
 
-  async function loadCards() {
-    cardsLoading.value = true
+  async function loadCards(silent = false) {
+    if (!silent)
+      cardsLoading.value = true
     await migrateFromLocalStorage()
     try {
       const raw = await storage.getItemRaw<[string, AiriCard][]>('local:airi-cards')
@@ -273,15 +274,26 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       console.error('[AiriCard] Failed to load cards from IndexedDB:', e)
     }
     finally {
-      cardsLoading.value = false
+      if (!silent)
+        cardsLoading.value = false
     }
   }
+
+  const { data: cardsSyncSignal, post: broadcastCardsSync } = useBroadcastChannel({ name: 'airi:cards-sync' })
+
+  watch(cardsSyncSignal, (val) => {
+    if (val) {
+      console.log('[AiriCard] Received cards sync signal, reloading from IndexedDB...')
+      void loadCards(true)
+    }
+  })
 
   async function persistCards(nextCards: Map<string, AiriCard>) {
     cards.value = nextCards
     try {
       const cleanEntries = JSON.parse(JSON.stringify(Array.from(nextCards.entries())))
       await storage.setItemRaw('local:airi-cards', cleanEntries)
+      broadcastCardsSync(Date.now())
     }
     catch (e) {
       console.error('[AiriCard] Failed to persist cards to IndexedDB:', e)
@@ -298,7 +310,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       const detail = (e as CustomEvent<{ key: string }>).detail
       if (detail?.key === 'local:airi-cards') {
         console.log('[AiriCard] Detected sync update for local:airi-cards — reloading from IndexedDB')
-        void loadCards()
+        void loadCards(true)
       }
     })
   }
