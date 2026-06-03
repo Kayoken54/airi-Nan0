@@ -60,6 +60,7 @@ export function setupTray(params: {
   widgetsWindow: WidgetsWindowManager
   beatSyncBgWindow: Awaited<ReturnType<typeof setupBeatSync>>
   aboutWindow: () => Promise<BrowserWindow>
+  chatWindow?: () => Promise<BrowserWindow>
   serverChannel: ServerChannel
   i18n: I18n
   getConfig: () => any
@@ -194,6 +195,21 @@ export function setupTray(params: {
         },
         { type: 'separator' },
         { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.settings'), click: () => void params.settingsWindow.openWindow('/settings') },
+        { label: 'Dating Sim Preferences', click: () => void params.settingsWindow.openWindow('/settings/dating-sim') },
+        {
+          label: 'Dating Sim',
+          click: async () => {
+            // Force chat open using the direct chat window manager in main
+            const chatWindow = await params.chatWindow?.()
+            if (chatWindow) {
+              toggleWindowShow(chatWindow)
+            }
+
+            import('electron').then(({ BrowserWindow }) => {
+              BrowserWindow.getAllWindows().forEach(w => w.webContents.send('dating-sim-toggle'))
+            })
+          },
+        },
         { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.about'), click: () => params.aboutWindow().then(window => toggleWindowShow(window)) },
         { type: 'separator' },
         { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.open_inlay'), click: () => setupInlayWindow({ i18n: params.i18n, serverChannel: params.serverChannel }) },

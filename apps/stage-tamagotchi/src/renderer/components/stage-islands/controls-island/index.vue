@@ -11,7 +11,7 @@ import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, ref, toRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
@@ -263,6 +263,21 @@ function startDraggingWindow() {
     startDraggingWindowInvoke()
   }
 }
+
+function handleGlobalMousedown(e: MouseEvent) {
+  // Use Alt key (Option on Mac) + Left Click as a shortcut to move the entire tamagotchi window
+  if (e.altKey && e.button === 0) {
+    startDraggingWindow()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('mousedown', handleGlobalMousedown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousedown', handleGlobalMousedown)
+})
 
 async function refreshWindow() {
   expanded.value = false

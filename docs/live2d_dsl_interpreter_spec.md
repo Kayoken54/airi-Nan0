@@ -262,3 +262,44 @@ This is the **next-level visual-novel staging paradigm** that maps these Live2D 
     *   Choices and subtitles appear directly on top of the dynamic background layer.
     *   The dialogue text dynamically interpolates parameters from the `VarFloats` store (such as player name, current intimacy, time of day, and location).
 3.  **Physical/Expressive Synchronicity:** When a text bubble appears, the script dispatcher coordinates the physical Live2D reaction (e.g. embarrassment cheeks blushing + eye-roll motion) and overlays the pre-recorded voice line instantly. If voice-generation is active, it runs speech-to-text token mappings to keep the lips sync'd natively.
+
+## Implementation Plan
+1. **A settings menu with all of the preferences related to the DSL system:** Made for Users who want to customize their DSL experience. "Dating Sim Preferences" is a suitable name foe this feature.
+2. **A Zero-Window Immersive UI:** The UI would be preferred to be made as described above. But for a clear representation, you can take these interfaces as a reference
++-------------------------------------------------------------+
+|                                                             |
+|                          Live2D                             |
+|                        Character                            |
+|                                                             |
+|              +-----------------------------+                |
+|              |      [    Give a Gift ]     |                |
+|              +-----------------------------+                |
+|              |   [    Chat (Intimacy 5+) ] |                |
+|              +-----------------------------+                |
+|                                                             |
++-------------------------------------------------------------+
+
+
+|  [ Generative AI Background (ComfyUI / Flux Scene) ]        |
+|                                                             |
+|                    +------------------+                     |
+|                    |     Live2D       |                     |
+|                    |    Character     |                     |
+|                    |                  |                     |
+|                    +------------------+                     |
+|                                                             |
+|  +-------------------------------------------------------+  |
+|  | [ Dialogue Overlay (Subtitles & Dynamic Variables) ]  |  |
+|  +-------------------------------------------------------+  |
+|                                                             |
+|             +----------------------------------+            |
+|             |      Branching Choices composed  |            |
+|             |       onto background overlay    |            |
+|             +----------------------------------+            |
++-------------------------------------------------------------+
+
+Avoid using emojis and try to opt for SVGs.
+![alt text](image.png)
+You can also take this as a reference(source: Amagami)
+
+**Make this concept a reality. Sky is truely the limit**

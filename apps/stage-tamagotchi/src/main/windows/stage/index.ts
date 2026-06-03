@@ -101,6 +101,16 @@ export async function setupActorStageWindow(params: {
     })
   }
 
+  // Handle stage window resizing and centering
+  ipcMain.handle('stage-window-set-bounds', (_e, payload) => {
+    if (payload?.width && payload?.height) {
+      window.setSize(Math.round(payload.width), Math.round(payload.height), true)
+    }
+    if (payload?.center) {
+      window.center()
+    }
+  })
+
   function restoreBounds() {
     const config = getConfig()
     const currentActorConfig = config.windows?.find((w: any) => w.title === 'AIRI' && w.tag === 'actor')

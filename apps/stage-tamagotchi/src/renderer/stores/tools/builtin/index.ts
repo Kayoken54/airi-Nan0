@@ -4,6 +4,7 @@ import { tryGetMcpToolBridge } from '@proj-airi/stage-ui/stores/mcp-tool-bridge'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useStickersStore } from '@proj-airi/stage-ui/stores/stickers'
 
+import { datingSimTools } from './dating-sim'
 import { imageJournalTools } from './image-journal'
 import { mcpTools } from './mcp'
 import { stickersTools } from './stickers'
@@ -34,6 +35,7 @@ export async function builtinTools(): Promise<Tool[]> {
 
   // Always enabled
   toolPromises.push(textJournalTools())
+  toolPromises.push(datingSimTools())
 
   // Artistry suite
   if (artistry.configured) {

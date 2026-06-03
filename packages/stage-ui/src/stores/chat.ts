@@ -970,6 +970,14 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
                   text: rawFullText,
                   sessionId,
                 })
+
+                // Fallback for Dating Sim: if stream finishes and choices are empty, regenerate them
+                import('@proj-airi/stage-ui/stores/dating-sim').then(({ useDatingSimStore }) => {
+                  const store = useDatingSimStore()
+                  if (store.enabled && store.choices.length === 0) {
+                    store.generateLiveChoices()
+                  }
+                }).catch(() => {})
                 break
               case 'usage':
                 chatLog('usage report:', event.usage)

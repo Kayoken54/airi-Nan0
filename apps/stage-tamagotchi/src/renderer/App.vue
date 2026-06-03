@@ -239,6 +239,12 @@ onMounted(async () => {
   // Listen for open-settings IPC message from main process
   defineInvokeHandler(context.value, electronOpenSettings, payload => router.push(payload?.route || '/settings'))
 
+  if (typeof window !== 'undefined' && (window as any).electron) {
+    if (typeof (window as any).electron.ipcRenderer.removeAllListeners === 'function') {
+      ;(window as any).electron.ipcRenderer.removeAllListeners('dating-sim-toggle')
+    }
+  }
+
   // Listen for custom toast notifications from main process
   watch(context, (ctx) => {
     if (!ctx || isMainWindow.value)
