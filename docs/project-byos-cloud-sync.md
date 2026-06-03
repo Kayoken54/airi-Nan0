@@ -94,7 +94,7 @@ These repositories handle the structured application state and chat history. The
 | :--- | :--- | :--- | :--- |
 | **Chat Sessions** | [chat-sessions.repo.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/database/repos/chat-sessions.repo.ts) | IndexedDB (`chatSessionsRepo`) | Write pipelines in `chat-sessions.repo.ts` (`saveSession`, `deleteSession`) |
 | **Character Cards** | [characters.repo.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/database/repos/characters.repo.ts) | IndexedDB (`charactersRepo`) | `saveCard` / `deleteCard` in `characters.repo.ts` |
-| **Director Notes** | [director-notes.repo.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/database/repos/director-notes.repo.ts) | IndexedDB (`directorNotesRepo`) | `saveNotes` / `deleteNotes` in `director-notes.repo.ts` |
+| **Director Notes** | [director-notes.repo.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/database/repos/director-notes.repo.ts) | IndexedDB (`directorNotesRepo`) | `saveNotes` / `deleteNotes` in `director-notes.repo.ts` (Persists via prefix `local:director/sessions/` which is fully tracked by the sync outbox and mapped to `db/director/sessions/`) |
 | **Providers Config** | [providers.repo.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/database/repos/providers.repo.ts) | IndexedDB (`providersRepo`) | `saveProvider` / `deleteProvider` in `providers.repo.ts` |
 
 ### 2. The Four Memory Segments

@@ -2,6 +2,7 @@
 import { Collapsible } from '@proj-airi/ui'
 import { computed } from 'vue'
 
+import { useBackgroundStore } from '../../../stores/background'
 import { useJournalPreviewStore } from '../../../stores/journal-preview'
 import { MarkdownRenderer } from '../../markdown'
 
@@ -93,6 +94,19 @@ const imageJournalResult = computed(() => {
   catch {
     return null
   }
+})
+
+const backgroundStore = useBackgroundStore()
+const resolvedImageUrl = computed(() => {
+  const result = imageJournalResult.value
+  if (!result)
+    return null
+  if (result.entryId) {
+    const bgUrl = backgroundStore.getBackgroundUrl(result.entryId)
+    if (bgUrl)
+      return bgUrl
+  }
+  return result.imageUrl
 })
 
 const formattedArgs = computed(() => {
@@ -204,11 +218,11 @@ const formattedArgs = computed(() => {
         <MarkdownRenderer :content="imageJournalMarkdown" />
 
         <!-- Result Rendering (for inline mode) -->
-        <div v-if="imageJournalResult?.imageUrl" class="mt-4 overflow-hidden border border-primary-500/20 rounded-xl shadow-lg">
+        <div v-if="resolvedImageUrl" class="mt-4 overflow-hidden border border-primary-500/20 rounded-xl shadow-lg">
           <img
-            :src="imageJournalResult.imageUrl"
+            :src="resolvedImageUrl"
             class="w-full cursor-pointer object-contain transition-all active:scale-[0.98] hover:ring-2 hover:ring-primary-500/50"
-            @click="openImagePreview({ title: (parsedArgs as ImageJournalArgs)?.title || 'Generated Image', url: imageJournalResult.imageUrl })"
+            @click="openImagePreview({ title: (parsedArgs as ImageJournalArgs)?.title || 'Generated Image', url: resolvedImageUrl })"
           >
         </div>
       </template>

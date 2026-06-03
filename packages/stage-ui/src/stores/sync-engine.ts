@@ -710,7 +710,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
   // Safety Heuristics Guard
   async function checkSyncConflict(localKey: string, localTime: number, remoteFile: { size: number, mtime: number, relPath: string }, type: 'remote-newer' | 'local-newer'): Promise<boolean> {
-    const isCritical = localKey.startsWith('local:chat/sessions/') || localKey.startsWith('local:characters/') || localKey.startsWith('local:localstorage/')
+    const isCritical = localKey.startsWith('local:chat/sessions/') || localKey.startsWith('local:characters/') || localKey.startsWith('local:localstorage/') || localKey.startsWith('local:director/sessions/')
     await logDebug(`checkSyncConflict: key=${localKey}, type=${type}, critical=${isCritical}`)
     if (!isCritical)
       return false
