@@ -210,9 +210,16 @@ export function useMotionUpdatePluginIdleDisable(idleEyeFocus = useLive2DIdleEye
   }
 }
 
-export function useMotionUpdatePluginIdleFocus(idleEyeFocus = useLive2DIdleEyeFocus()): MotionManagerPlugin {
+export function useMotionUpdatePluginIdleFocus(
+  disableFocusAt?: Ref<boolean>,
+  idleEyeFocus = useLive2DIdleEyeFocus(),
+): MotionManagerPlugin {
   return (ctx) => {
     if (!ctx.isIdleMotion || ctx.handled)
+      return
+
+    // If mouse tracking is enabled (disableFocusAt is false/undefined), skip random idle saccades
+    if (disableFocusAt && !disableFocusAt.value)
       return
 
     idleEyeFocus.update(ctx.internalModel, ctx.now)

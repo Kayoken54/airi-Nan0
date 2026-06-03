@@ -133,7 +133,6 @@ const offset = computed(() => parsePropsOffset())
 
 const pixiApp = toRef(() => props.app)
 const paused = toRef(() => props.paused)
-const focusAt = toRef(() => props.focusAt)
 const live2dStore = useLive2d()
 const { post: postCaption } = useBroadcastChannel<any, any>({ name: 'airi-caption-overlay' })
 const { model } = storeToRefs(live2dStore)
@@ -792,9 +791,10 @@ async function loadModel() {
       lastUpdateTime,
     })
 
+    const disableFocusAtRef = toRef(() => props.disableFocusAt)
     motionManagerUpdate.register(useMotionUpdatePluginBeatSync(beatSync), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
-    motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(), 'post')
+    motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(disableFocusAtRef), 'post')
     motionManagerUpdate.register(useMotionUpdatePluginAutoEyeBlink(), 'post')
 
     // NOTICE: ArtMesh colors must be applied after coreModel.update(), not in the motion hook.
@@ -1482,14 +1482,14 @@ watch(live2dIdleAnimationEnabled, (enabled) => {
   }
 })
 
-watch(focusAt, (value) => {
+watch(() => props.focusAt, (value) => {
   if (!model.value)
     return
   if (props.disableFocusAt)
     return
 
   model.value.focus(value.x, value.y)
-})
+}, { deep: true })
 
 onMounted(() => {
   const removeListener = listenBeatSyncBeatSignal(() => beatSync.scheduleBeat())
