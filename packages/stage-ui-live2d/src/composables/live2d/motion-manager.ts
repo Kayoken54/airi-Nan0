@@ -231,6 +231,8 @@ export function useMotionUpdatePluginMouseFocus(
   disableFocusAt: Ref<boolean>,
   followSpeed: Ref<number>,
   model: Ref<any>,
+  width: Ref<number>,
+  height: Ref<number>,
 ): MotionManagerPlugin {
   let currentX = 0
   let currentY = 0
@@ -243,16 +245,27 @@ export function useMotionUpdatePluginMouseFocus(
     const targetX = focusAt.value?.x ?? 0
     const targetY = focusAt.value?.y ?? 0
 
+    // Normalize coordinates to [-1, 1] relative to the model's current position
+    const charX = model.value.x ?? (width.value / 2)
+    const charY = model.value.y ?? (height.value / 2)
+
+    // Normalize relative to half width/height (distance from model center to bounds)
+    const halfW = width.value / 2 || 1
+    const halfH = height.value / 2 || 1
+
+    const targetNormX = Math.max(-1, Math.min(1, (targetX - charX) / halfW))
+    const targetNormY = Math.max(-1, Math.min(1, -(targetY - charY) / halfH))
+
     if (!initialized) {
-      currentX = targetX
-      currentY = targetY
+      currentX = targetNormX
+      currentY = targetNormY
       initialized = true
     }
 
     // Smoothly interpolate towards target
     const speed = followSpeed.value
-    currentX = currentX + (targetX - currentX) * speed
-    currentY = currentY + (targetY - currentY) * speed
+    currentX = currentX + (targetNormX - currentX) * speed
+    currentY = currentY + (targetNormY - currentY) * speed
 
     // Call focus on the model with instant = true to bypass internal easing
     model.value.focus(currentX, currentY, true)

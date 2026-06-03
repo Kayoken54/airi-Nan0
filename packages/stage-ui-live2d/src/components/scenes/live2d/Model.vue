@@ -801,7 +801,7 @@ async function loadModel() {
 
     motionManagerUpdate.register(useMotionUpdatePluginBeatSync(beatSync), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
-    motionManagerUpdate.register(useMotionUpdatePluginMouseFocus(focusAtRef, disableFocusAtRef, followSpeedRef, modelRef), 'post')
+    motionManagerUpdate.register(useMotionUpdatePluginMouseFocus(focusAtRef, disableFocusAtRef, followSpeedRef, modelRef, toRef(() => props.width), toRef(() => props.height)), 'post')
     motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(disableFocusAtRef), 'post')
     motionManagerUpdate.register(useMotionUpdatePluginAutoEyeBlink(), 'post')
 
