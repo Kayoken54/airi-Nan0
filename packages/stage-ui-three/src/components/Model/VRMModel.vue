@@ -144,7 +144,6 @@ const {
   lookAtTarget,
   trackingMode,
   eyeHeight,
-  cameraPosition,
 
   camera,
 } = toRefs(props)
@@ -161,14 +160,13 @@ const raycaster = new Raycaster()
 const mouse = new Vector2()
 const mouseTarget = shallowRef<Vec3>()
 let stopMouseWatch: WatchStopHandle | undefined
-let stopCameraWatch: WatchStopHandle | undefined
 
 let isUnmounted = false
 let currentLoadId = 0
 
 // Expressions
 const blink = useBlink()
-const idleEyeSaccades = useIdleEyeSaccades()
+const idleEyeSaccades = useIdleEyeSaccades(computed(() => modelStore.followSpeed))
 const vrmEmote = ref<ReturnType<typeof useVRMEmote>>()
 const modelStore = useModelStore()
 const vrmLipSync = useVRMLipSync(currentAudioSource)
@@ -791,17 +789,9 @@ onMounted(async () => {
   }, { immediate: true })
   // update eye tracking mode
   watch(trackingMode, (newMode) => {
-    stopCameraWatch?.()
-    stopCameraWatch = undefined
     stopMouseWatch?.()
     stopMouseWatch = undefined
-    if (newMode === 'camera') {
-      stopCameraWatch = watch(cameraPosition, (newPosition) => {
-        // watch to update look at target to camera
-        emit('lookAtTarget', newPosition)
-      }, { immediate: true, deep: true })
-    }
-    else if (newMode === 'mouse') {
+    if (newMode === 'mouse') {
       stopMouseWatch = watch([mouseX, mouseY], ([newX, newY]) => {
         mouseTarget.value = lookAtMouse(newX, newY, camera)
         // watch to update look at target to mouse

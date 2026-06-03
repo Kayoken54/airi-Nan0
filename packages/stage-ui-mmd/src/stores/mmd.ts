@@ -36,6 +36,7 @@ export const useMmd = defineStore('mmd', () => {
   const cameraPosition = useLocalStorageManualReset<{ x: number, y: number, z: number }>('settings/mmd/camera-position', { x: 0, y: 0, z: -1 })
   const cameraDistance = useLocalStorageManualReset<number>('settings/mmd/cameraDistance', 0)
   const trackingMode = useLocalStorageManualReset<'camera' | 'mouse' | 'none'>('settings/mmd/trackingMode', 'none')
+  const followSpeed = useLocalStorageManualReset<number>('settings/mmd/followSpeed', 0.1)
   const eyeHeight = useLocalStorageManualReset<number>('settings/mmd/eyeHeight', 0)
   const lookAtTarget = useLocalStorageManualReset<{ x: number, y: number, z: number }>('settings/mmd/lookAtTarget', { x: 0, y: 0, z: 0 })
 
@@ -68,6 +69,7 @@ export const useMmd = defineStore('mmd', () => {
     cameraPosition.reset()
     cameraDistance.reset()
     trackingMode.reset()
+    followSpeed.reset()
     eyeHeight.reset()
     lookAtTarget.reset()
     directionalLightPosition.reset()
@@ -103,6 +105,7 @@ export const useMmd = defineStore('mmd', () => {
     cameraPosition,
     cameraDistance,
     trackingMode,
+    followSpeed,
     eyeHeight,
     lookAtTarget,
     directionalLightPosition,

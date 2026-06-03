@@ -14,10 +14,8 @@ const props = withDefaults(defineProps<{
   modelSize: { x: number, y: number, z: number }
   palette: string[]
   sceneMutationLocked?: boolean
-  showEyeTracking?: boolean
 }>(), {
   sceneMutationLocked: false,
-  showEyeTracking: true,
 })
 
 const { t } = useI18n()
@@ -27,12 +25,6 @@ const activeTab = ref('placement')
 const tabOptions = computed(() => [
   { value: 'placement', label: 'Placement', icon: 'i-solar:square-academic-cap-bold-duotone' },
   { value: 'lighting', label: 'Lighting', icon: 'i-solar:lightbulb-bold-duotone' },
-])
-
-const trackingOptions = computed(() => [
-  { value: 'camera', label: t('settings.vrm.scale-and-position.eye-tracking-mode.camera') },
-  { value: 'mouse', label: t('settings.vrm.scale-and-position.eye-tracking-mode.mouse') },
-  { value: 'none', label: t('settings.vrm.scale-and-position.eye-tracking-mode.disabled') },
 ])
 
 const envOptions = computed(() => [
@@ -154,22 +146,6 @@ const computedScale = computed({
             :config="{ min: 1, max: 180, step: 1, label: t('settings.vrm.scale-and-position.fov'), disabled: sceneMutationLocked }"
             :label="t('settings.vrm.scale-and-position.fov')"
           />
-
-          <!-- Eye Tracking Mode -->
-          <template v-if="props.showEyeTracking">
-            <div class="text-xs text-neutral-500 font-medium dark:text-neutral-400">
-              {{ t('settings.vrm.scale-and-position.eye-tracking-mode.title') }}
-            </div>
-            <div />
-            <div grid-col-span-3>
-              <SelectTab
-                v-model="props.store.trackingMode"
-                :options="trackingOptions"
-                :disabled="sceneMutationLocked"
-                size="sm"
-              />
-            </div>
-          </template>
         </div>
       </div>
 

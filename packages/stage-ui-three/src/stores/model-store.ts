@@ -103,6 +103,7 @@ export const useModelStore = defineStore('modelStore', () => {
 
   const lookAtTarget = useLocalStorage('settings/stage-ui-three/lookAtTarget', { x: 0, y: 0, z: 0 })
   const trackingMode = useLocalStorage('settings/stage-ui-three/trackingMode', 'none' as 'camera' | 'mouse' | 'none')
+  const followSpeed = useLocalStorage('settings/stage-ui-three/followSpeed', 0.1)
   const eyeHeight = useLocalStorage('settings/stage-ui-three/eyeHeight', 0)
 
   const availableExpressions = useLocalStorage<string[]>('settings/stage-ui-three/availableExpressions', [])
@@ -127,6 +128,7 @@ export const useModelStore = defineStore('modelStore', () => {
 
     lookAtTarget.value = { x: 0, y: 0, z: 0 }
     trackingMode.value = 'none'
+    followSpeed.value = 0.1
     eyeHeight.value = 0
 
     availableExpressions.value = []
@@ -214,6 +216,7 @@ export const useModelStore = defineStore('modelStore', () => {
 
     lookAtTarget,
     trackingMode,
+    followSpeed,
     eyeHeight,
     renderScale,
     multisampling,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
-import { Button, Callout, SelectTab } from '@proj-airi/ui'
+import { Button, Callout, Checkbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -35,7 +35,15 @@ const { updateCard } = airiCardStore
 const {
   modelSize,
   vrmIdleAnimation,
+  followSpeed,
 } = storeToRefs(modelStore)
+
+const mouseTrackingEnabled = computed({
+  get: () => modelStore.trackingMode === 'mouse',
+  set: (val) => {
+    modelStore.trackingMode = val ? 'mouse' : 'none'
+  },
+})
 const { animationOptions } = storeToRefs(customVrmAnimationsStore)
 
 // NOTICE: sceneMutationLocked was removed upstream; hardcoded to false.
@@ -339,6 +347,39 @@ function handleAnimationSelect(animationName: string | number | undefined) {
       :expand="false"
     >
       <div flex="~ col gap-4" p-2 :class="settingsLockClass">
+        <!-- Mouse Tracking & Follow Speed -->
+        <div flex="~ col gap-4" class="mb-2 border-b border-neutral-100 pb-4 dark:border-neutral-800">
+          <div flex="~ items-center justify-between">
+            <div flex="~ col gap-0.5">
+              <span class="text-sm text-neutral-600 dark:text-neutral-400">{{ t('settings.vrm.scale-and-position.mouse-tracking') }}</span>
+              <span class="text-[10px] text-neutral-400">{{ t('settings.vrm.scale-and-position.mouse-tracking-desc') }}</span>
+            </div>
+            <Checkbox v-model="mouseTrackingEnabled" :disabled="sceneMutationLocked" />
+          </div>
+
+          <div v-if="mouseTrackingEnabled" flex="~ col gap-2">
+            <FieldRange
+              v-model="followSpeed"
+              :min="0.01"
+              :max="1"
+              :step="0.01"
+              :disabled="sceneMutationLocked"
+              :label="t('settings.vrm.scale-and-position.follow-speed')"
+            >
+              <template #label>
+                <div flex="~ items-center justify-between" class="w-full">
+                  <div class="text-sm text-neutral-600 dark:text-neutral-400">
+                    {{ t('settings.vrm.scale-and-position.follow-speed') }}
+                  </div>
+                  <div class="text-xs text-neutral-600 font-bold font-mono dark:text-neutral-400">
+                    {{ followSpeed.toFixed(2) }}
+                  </div>
+                </div>
+              </template>
+            </FieldRange>
+          </div>
+        </div>
+
         <div flex="~ col gap-2">
           <div class="px-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
             V-HACK Editor

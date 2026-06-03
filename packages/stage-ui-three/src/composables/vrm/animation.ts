@@ -141,7 +141,7 @@ export function useBlink() {
  * Not using any reactivity here as it's not yet needed.
  * Keeping it here as a composable for future extension.
  */
-export function useIdleEyeSaccades() {
+export function useIdleEyeSaccades(followSpeed?: Ref<number>) {
   let nextSaccadeAfter = -1
   const fixationTarget = new Vector3()
   let timeSinceLastSaccade = 0
@@ -198,7 +198,8 @@ export function useIdleEyeSaccades() {
       vrm.lookAt.target = new Object3D() as unknown as Object3D
     }
 
-    vrm.lookAt.target?.position.lerp(fixationTarget!, 1)
+    const lerpFactor = followSpeed?.value ?? 1
+    vrm.lookAt.target?.position.lerp(fixationTarget!, lerpFactor)
     vrm.lookAt?.update(delta)
 
     timeSinceLastSaccade += delta
@@ -241,7 +242,8 @@ export function useIdleEyeSaccades() {
       vrm.lookAt.target = new Object3D() as unknown as Object3D
     }
 
-    vrm.lookAt.target?.position.lerp(fixationTarget!, 1)
+    const lerpFactor = followSpeed?.value ?? 1
+    vrm.lookAt.target?.position.lerp(fixationTarget!, lerpFactor)
     vrm.lookAt?.update(0.016)
   }
 
