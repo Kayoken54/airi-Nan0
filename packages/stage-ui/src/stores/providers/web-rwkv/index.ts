@@ -62,7 +62,10 @@ export function createWebRwkvChatProvider(config: WebRwkvProviderConfig = {}): C
       headers: {},
       fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
         const body = (init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : {}) as OpenAIChatBody
-        const modelUrl = body.model || model || defaultModelUrl
+        let modelUrl = body.model || model || defaultModelUrl
+        if (modelUrl === 'https' || !modelUrl.startsWith('http')) {
+          modelUrl = defaultModelUrl
+        }
         const prompt = buildRwkvPrompt(body.messages ?? [], { enableG1Prefill })
 
         const adapter = await getWebRwkvAdapter()
