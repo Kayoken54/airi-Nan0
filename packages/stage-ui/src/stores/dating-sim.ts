@@ -57,6 +57,7 @@ export const useDatingSimStore = defineStore('dating-sim', () => {
 
   const choices = ref<Choice[]>([])
   const currentSubtitle = ref<string>('')
+  const activeStoryline = ref<any | null>(null)
 
   // Delta Ticking Engine
   let lastTick = 0
@@ -346,11 +347,16 @@ Generate 4 options for what the User could say next and the subtitle.`
     }
     choices.value = []
     currentSubtitle.value = ''
+    activeStoryline.value = null
     variables.value = {
       Intimacy: 0,
-      Tension: 0,
+      Tension: 50,
       ActionPoints: 5,
+      TimeOfDay: 12,
       Timer: 0,
+      positiveScore: 0,
+      negativeScore: 0,
+      turnsElapsed: 0,
     }
     if (loopId !== null) {
       cancelAnimationFrame(loopId)
@@ -402,7 +408,9 @@ Generate 4 options for what the User could say next and the subtitle.`
     }
     else {
       syncToggle(true)
-      generateLiveChoices()
+      if (settings.value.gameMode !== 'goal_driven') {
+        generateLiveChoices()
+      }
     }
   }
 
@@ -513,6 +521,7 @@ Generate 4 options for what the User could say next and the subtitle.`
     mood,
     choices,
     currentSubtitle,
+    activeStoryline,
     setVariable,
     getVariable,
     evaluateCondition,

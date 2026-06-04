@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useBroadcastChannel } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+import StorySelectorModal from './StorySelectorModal.vue'
 
 import { useDatingSimStore } from '../../stores/dating-sim'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
@@ -65,10 +67,48 @@ function submitCustomPrompt() {
   datingSimStore.choices = []
   datingSimStore.currentSubtitle = ''
 }
+
+const showSelector = ref(false)
+
+watch(() => [datingSimStore.enabled, datingSimStore.settings.gameMode], ([enabled, mode]) => {
+  if (enabled && mode === 'goal_driven' && !datingSimStore.activeStoryline) {
+    showSelector.value = true
+  }
+  else {
+    showSelector.value = false
+  }
+}, { immediate: true })
+
+function handleStorySelect(story: any, customPromptVal: string) {
+  showSelector.value = false
+  datingSimStore.activeStoryline = story
+
+  const initialChoices = [
+    { id: 'sc1', text: 'Introduce yourself and start the date', icon: 'i-solar:chat-round-dots-bold', action: 'llm_topic' },
+    { id: 'sc2', text: 'Break the ice with something playful', icon: 'i-solar:magic-stick-bold', action: 'llm_topic' },
+    { id: 'sc3', text: 'Focus on the task at hand', icon: 'i-solar:star-bold', action: 'llm_topic' },
+    { id: 'sc4', text: 'Stare in silent anticipation', icon: 'i-solar:eye-bold', action: 'llm_topic' },
+  ]
+
+  datingSimStore.triggerTestSyncCustom(initialChoices, customPromptVal)
+}
 </script>
 
 <template>
   <div v-if="datingSimStore.enabled" class="pointer-events-none absolute inset-0 z-50 flex flex-col justify-end overflow-hidden pb-8">
+    <!-- Background cover image (Goal-Driven initial phase) -->
+    <div
+      v-if="datingSimStore.settings.gameMode === 'goal_driven' && datingSimStore.activeStoryline"
+      class="absolute inset-0 h-full w-full transition-opacity duration-1000 -z-10"
+    >
+      <img
+        :src="datingSimStore.activeStoryline.coverImage"
+        class="h-full w-full object-cover opacity-25"
+        alt="Storyline Background"
+      >
+      <div class="absolute inset-0 from-black via-black/20 to-black/80 bg-gradient-to-t" />
+    </div>
+
     <!-- Top-Right Floating Stats -->
     <div class="pointer-events-auto absolute right-8 top-6 flex flex-col gap-4">
       <!-- Intimacy Badge -->
@@ -197,5 +237,12 @@ function submitCustomPrompt() {
         </div>
       </div>
     </div>
+
+    <!-- Story Select Modal -->
+    <StorySelectorModal
+      :show="showSelector"
+      @close="showSelector = false"
+      @select="handleStorySelect"
+    />
   </div>
 </template>
