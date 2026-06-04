@@ -18,7 +18,7 @@ export function createProviderRegistry(
   const resolvedMetadata = { ...currentMetadata }
 
   for (const [providerId, existing] of Object.entries(resolvedMetadata)) {
-    if (existing.category !== 'speech' && existing.category !== 'transcription') {
+    if (existing.category !== 'speech' && existing.category !== 'transcription' && providerId !== 'web-rwkv') {
       delete resolvedMetadata[providerId]
     }
   }
