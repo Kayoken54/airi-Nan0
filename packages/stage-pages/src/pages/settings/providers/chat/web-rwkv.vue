@@ -12,7 +12,7 @@ import { DEFAULT_WEB_RWKV_MODEL } from '@proj-airi/stage-ui/libs/inference/const
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { FieldCheckbox, FieldInput } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -56,6 +56,21 @@ const enableG1Prefill = computed({
 
 function handleResetSettings() {
   providers.value[providerId] = { model: DEFAULT_WEB_RWKV_MODEL, vocab: '', enableG1Prefill: true }
+}
+
+const copySuccess = ref(false)
+function copyPenaltiesJson() {
+  const jsonText = JSON.stringify({
+    presence_penalty: 0.4,
+    count_penalty: 0.4,
+    penalty_decay: 0.996,
+  }, null, 2)
+  navigator.clipboard.writeText(jsonText).then(() => {
+    copySuccess.value = true
+    setTimeout(() => {
+      copySuccess.value = false
+    }, 2000)
+  })
 }
 </script>
 
@@ -135,8 +150,23 @@ function handleResetSettings() {
               </div>
             </div>
 
-            <div class="mt-4 whitespace-pre-line border border-blue-100 rounded-lg bg-blue-50/50 p-3 text-xs text-blue-800 leading-relaxed dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
-              {{ t('settings.pages.providers.provider.web-rwkv.defaultsSection.annotation') }}
+            <div class="mt-4 border border-blue-100 rounded-lg bg-blue-50/50 p-4 text-xs text-blue-800 leading-relaxed dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
+              <p class="mb-2 font-medium">
+                {{ t('settings.pages.providers.provider.web-rwkv.defaultsSection.annotation') }}
+              </p>
+              <div class="relative mt-2">
+                <pre class="cursor-pointer overflow-x-auto border border-blue-200/60 rounded bg-blue-100/30 p-2.5 text-[11px] text-blue-900 font-mono transition dark:border-blue-800/40 dark:bg-blue-900/10 hover:bg-blue-100/50 dark:text-blue-300" @click="copyPenaltiesJson"><code>{
+  "presence_penalty": 0.4,
+  "count_penalty": 0.4,
+  "penalty_decay": 0.996
+}</code></pre>
+                <button
+                  class="absolute right-2 top-2 rounded bg-blue-600 px-2 py-1 text-[10px] text-white font-medium transition active:scale-95 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600"
+                  @click="copyPenaltiesJson"
+                >
+                  {{ copySuccess ? 'Copied!' : 'Copy JSON' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
