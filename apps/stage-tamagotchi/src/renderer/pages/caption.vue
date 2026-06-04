@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import CaptionPanel from '@proj-airi/stage-ui/components/scenes/CaptionPanel.vue'
+
 import { defineInvoke } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke, useElectronMouseAroundWindowBorder, useElectronMouseInWindow } from '@proj-airi/electron-vueuse'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { refDebounced, useBroadcastChannel } from '@vueuse/core'
+import { refDebounced } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { captionGetIsFollowingWindow, captionIsFollowingWindowChanged, electronCaptionSetFollowWindow, electronSetIgnoreMouseEvents } from '../../shared/eventa'
@@ -10,12 +12,8 @@ import { captionGetIsFollowingWindow, captionIsFollowingWindowChanged, electronC
 const setIgnoreMouseEvents = useElectronEventaInvoke(electronSetIgnoreMouseEvents)
 const setFollowWindow = useElectronEventaInvoke(electronCaptionSetFollowWindow)
 const attached = ref(true)
-const scrollContainer = ref<HTMLElement | null>(null)
 const settingsStore = useSettings()
-const speakerText = ref('') // NOTICE: do NOT add 'caption-speaker' or user speech to captions. This is intentionally AI-only.
 
-export interface CaptionSegment { text: string, color: string, actorId: string, isActive?: boolean }
-const assistantSegments = ref<CaptionSegment[]>([])
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const isOutsideWindowFor250Ms = refDebounced(isOutsideWindow, 250)
 const shouldFadeOnCursorWithin = computed(() => !isOutsideWindowFor250Ms.value)
@@ -31,16 +29,6 @@ function handleHandleMouseLeave() {
 }
 const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 30 })
 const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
-
-// Broadcast channel for captions
-type CaptionChannelEvent
-  = | { type: 'caption-speaker', text: string }
-    | { type: 'caption-assistant', segments: CaptionSegment[] }
-const { data } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
-
-// NOTICE: Secondary broadcast channel to listen for turn-resets (user messages)
-// This is a hardware-level fix because the 'airi-caption-overlay' empty string reset was failing.
-const { data: sessionUpdate } = useBroadcastChannel<any, any>({ name: 'airi-chat-stream' })
 
 const context = useElectronEventaContext()
 const getAttached = defineInvoke(context.value, captionGetIsFollowingWindow)
@@ -64,15 +52,6 @@ onMounted(async () => {
   catch {}
 
   try {
-    // Hardware-level turn reset: clear everything when a new user message enters the session
-    watch(sessionUpdate, (event) => {
-      if (event?.type === 'session-updated' && event.message?.role === 'user') {
-        console.log('[Caption] New user turn detected (via session-updated), resetting panel.')
-        speakerText.value = ''
-        assistantSegments.value = []
-      }
-    })
-
     // Synchronize spatial follow with dashboard toggle
     watch(() => settingsStore.captionFollowStage, (shouldFollow) => {
       console.log('[Caption] Follow status changed:', shouldFollow)
@@ -83,60 +62,18 @@ onMounted(async () => {
     // Listen for Layout Mode transitions
     watch(() => settingsStore.captionLayoutMode, (mode) => {
       console.log('[Caption] Layout mode changed:', mode)
-      // Future: Implement multi-turn historical view
     }, { immediate: true })
 
     // Listen for Home Snap triggers
     watch(() => settingsStore.captionResetTrigger, () => {
       console.log('[Caption] Reset Position triggered.')
-      // Recovery logic: re-attach if it was detached and lost
       if (!settingsStore.captionFollowStage) {
         settingsStore.captionFollowStage = true
       }
     })
-
-    // Update texts from broadcast channel
-    watch(data, (event) => {
-      console.log('[Caption] Received event (overlay):', event)
-      if (!event)
-        return
-
-      if (event.type === 'caption-speaker') {
-        speakerText.value = event.text
-      }
-      else if (event.type === 'caption-assistant') {
-        // Fallback reset for when assistant sends a reset signal
-        if (!event.segments || event.segments.length === 0) {
-          speakerText.value = ''
-          assistantSegments.value = []
-        }
-        else {
-          assistantSegments.value = event.segments
-        }
-      }
-    }, { immediate: true })
   }
   catch {}
 })
-
-// Auto-scroll to bottom when text segments change
-watch(assistantSegments, () => {
-  if (scrollContainer.value) {
-    // Delay slightly to allow DOM to update
-    setTimeout(() => {
-      scrollContainer.value?.scrollTo({
-        top: scrollContainer.value.scrollHeight,
-        behavior: 'smooth',
-      })
-    }, 10)
-  }
-}, { deep: true })
-
-const containerStyle = computed(() => ({
-  backgroundColor: `rgba(0, 0, 0, ${settingsStore.captionOpacity / 100})`,
-  transform: `scale(${settingsStore.captionFontSize / 100})`,
-  transformOrigin: settingsStore.captionDocking === 'top' ? 'top center' : 'bottom center',
-}))
 </script>
 
 <template>
@@ -146,59 +83,11 @@ const containerStyle = computed(() => ({
       settingsStore.captionDocking === 'top' ? 'items-start' : 'items-end',
     ]"
   >
-    <!-- Content Wrapper (Clean) -->
-    <div
-      ref="scrollContainer"
-      :class="[
-        'w-full h-full flex justify-center overflow-y-auto scrollbar-hide',
-        settingsStore.captionDocking === 'top' ? 'items-start pt-1' : 'items-end pb-1',
-      ]"
-    >
-      <div
-        :class="[
-          (!settingsStore.showCaptions || shouldFadeOnCursorWithin) ? 'op-0' : 'op-100',
-          'relative select-none rounded-xl px-3 py-2',
-          'pointer-events-none', // Text is always click-through
-          'backdrop-blur-sm',
-          'transition-all duration-300 ease-in-out my-2',
-        ]"
-        :style="containerStyle"
-      >
-        <div class="max-w-[80vw] flex flex-col gap-1">
-          <div
-            v-if="speakerText"
-            class="rounded-md px-2 py-1 text-[1.1rem] text-neutral-50 font-medium text-shadow-lg text-shadow-color-neutral-900/60"
-          >
-            {{ speakerText }}
-          </div>
-          <div
-            v-if="assistantSegments.length > 0"
-            class="rounded-md px-2 py-1 text-[1.25rem] font-semibold leading-relaxed text-shadow-lg"
-            style="white-space: pre-wrap;"
-          >
-            <span
-              v-for="(segment, idx) in assistantSegments"
-              :key="idx"
-              :style="{
-                color: segment.color,
-                textShadow: segment.isActive
-                  ? `0 0 10px ${segment.color}, 0 2px 4px rgba(0,0,0,0.9)`
-                  : `0 1px 3px rgba(0,0,0,0.9)`,
-                transform: segment.isActive ? 'scale(1.06) translateY(-1px)' : 'scale(1)',
-                display: 'inline-block',
-                transition: 'all 0.25s ease-out',
-                filter: segment.isActive ? 'brightness(1.2)' : 'brightness(0.95)',
-                margin: segment.isActive ? '0 1px' : '0',
-              }"
-              :class="[
-                'origin-center',
-                segment.isActive ? 'z-10 relative font-bold' : 'opacity-95',
-              ]"
-            >{{ segment.text }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Modular Caption Panel -->
+    <CaptionPanel
+      :show-active-sentence-only="false"
+      :fade-on-cursor="shouldFadeOnCursorWithin"
+    />
 
     <!-- Drag Handle: only visible when detached and hovering the window area -->
     <Transition

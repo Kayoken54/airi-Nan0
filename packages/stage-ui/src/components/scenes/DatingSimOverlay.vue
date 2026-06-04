@@ -2,6 +2,7 @@
 import { useBroadcastChannel } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 
+import CaptionPanel from './CaptionPanel.vue'
 import StorySelectorModal from './StorySelectorModal.vue'
 
 import { useDatingSimStore } from '../../stores/dating-sim'
@@ -228,9 +229,14 @@ function handleStorySelect(story: any, customPromptVal: string) {
             <span class="text-sm text-blue-200 font-bold tracking-widest uppercase drop-shadow-md">Character</span>
           </div>
 
-          <p class="mt-6 w-full text-3xl text-white font-medium leading-[1.6] drop-shadow-lg">
-            {{ datingSimStore.currentSubtitle }}
-          </p>
+          <!-- Modular Real-Time Caption Panel inside original frame -->
+          <div class="mt-8 w-full flex justify-center">
+            <CaptionPanel
+              :show-active-sentence-only="true"
+              :transparent-bg="true"
+              :fallback-text="datingSimStore.currentSubtitle"
+            />
+          </div>
 
           <!-- Auto-advance indicator -->
           <div class="i-solar:alt-arrow-down-bold absolute bottom-6 right-8 animate-bounce text-3xl text-white/50" />
