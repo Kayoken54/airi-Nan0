@@ -329,6 +329,8 @@ export function setupCaptionWindowManager(params: {
   }
 
   function followStageWindow(win: BrowserWindow) {
+    detachFromMain()
+
     const cfg = getConfig() ?? { isFollowing, matrices: {} }
     const initialOffset = cfg?.matrices?.[matrixHash]?.relativeToMain ?? computeRelativeOffset(win)
 
