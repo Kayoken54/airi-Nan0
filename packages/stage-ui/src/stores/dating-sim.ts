@@ -16,6 +16,8 @@ export interface Choice {
   action: string
   condition?: string
   cost?: number // Time or tension cost
+  positiveScoreChange?: number
+  negativeScoreChange?: number
 }
 
 export const useDatingSimStore = defineStore('dating-sim', () => {
@@ -57,7 +59,7 @@ export const useDatingSimStore = defineStore('dating-sim', () => {
     showChoiceWeights: useLocalStorage<boolean>('airi:dating-sim:show-choice-weights', false),
     maxScore: useLocalStorage<number>('airi:dating-sim:max-score', 15),
     maxTurns: useLocalStorage<number>('airi:dating-sim:max-turns', 8),
-    sceneryRoute: useLocalStorage<'background' | 'widget' | 'inherit'>('airi:dating-sim:scenery-route', 'inherit'),
+    sceneryRoute: useLocalStorage<'background' | 'widget' | 'bg_widget' | 'inherit'>('airi:dating-sim:scenery-route', 'inherit'),
   })
 
   const choices = ref<Choice[]>([])
@@ -70,6 +72,15 @@ export const useDatingSimStore = defineStore('dating-sim', () => {
       const cardStore = useAiriCardStore()
       const cardRoute = cardStore.activeCard?.extensions?.airi?.artistry?.spawnMode || 'bg_widget'
       return cardRoute === 'bg' ? 'background' : cardRoute
+    }
+    // If bg_widget is selected but AA is off, no new images will arrive per-turn —
+    // spawning a widget on every turn would just stack duplicate cover images.
+    // Fall back to background-only so we keep refreshing the stage instead.
+    if (route === 'bg_widget') {
+      const cardStore = useAiriCardStore()
+      const aaEnabled = cardStore.activeCard?.extensions?.airi?.artistry?.autonomousEnabled ?? false
+      if (!aaEnabled)
+        return 'background'
     }
     return route
   })
@@ -140,6 +151,127 @@ export const useDatingSimStore = defineStore('dating-sim', () => {
   }
 
   const isGenerating = ref(false)
+
+  async function generateInitialGoalDrivenChoices(customPremiseVal?: string) {
+    if (isGenerating.value)
+      return
+    isGenerating.value = true
+    try {
+      const { useLLM } = await import('@proj-airi/stage-ui/stores/llm')
+      const { useProvidersStore } = await import('@proj-airi/stage-ui/stores/providers')
+      const { useConsciousnessStore } = await import('@proj-airi/stage-ui/stores/modules/consciousness')
+      const { useAiriCardStore } = await import('@proj-airi/stage-ui/stores/modules/airi-card')
+
+      const llm = useLLM()
+      const providers = useProvidersStore()
+      const consciousness = useConsciousnessStore()
+      const cardStore = useAiriCardStore()
+
+      const provider = await providers.getProviderInstance(consciousness.activeProvider)
+
+      if (!provider || !consciousness.activeModel) {
+        console.error('[DatingSim] No active model or provider')
+        return
+      }
+
+      const characterName = cardStore.activeCard?.name || 'Companion'
+      const characterPersonality = cardStore.activeCard?.personality || ''
+      const story = activeStoryline.value
+
+      if (!story) {
+        console.error('[DatingSim] No active storyline selected')
+        return
+      }
+
+      const sceneName = story.title || 'the date'
+      const sceneLocation = story.scene || ''
+      const basePremise = story.premise || ''
+      const premiseText = customPremiseVal && customPremiseVal.trim()
+        ? `The user wants to customize or tweak the premise of this encounter please adjust to the text below: ${customPremiseVal}`
+        : basePremise
+
+      const systemPrompt = `You are a dialogue writing assistant and the "Gameshow Host" for a Dating Sim. 
+Your job is to generate the initial setup introduction (the subtitle) and exactly 4 diverse initial options for what the USER could say to start this storyline.
+The choices must be written in the user's natural, personal voice (first-person), matching their style of capitalization, punctuation, or slang if appropriate.
+
+Companion Character: ${characterName}
+Companion's Personality: ${characterPersonality}
+
+Storyline Scenario: ${sceneName}
+Location / Setting: ${sceneLocation}
+Premise: ${premiseText}
+
+Rules:
+- Generate 4 varied ideas for a way to initiate this story line, it might not be perfect or make perfect sense but just do your best.
+- Vary the emotional/tonal approach across the 4 options: one bold/flirty, one helpful/focused, one playful/teasing, one silent/observational.
+- Keep each choice short (under 2 sentences).
+- For each choice, assign its score impact based on how positive/productive or negative/risky it is in initiating this scenario:
+  * "positive": How much this choice adds to the user's positive score (typically 0 or 1, or 2 for high-risk/high-reward positive moves).
+  * "negative": How much this choice adds to the user's negative score (typically 0 or 1, or 2 for risky/bad moves).
+- Generate a "subtitle" that sets the starting scene or describes the companion's initial posture/look (written in third-person descriptive text or representing the companion's first words).
+
+Your output MUST be EXACTLY in this JSON format and nothing else:
+{
+  "subtitle": "Starting scene introduction / companion's initial reaction text",
+  "topics": [
+    {
+      "text": "First choice option",
+      "positive": 1,
+      "negative": 0
+    },
+    {
+      "text": "Second choice option",
+      "positive": 0,
+      "negative": 1
+    },
+    {
+      "text": "Third choice option",
+      "positive": 0,
+      "negative": 0
+    },
+    {
+      "text": "Fourth choice option",
+      "positive": 2,
+      "negative": 0
+    }
+  ]
+}`
+
+      const userPrompt = `Generate the initial scene subtitle and the 4 starting options for the storyline: "${sceneName}".`
+
+      const result = await llm.generate(
+        consciousness.activeModel,
+        provider as any,
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      )
+
+      const rawText = result.text || (result as any).reasoning || ''
+      const match = rawText.match(/\{[\s\S]*\}/)
+      if (!match)
+        throw new Error('No JSON object found in response')
+      const object = JSON.parse(match[0])
+
+      const liveChoices = object.topics.slice(0, 4).map((t: any, i: number) => ({
+        id: `t${i}`,
+        text: typeof t === 'string' ? t : (t.text || ''),
+        icon: 'i-solar:chat-round-dots-bold-duotone',
+        action: 'llm_topic',
+        positiveScoreChange: typeof t === 'object' ? (t.positive ?? 0) : 0,
+        negativeScoreChange: typeof t === 'object' ? (t.negative ?? 0) : 0,
+      }))
+
+      triggerTestSyncCustom(liveChoices, object.subtitle || '')
+    }
+    catch (err) {
+      console.error('[DatingSim] Initial Choice Generation Failed:', err)
+    }
+    finally {
+      isGenerating.value = false
+    }
+  }
 
   async function generateLiveChoices() {
     if (isGenerating.value)
@@ -535,13 +667,6 @@ Generate 4 options for what the User could say next and the subtitle.`
     choices.value = customChoices
     currentSubtitle.value = subtitle
 
-    if (activeStoryline.value) {
-      const route = resolvedSceneryRoute.value
-      if (route === 'widget' || route === 'bg_widget') {
-        spawnSceneryWidget(activeStoryline.value.coverImage, activeStoryline.value.title)
-      }
-    }
-
     if (bc)
       bc.postMessage({ type: 'test', choices: customChoices, subtitle })
   }
@@ -589,6 +714,7 @@ Generate 4 options for what the User could say next and the subtitle.`
     toggleDatingSim,
     syncToggle,
     generateLiveChoices,
+    generateInitialGoalDrivenChoices,
     evaluateParameters,
     broadcastMood,
     isGenerating,
