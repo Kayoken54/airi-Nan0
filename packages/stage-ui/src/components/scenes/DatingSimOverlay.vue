@@ -116,6 +116,14 @@ function handleChoiceClick(choice: any) {
   datingSimStore.currentSubtitle = ''
 }
 
+function handleRestart() {
+  datingSimStore.activeStoryline = null
+  datingSimStore.setVariable('positiveScore', 0)
+  datingSimStore.setVariable('negativeScore', 0)
+  datingSimStore.choices = []
+  datingSimStore.currentSubtitle = ''
+}
+
 const customPrompt = ref('')
 function submitCustomPrompt() {
   if (!customPrompt.value.trim() || isGameOver.value)
@@ -207,7 +215,7 @@ function handleStorySelect(story: any, customPromptVal: string) {
           </div>
           <div class="mt-2 flex items-center justify-between text-sm text-white font-semibold tracking-wide">
             <span>Turns</span>
-            <span class="text-white/90 font-bold font-mono">{{ turnsElapsed }} / {{ datingSimStore.settings.maxTurns }}</span>
+            <span :class="[isGameOver ? 'text-rose-400 animate-pulse font-black' : 'text-white/90 font-bold', 'font-mono']">{{ turnsElapsed }} / {{ datingSimStore.settings.maxTurns }}</span>
           </div>
         </div>
       </template>
@@ -293,6 +301,25 @@ function handleStorySelect(story: any, customPromptVal: string) {
               <span class="text-sm text-white/90 font-bold">{{ choice.cost }} AP</span>
             </div>
           </button>
+        </template>
+
+        <!-- Game Over / Conclusion Card -->
+        <template v-if="isGameOver">
+          <div class="pointer-events-auto flex flex-col items-center gap-3 border border-rose-500/30 rounded-2xl bg-rose-950/20 p-5 text-center shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-[12px]">
+            <div class="flex items-center gap-2 text-lg text-rose-400 font-bold tracking-wider uppercase">
+              <span class="i-solar:shield-check-bold animate-pulse text-2xl" />
+              Storyline Concluded
+            </div>
+            <p class="text-sm text-white/80 leading-relaxed">
+              You've reached the climax of this encounter. The final narrative resolution has been played back.
+            </p>
+            <button
+              class="mt-1 border border-rose-400/50 rounded-xl bg-rose-500/30 px-5 py-2 text-sm text-white font-semibold transition-all active:scale-95 hover:scale-105 hover:bg-rose-500/50"
+              @click="handleRestart"
+            >
+              Start New Story
+            </button>
+          </div>
         </template>
 
         <!-- Custom Prompt Input -->

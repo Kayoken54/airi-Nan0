@@ -844,12 +844,13 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             const maxScore = datingSim.settings.maxScore
             const maxTurns = datingSim.settings.maxTurns
             const isWin = pos >= maxScore
-            const isLoss = neg >= maxScore || turns >= maxTurns
+            const isLoss = neg >= maxScore || (turns + 1) >= maxTurns
 
             if (isWin || isLoss) {
+              const climaxState = isWin ? 'VICTORY' : 'DEFEAT'
               climaxPrompt = `[DATING SIM CLIMAX RESOLUTION]
-The Dating Sim session has ended. The user has achieved the climax state: ${isWin ? 'VICTORY' : 'DEFEAT'}.
-Final metrics: Intimacy Connection: ${pos}/${maxScore}, Tension/Friction: ${neg}/${maxScore}, Turns Elapsed: ${turns}/${maxTurns}.
+The Dating Sim session has ended. The user has achieved the climax state: ${climaxState}.
+Final metrics: Intimacy Connection: ${pos}/${maxScore}, Tension/Friction: ${neg}/${maxScore}, Turns Elapsed: ${turns + 1}/${maxTurns}.
 
 You must now react to this outcome and provide a rich, narrative-driven climax reaction to resolve this storyline/arc. Break standard reply length limits if necessary to provide a complete, satisfying story resolution. Do not generate choices, suggestions, or prompt instructions anymore.`
             }
