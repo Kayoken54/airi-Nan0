@@ -117,7 +117,7 @@ ${options.guidance ? `The user wants suggestions that feel like: "${options.guid
 
 Rules:
 - Each suggestion must sound like something the user would naturally say, not a formal prompt
-${options.shortReplies ? '- Keep each message under 2 sentences' : ''}
+${options.shortReplies ? '- Keep each message under 2 sentences' : '- Match the user\'s typical response length and depth, generating detailed, paragraph-length options (multiple sentences and rich actions) rather than short dialogue snippets'}
 - Vary the emotional register: curious, playful, sincere, bold — don't make all suggestions the same tone
 - No meta-commentary, no "(OOC)" notes, no quotation marks around the message text
 - Output exactly ${options.count} options matching the requested voice style.`
