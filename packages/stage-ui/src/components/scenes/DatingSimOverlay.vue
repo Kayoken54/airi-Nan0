@@ -117,7 +117,11 @@ function submitCustomPrompt() {
     return
   }
 
-  datingSimStore.evaluateParameters(customPrompt.value)
+  // Clear state and let the chat.ts stream-finish fallback call generateLiveChoices()
+  // once the assistant reply is fully in the session history — same as the choice path.
+  // Do NOT call evaluateParameters here: it races with the stream-finish fallback and
+  // causes generateLiveChoices() to run before the assistant turn exists, producing
+  // non-weighted (producer-lite) choices.
   customPrompt.value = ''
   datingSimStore.setVariable('Timer', 0)
   datingSimStore.choices = []
@@ -269,7 +273,13 @@ function handleStorySelect(story: any, customPromptVal: string) {
             <div v-if="choice.icon" :class="[choice.icon, 'text-3xl text-blue-300 drop-shadow-[0_0_8px_rgba(147,197,253,0.5)] transition-transform group-hover:scale-110']" />
             <div v-else class="i-solar:chat-round-dots-bold-duotone text-3xl text-blue-300 drop-shadow-[0_0_8px_rgba(147,197,253,0.5)] transition-transform group-hover:scale-110" />
 
-            <span class="flex-1 text-xl text-white font-medium tracking-wide drop-shadow-md">{{ choice.text }}</span>
+            <span class="flex-1 text-xl text-white font-medium tracking-wide drop-shadow-md">
+              <span v-if="datingSimStore.settings.showChoiceWeights && (choice.positiveScoreChange || choice.negativeScoreChange)" class="mr-3 inline-flex items-center gap-1.5 border border-white/10 rounded-lg bg-black/40 px-2 py-0.5 text-sm text-white/90 font-bold font-mono">
+                <span class="text-rose-400">💖</span> {{ choice.positiveScoreChange ?? 0 }}
+                <span class="ml-1 text-amber-500">🔥</span> {{ choice.negativeScoreChange ?? 0 }}
+              </span>
+              {{ choice.text }}
+            </span>
 
             <div v-if="choice.cost && datingSimStore.settings.gameMode === 'open_ended'" class="flex items-center gap-1.5 border border-white/10 rounded-full bg-black/40 px-3 py-1.5">
               <div class="i-solar:lightning-bold text-base text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.8)]" />
