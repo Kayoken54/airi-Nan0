@@ -107,25 +107,18 @@ function submitCustomPrompt() {
   if (!customPrompt.value.trim() || isGameOver.value)
     return
 
-  datingSimStore.setVariable('Intimacy', Math.min(100, datingSimStore.getVariable('Intimacy') + 1))
-  postChatInput({ sendingMessage: customPrompt.value, options: { skipAssistant: isGameOver.value, metadata: { source: 'dating-sim' } } })
-
-  if (isGameOver.value) {
-    customPrompt.value = ''
-    datingSimStore.setVariable('Timer', 0)
-    datingSimStore.choices = []
-    return
-  }
-
-  // Clear state and let the chat.ts stream-finish fallback call generateLiveChoices()
-  // once the assistant reply is fully in the session history — same as the choice path.
-  // Do NOT call evaluateParameters here: it races with the stream-finish fallback and
-  // causes generateLiveChoices() to run before the assistant turn exists, producing
-  // non-weighted (producer-lite) choices.
+  // Synthesize a zero-weight llm_topic choice and route it through handleChoiceClick.
+  // This guarantees the exact same code path as clicking a real choice: same state
+  // clearing, same Director pipeline trigger, same timing — no race conditions.
+  const text = customPrompt.value
   customPrompt.value = ''
-  datingSimStore.setVariable('Timer', 0)
-  datingSimStore.choices = []
-  datingSimStore.currentSubtitle = ''
+  handleChoiceClick({
+    id: 'custom',
+    text,
+    action: 'llm_topic',
+    positiveScoreChange: 0,
+    negativeScoreChange: 0,
+  })
 }
 
 const showSelector = ref(false)

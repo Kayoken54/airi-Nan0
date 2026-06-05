@@ -832,7 +832,34 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         const groundingEnabled = activeCard.value?.extensions?.airi?.groundingEnabled
         const sensorPayload = groundingEnabled ? proactivityStore.sensorPayload : ''
 
-        if (Object.keys(contextsSnapshot).length > 0 || sensorPayload) {
+        // Check for Dating Sim Climax triggers (Victory/Defeat) to inject instructions dynamically
+        let climaxPrompt = ''
+        try {
+          const datingSim = (await import('@proj-airi/stage-ui/stores/dating-sim')).useDatingSimStore()
+          const msgs = chatSession.messages || []
+          const turns = msgs.filter((m: any) => m.role === 'assistant').length
+          if (datingSim.enabled && datingSim.settings.gameMode === 'goal_driven') {
+            const pos = datingSim.getVariable('positiveScore')
+            const neg = datingSim.getVariable('negativeScore')
+            const maxScore = datingSim.settings.maxScore
+            const maxTurns = datingSim.settings.maxTurns
+            const isWin = pos >= maxScore
+            const isLoss = neg >= maxScore || turns >= maxTurns
+
+            if (isWin || isLoss) {
+              climaxPrompt = `[DATING SIM CLIMAX RESOLUTION]
+The Dating Sim session has ended. The user has achieved the climax state: ${isWin ? 'VICTORY' : 'DEFEAT'}.
+Final metrics: Intimacy Connection: ${pos}/${maxScore}, Tension/Friction: ${neg}/${maxScore}, Turns Elapsed: ${turns}/${maxTurns}.
+
+You must now react to this outcome and provide a rich, narrative-driven climax reaction to resolve this storyline/arc. Break standard reply length limits if necessary to provide a complete, satisfying story resolution. Do not generate choices, suggestions, or prompt instructions anymore.`
+            }
+          }
+        }
+        catch (e) {
+          console.warn('[ChatOrchestrator] Failed to evaluate Dating Sim climax state injection', e)
+        }
+
+        if (Object.keys(contextsSnapshot).length > 0 || sensorPayload || climaxPrompt) {
           const system = newMessages.slice(0, 1)
           const afterSystem = newMessages.slice(1, newMessages.length)
 
@@ -851,6 +878,10 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             + `to the conversation, but avoid a dry, technical recitation of the data.\n`
             + `---\n`
             + `${sensorPayload}\n`
+          }
+
+          if (climaxPrompt) {
+            contextContent += `${contextContent ? '\n---\n' : ''}${climaxPrompt}\n`
           }
 
           newMessages = [
@@ -977,10 +1008,13 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
                   sessionId,
                 })
 
-                // Fallback for Dating Sim: if stream finishes and choices are empty, regenerate them
+                // Fallback for Dating Sim: if stream finishes, choices are empty, AND AA is disabled,
+                // regenerate choices via the standalone path. When AA is on, the Director pipeline
+                // owns choice generation from turn 1+ — don't race with it.
                 import('@proj-airi/stage-ui/stores/dating-sim').then(({ useDatingSimStore }) => {
                   const store = useDatingSimStore()
-                  if (store.enabled && store.choices.length === 0) {
+                  const aaEnabled = activeCard.value?.extensions?.airi?.artistry?.autonomousEnabled ?? false
+                  if (store.enabled && store.choices.length === 0 && !aaEnabled) {
                     store.generateLiveChoices()
                   }
                 }).catch(() => {})
