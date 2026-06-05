@@ -465,13 +465,29 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
       let datingSimPromptAddon = ''
       let datingSimSchemaAddon = ''
       if (datingSimStore.enabled && target === 'assistant') {
+        const isGoalDriven = datingSimStore.settings.gameMode === 'goal_driven'
+        const story = datingSimStore.activeStoryline
+
         datingSimPromptAddon = `
 DATING SIM MODE ACTIVE:
 You MUST also generate the subtitle for the scene (the character's dialogue spoken in this turn, or a narrative subtitle if they didn't speak) and exactly 4 suggested things the USER could say next as interactive options/choices.
 The choices MUST be written in the user's natural, personal voice (matching their capitalization style, spelling, punctuation style, or slang if applicable).
 For example, if the user does not use capitalization or punctuation, format the choices exactly in that style.
+${isGoalDriven && story
+  ? `
+GOAL-DRIVEN MODE: Score each choice based on how positive/productive or negative/risky it is in advancing the terms of encounter: "${story.termsOfEncounter || ''}".
+- "positiveScoreChange": How much this choice adds to the intimacy/connection score (typically 0 or 1, or 2 for high-risk/high-reward moves).
+- "negativeScoreChange": How much this choice adds to the friction/tension score (typically 0 or 1, or 2 for risky/bad moves).
+Both values must be integers. A neutral/safe choice gets 0/0. Avoid making all choices the same score.`
+  : ''}
 `
-        datingSimSchemaAddon = `,\n  "subtitle": "Character's subtitle/dialogue text for this turn",\n  "choices": [\n    {\n      "id": "choice_1",\n      "text": "First choice option in user's style",\n      "action": "Select first topic"\n    },\n    {\n      "id": "choice_2",\n      "text": "Second choice option in user's style",\n      "action": "Select second topic"\n    },\n    {\n      "id": "choice_3",\n      "text": "Third choice option in user's style",\n      "action": "Select third topic"\n    },\n    {\n      "id": "choice_4",\n      "text": "Fourth choice option in user's style",\n      "action": "Select fourth topic"\n    }\n  ]`
+        if (isGoalDriven) {
+          datingSimSchemaAddon = `,\n  "subtitle": "Character's subtitle/dialogue text for this turn",\n  "choices": [\n    {\n      "id": "choice_1",\n      "text": "First choice option in user's style",\n      "action": "llm_topic",\n      "positiveScoreChange": 1,\n      "negativeScoreChange": 0\n    },\n    {\n      "id": "choice_2",\n      "text": "Second choice option in user's style",\n      "action": "llm_topic",\n      "positiveScoreChange": 0,\n      "negativeScoreChange": 1\n    },\n    {\n      "id": "choice_3",\n      "text": "Third choice option in user's style",\n      "action": "llm_topic",\n      "positiveScoreChange": 0,\n      "negativeScoreChange": 0\n    },\n    {\n      "id": "choice_4",\n      "text": "Fourth choice option in user's style",\n      "action": "llm_topic",\n      "positiveScoreChange": 2,\n      "negativeScoreChange": 0\n    }\n  ]`
+        }
+        else {
+          // Producer Lite: open-ended, no score weights
+          datingSimSchemaAddon = `,\n  "subtitle": "Character's subtitle/dialogue text for this turn",\n  "choices": [\n    {\n      "id": "choice_1",\n      "text": "First choice option in user's style",\n      "action": "llm_topic"\n    },\n    {\n      "id": "choice_2",\n      "text": "Second choice option in user's style",\n      "action": "llm_topic"\n    },\n    {\n      "id": "choice_3",\n      "text": "Third choice option in user's style",\n      "action": "llm_topic"\n    },\n    {\n      "id": "choice_4",\n      "text": "Fourth choice option in user's style",\n      "action": "llm_topic"\n    }\n  ]`
+        }
       }
 
       const commonInstructions = `
