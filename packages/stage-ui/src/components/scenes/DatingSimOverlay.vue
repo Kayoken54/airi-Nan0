@@ -34,7 +34,19 @@ const turnsElapsed = computed(() => {
 const lastAssistantMessage = computed(() => {
   const msgs = chatSessionStore.messages || []
   const assistantMsgs = msgs.filter((m: any) => m.role === 'assistant')
-  return assistantMsgs[assistantMsgs.length - 1]?.content || ''
+  const content = assistantMsgs[assistantMsgs.length - 1]?.content
+  if (!content)
+    return ''
+  let rawText = ''
+  if (typeof content === 'string') {
+    rawText = content
+  }
+  else if (Array.isArray(content)) {
+    rawText = content
+      .map((part: any) => (typeof part === 'string' ? part : (part.text || '')))
+      .join('')
+  }
+  return rawText.replace(/<\|.*?\|>/g, '').trim()
 })
 
 const isInitialTurn = computed(() => {
