@@ -34,16 +34,6 @@ const formattedLastSync = computed(() => {
   return new Date(lastSyncTime.value).toLocaleString()
 })
 
-const activeProviderLabel = computed(() => {
-  if (activeProvider.value === 'local-fs') {
-    return 'Local File System / Samba'
-  }
-  if (activeProvider.value === 's3') {
-    return 'S3-Compatible Cloud Storage'
-  }
-  return activeProvider.value || 'Not Configured'
-})
-
 function handleConfigureProvider() {
   if (activeProvider.value === 'local-fs') {
     router.push('/settings/providers/cloud/local-fs')
@@ -156,15 +146,28 @@ function cleanKeyLabel(key: string): string {
             Active Storage Provider
           </div>
           <div class="text-xs text-neutral-400 dark:text-neutral-500">
-            {{ activeProviderLabel }}
+            Choose which sync target is active.
           </div>
         </div>
-        <button
-          class="border border-neutral-200 rounded-xl px-4 py-2 text-sm text-neutral-600 font-semibold outline-none transition-colors duration-200 dark:border-neutral-700 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800"
-          @click="handleConfigureProvider"
-        >
-          Configure
-        </button>
+        <div class="flex items-center gap-2">
+          <select
+            v-model="activeProvider"
+            class="border border-neutral-300 rounded-lg bg-white px-3 py-1.5 text-sm text-neutral-700 outline-none dark:border-neutral-700 focus:border-primary-500 dark:bg-neutral-800 dark:text-neutral-300"
+          >
+            <option value="local-fs">
+              Local File System / Samba
+            </option>
+            <option value="s3">
+              S3-Compatible Cloud Storage
+            </option>
+          </select>
+          <button
+            class="border border-neutral-200 rounded-xl px-4 py-2 text-sm text-neutral-600 font-semibold outline-none transition-colors duration-200 dark:border-neutral-700 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            @click="handleConfigureProvider"
+          >
+            Configure
+          </button>
+        </div>
       </div>
     </div>
 
