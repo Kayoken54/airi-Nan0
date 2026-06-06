@@ -1363,9 +1363,11 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
   }
 
   function shouldExcludeLocalStorageKey(key: string): boolean {
-    // NOTICE: airi-cards is too large (~600KB+) for localStorage quota; it is synced
-    // natively via IndexedDB under local:airi-cards so we exclude it from the dump/restore bridge.
+    // NOTICE: airi-cards and scene/backgrounds are too large for localStorage quota;
+    // they are synced natively via IndexedDB / localforage so we exclude them from the dump/restore bridge.
     if (key === 'airi-cards')
+      return true
+    if (key === 'scene/backgrounds')
       return true
     if (key.startsWith('airi_cc_'))
       return true
@@ -1407,13 +1409,19 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
                 const currentVal = localStorage.getItem(key)
                 if (currentVal !== val) {
                   await logDebug(`restoreLocalStorageFromIndexedDb: key=${key} updated from IndexedDB.`)
-                  localStorage.setItem(key, val)
-                  anyChanged = true
-                  window.dispatchEvent(new StorageEvent('storage', {
-                    key,
-                    newValue: val,
-                    storageArea: localStorage,
-                  }))
+                  try {
+                    localStorage.setItem(key, val)
+                    anyChanged = true
+                    window.dispatchEvent(new StorageEvent('storage', {
+                      key,
+                      newValue: val,
+                      storageArea: localStorage,
+                    }))
+                  }
+                  catch (quotaErr) {
+                    console.error(`[SyncEngine] Failed to write key ${key} to localStorage:`, quotaErr)
+                    await logDebug(`Failed to write key ${key} to localStorage (quota exceeded).`)
+                  }
                 }
               }
             }
