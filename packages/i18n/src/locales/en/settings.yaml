@@ -172,7 +172,8 @@ pages:
     delete: Delete
     delete_card: Delete Card
     delete_confirmation: Are you sure you want to delete this card?
-    description: Use AIRI character card presets
+    description: Create, edit, and manage character cards, import custom presets, or
+      discover new ones online.
     description_label: Description
     drop_here: Drop to upload
     create_card: Create a new Card
@@ -276,7 +277,8 @@ pages:
     upload: Upload
     upload_desc: Click or drag file to upload
   memory:
-    description: Where memories got stored, and organized
+    description: Manage active awareness context, idle summaries, episodic logs, and
+      lifetime relational bonds.
     title: Memory
   docs:
     title: Documentation
@@ -354,7 +356,8 @@ pages:
       all_deleted: All local data deleted.
       desktop_reset: Desktop data reset.
   models:
-    description: Select & explore new models (Live2D, VRM, VRMA) to replace your active one
+    description: Manage physical assets, animations, and motion mappings for Live2D,
+      VRM, Spine, and MMD.
     title: Models
     sections:
       section:
@@ -1181,12 +1184,17 @@ pages:
           vocab:
             label: Vocab URL (optional)
             description: >-
-              Override the bundled RWKV World tokenizer vocab. If you are using a fine-tune optimized for another language or custom token mapping, supplying its vocab JSON URL here ensures proper text encoding and generation behavior.
+              Override the bundled RWKV World tokenizer vocab. If you are using
+              a fine-tune optimized for another language or custom token
+              mapping, supplying its vocab JSON URL here ensures proper text
+              encoding and generation behavior.
             placeholder: (bundled rwkv_vocab_v20230424.json)
           enableG1Prefill:
             label: Enable G1 Reasoning Prefill & Stripping
             description: >-
-              Prefills assistant turns with <think></think to keep G1 reasoning models in their trained mode and strips the leading close tag on output. Disable this if using non-G1 (e.g. RWKV-6/5) models.
+              Prefills assistant turns with <think></think to keep G1 reasoning
+              models in their trained mode and strips the leading close tag on
+              output. Disable this if using non-G1 (e.g. RWKV-6/5) models.
         defaultsSection:
           title: Default Generation Parameters (Read-Only)
           description: >-
@@ -1199,9 +1207,11 @@ pages:
             count_penalty: 'Count Penalty (Default: 0.4)'
             penalty_decay: 'Penalty Decay (Default: 0.996)'
           annotation: >-
-            To customize these settings for a character, go to the character's Generation tab:
-            • Modify Temperature, Top P, and Max Tokens using the input fields.
-            • Modify penalties (Presence/Count/Decay) by entering them in the Advanced JSON textarea (e.g., {"presence_penalty": 0.5}).
+            To customize these settings for a character, go to the character's
+            Generation tab: • Modify Temperature, Top P, and Max Tokens using
+            the input fields. • Modify penalties (Presence/Count/Decay) by
+            entering them in the Advanced JSON textarea (e.g.,
+            {"presence_penalty": 0.5}).
       transcriptions:
         playground:
           title: Transcription Playground
@@ -1218,7 +1228,8 @@ pages:
           title: Local File System / Samba Configuration
     title: Providers
   connection:
-    description: Configure server connection and external download tokens (e.g. Hugging Face)
+    description: Configure server connection and external download tokens (e.g.
+      Hugging Face)
     title: Connection & Downloads
     websocket-url:
       label: WebSocket URL
@@ -1231,7 +1242,8 @@ pages:
       placeholder: Enter your App Key here
     hf-token:
       label: Hugging Face Token (Optional)
-      description: Your Hugging Face user access token. Used to download models and prevent rate limit/throttling errors.
+      description: Your Hugging Face user access token. Used to download models and
+        prevent rate limit/throttling errors.
       placeholder: hf_...
     websocket-secure-enabled:
       label: Secure AIRI Gateway Connection (WSS)

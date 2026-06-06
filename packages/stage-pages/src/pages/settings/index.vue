@@ -58,7 +58,7 @@ const settingsGroups = computed(() => [
       },
       {
         title: 'Dating Sim',
-        description: 'Dating sim settings where you can control the dating sim game and live2d integration options',
+        description: 'Adjust interactive game modes, intimacy gating thresholds, and visual behavior rules',
         icon: 'i-solar:heart-bold-duotone',
         to: '/settings/dating-sim',
       },
