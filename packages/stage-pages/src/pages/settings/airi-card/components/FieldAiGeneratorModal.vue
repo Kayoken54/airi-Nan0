@@ -24,6 +24,7 @@ interface Props {
     personality?: string
     scenario?: string
     systemPrompt?: string
+    visualAssets?: Record<string, any>
   }
   actingContext?: {
     isLive2d?: boolean
@@ -181,13 +182,43 @@ const guidanceConfig: Record<string, FieldGuidance> = {
   },
 }
 
+const configuredConcepts = computed(() => {
+  const assets = props.cardContext.visualAssets || {}
+  return Object.entries(assets).filter(([_, asset]: [string, any]) => {
+    const hasManifestation = asset.manifestation && (asset.manifestation.modelId || asset.manifestation.mood)
+    const hasSpeech = asset.speech && asset.speech.voice_id
+    const hasBackground = asset.scene && asset.scene.backgroundId
+    return hasManifestation || hasSpeech || hasBackground
+  })
+})
+
+const showMultiRoleTemplate = computed(() => {
+  return props.fieldId === 'systemPrompt' && configuredConcepts.value.length >= 2
+})
+
 const currentGuidance = computed<FieldGuidance>(() => {
-  return guidanceConfig[props.fieldId] || {
+  const baseGuidance = guidanceConfig[props.fieldId] || {
     title: props.fieldLabel,
     prose: 'Optimize this field with AI suggestions.',
     systemInstruction: 'Generate optimization suggestions for the field.',
     templates: [{ id: 'default', label: 'Default', prompt: 'Generate optimized text.' }],
   }
+
+  if (props.fieldId === 'systemPrompt' && showMultiRoleTemplate.value) {
+    return {
+      ...baseGuidance,
+      templates: [
+        ...baseGuidance.templates,
+        {
+          id: 'multi_role',
+          label: 'Multi-Role',
+          prompt: 'Write a multi-actor system prompt instructing the Actor to act as a dialogue scriptwriter, prefixing dialogue or actions with the correct <|ACTOR:id|> tokens for each character/state transition, detailing distinct demeanor/profiles for each concept, and managing multi-role dialogue flows without any image generation/visual prompts guidance.',
+        },
+      ],
+    }
+  }
+
+  return baseGuidance
 })
 
 // Auto-trigger generation on modal open
@@ -230,7 +261,31 @@ async function generateSuggestion(isRefining = false) {
 
     const templatePrompt = currentGuidance.value.templates.find(t => t.id === selectedTemplate.value)?.prompt || ''
 
-    let systemPromptContent = `${currentGuidance.value.systemInstruction}\n\nCore Set Context:\n${JSON.stringify(props.cardContext, null, 2)}`
+    let systemInstruction = currentGuidance.value.systemInstruction
+    if (selectedTemplate.value === 'multi_role') {
+      systemInstruction = 'You are an expert AI prompt engineer. Help the user write a structured system prompt in markdown detailing cognitive boundaries, demeanor, and relationship rules for multiple distinct character concepts. Your key directive is instructing the Actor (the dialogue scriptwriter) to prefix every turn of dialogue or action with the appropriate `<|ACTOR:id|>` tokens to switch identities. You MUST NOT include any Stable Diffusion or image generation prompt formatting instructions.'
+    }
+
+    let systemPromptContent = `${systemInstruction}\n\nCore Set Context:\n${JSON.stringify(props.cardContext, null, 2)}`
+
+    if (selectedTemplate.value === 'multi_role') {
+      const actorTokens = configuredConcepts.value.map(([id, asset]: [string, any]) => {
+        const parts = []
+        if (asset.manifestation?.modelId || asset.manifestation?.mood) {
+          parts.push(`Model/Mood: ${asset.manifestation.modelId || ''} (${asset.manifestation.mood || ''})`)
+        }
+        if (asset.speech?.voice_id) {
+          parts.push(`Voice: ${asset.speech.voice_id}`)
+        }
+        if (asset.scene?.backgroundId) {
+          parts.push(`Background Override: ${asset.scene.backgroundId}`)
+        }
+        return `- Token: <|ACTOR:${id}|>\n  Role/Description: ${asset.description || 'No description provided'}\n  Associated Assets: ${parts.join(', ') || 'None'}`
+      }).join('\n\n')
+
+      systemPromptContent += `\n\nAvailable Studio Actor Tokens (Multi-Role Mode):\n${actorTokens}`
+    }
+
     if (props.actingContext) {
       systemPromptContent += `\n\nActing/Model/Speech Context:\n${JSON.stringify(props.actingContext, null, 2)}`
     }
@@ -362,6 +417,9 @@ function handleSave() {
               </span>
               <span v-if="cardContext.scenario" class="rounded bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-600 font-medium dark:bg-neutral-800 dark:text-neutral-400">
                 Scenario Set
+              </span>
+              <span v-if="configuredConcepts.length >= 2" class="rounded bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-600 font-bold dark:bg-sky-500/20 dark:text-sky-400">
+                Studio Concepts Injected: {{ configuredConcepts.length }}
               </span>
             </div>
           </div>

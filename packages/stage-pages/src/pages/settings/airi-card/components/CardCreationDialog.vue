@@ -966,6 +966,13 @@ const generatorFieldId = ref('')
 const generatorFieldLabel = ref('')
 const generatorFieldValue = ref('')
 
+const visualAssets = computed(() => {
+  if (!isEditMode.value || !props.cardId)
+    return {}
+  const card = cardStore.getCard(props.cardId)
+  return card?.extensions?.airi?.visual_assets || {}
+})
+
 const generatorCardContext = computed(() => ({
   name: cardName.value,
   nickname: cardNickname.value,
@@ -974,6 +981,7 @@ const generatorCardContext = computed(() => ({
   scenario: cardScenario.value,
   systemPrompt: cardSystemPrompt.value,
   proactivitySensorPayload: sensorPayload.value || staticSamplePayload,
+  visualAssets: visualAssets.value,
 }))
 
 const generatorActingContext = computed(() => {
