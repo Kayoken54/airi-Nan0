@@ -297,19 +297,22 @@ async function generateSuggestion(isRefining = false) {
       },
     ]
 
+    const existingText = activeValue.value || props.initialValue
+    if (existingText) {
+      messages.push({
+        role: 'user',
+        content: `Here is the existing text for this field:\n${existingText}`,
+      })
+    }
+
     let userPrompt = `Template style to generate: "${templatePrompt}".`
     if (isRefining && customInstructions.value.trim()) {
       userPrompt += `\n\nPlease refine the previous output according to these additional instructions: "${customInstructions.value.trim()}".`
-
-      // Inject previous output as reference
-      if (activeValue.value) {
-        messages.push({
-          role: 'user',
-          content: `Here is the current text:\n${activeValue.value}`,
-        })
-      }
     }
     else {
+      if (existingText) {
+        userPrompt += '\n\nMake sure to keep the core of the existing text and build on it by revamping it or adding to it according to the template style, but do not omit key existing details.'
+      }
       userPrompt += '\n\nPlease output only the optimized raw text content. Do not wrap in markdown code blocks unless it is structured markdown. Do not include introductory or concluding conversational text.'
     }
 
