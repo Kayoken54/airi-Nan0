@@ -33,7 +33,7 @@
 
 <p float="left" align="center">
   <!-- readme-section:release-binary-windows -->
-  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.6-stable.20260605/AIRI-0.9.6-stable.20260605-windows-x64-setup.exe">
+  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.7-stable.20260606/AIRI-0.9.7-stable.20260606-windows-x64-setup.exe">
     <picture>
       <source
         width="33%"
@@ -49,7 +49,7 @@
     </picture>
   </a>
   <!-- readme-section:release-binary-macos -->
-  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.6-stable.20260605/AIRI-0.9.6-stable.20260605-darwin-arm64.dmg">
+  <a href="https://github.com/moeru-ai/airi/releases/download/v0.9.7-stable.20260606/AIRI-0.9.7-stable.20260606-darwin-arm64.dmg">
     <picture>
       <source
         width="33%"
