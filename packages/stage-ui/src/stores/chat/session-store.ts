@@ -31,6 +31,9 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   // other windows (e.g. chatbox) that session data changed and they should reload from DB.
   const { post: broadcastStreamEvent, data: incomingSessionUpdate } = useBroadcastChannel<ChatStreamEvent, ChatStreamEvent>({ name: CHAT_STREAM_CHANNEL_NAME })
 
+  const isMainWindow = typeof window !== 'undefined'
+    && (window.location.hash === '' || window.location.hash === '#/' || window.location.hash === '#')
+
   const activeSessionId = ref<string>('')
   const sessionMessages = ref<Record<string, ChatHistoryItem[]>>({})
   const sessionMetas = ref<Record<string, ChatSessionMeta>>({})
@@ -540,6 +543,9 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       return ensuringSessionPromise
 
     ensuringSessionPromise = (async () => {
+      const airiCardStore = useAiriCardStore()
+      await airiCardStore.initialize()
+
       const currentUserId = getCurrentUserId()
       const characterId = getCurrentCharacterId()
 
@@ -602,11 +608,14 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       ensureSession(activeId)
 
       // NOTICE: Ensure prompt is up to date immediately after card-switch context is resolved.
-      await refreshActiveSystemMessage({
-        sessionId: activeId,
-        characterId,
-        prompt: systemPrompt.value,
-      })
+      // Only perform prompt refresh in the main window to prevent cross-window infinite update loops.
+      if (isMainWindow) {
+        await refreshActiveSystemMessage({
+          sessionId: activeId,
+          characterId,
+          prompt: systemPrompt.value,
+        })
+      }
 
       console.info('[ChatSession] ensureActiveSessionForCharacter:resolved', {
         characterId,
@@ -1049,7 +1058,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   // NOTICE: Synchronize character settings (systemPrompt) with the active session
   // by hot-swapping the root system message content.
   watchDebounced(systemPrompt, () => {
-    if (!ready.value)
+    if (!ready.value || !isMainWindow)
       return
     refreshActiveSystemMessage({ force: true })
   }, { debounce: 300 })
@@ -1057,7 +1066,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   watch(
     () => lifetimeMemory.artifacts.get(activeCardId.value || 'default')?.updatedAt ?? 0,
     () => {
-      if (!ready.value)
+      if (!ready.value || !isMainWindow)
         return
       refreshActiveSystemMessage()
     },

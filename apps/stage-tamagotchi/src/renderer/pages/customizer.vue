@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { estimateTokens } from '@proj-airi/stage-shared'
 import { CUSTOMIZER_CATALOG } from '@proj-airi/stage-ui/constants/control-customizer'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useLiveSessionStore } from '@proj-airi/stage-ui/stores/modules/live-session'
 import { useSettings, useSettingsAudioDevice, useSettingsControlStrip } from '@proj-airi/stage-ui/stores/settings'
 import { useSettingsControlsIsland } from '@proj-airi/stage-ui/stores/settings/controls-island'
@@ -8,6 +10,7 @@ import { useBroadcastChannel, useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
+import { chatSessionsRepo } from '../../../../../packages/stage-ui/src/database/repos/chat-sessions.repo'
 import { electronCustomizerToggleVisibility, electronResetWindowPositions } from '../../shared/eventa'
 
 const settingsStore = useSettings()
@@ -332,6 +335,269 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('mousemove', onStripMouseMove)
   document.removeEventListener('mouseup', onStripMouseUp)
+})
+
+// ── Usage Report & Statistics Logic ─────────────────────────────
+const isLoading = ref(false)
+const timePeriod = ref('last_week')
+const timeSlice = ref('day')
+
+interface ReportData {
+  timeSeries: { label: string, value: number }[]
+  topCharacters: { id: string, name: string, value: number }[]
+  totalMessages: number
+  totalTokens: number
+}
+
+const reportData = ref<ReportData | null>(null)
+
+function getNewYorkDateInfo(timestamp: number) {
+  const date = new Date(timestamp)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hour12: false,
+  }).formatToParts(date)
+
+  const info: Record<string, string> = {}
+  for (const part of parts) {
+    info[part.type] = part.value
+  }
+  const y = info.year
+  const m = info.month.padStart(2, '0')
+  const d = info.day.padStart(2, '0')
+  const h = info.hour.padStart(2, '0')
+  return {
+    dayStr: `${y}-${m}-${d}`,
+    hourStr: `${y}-${m}-${d} ${h}:00`,
+    hour: Number.parseInt(h, 10),
+  }
+}
+
+function getMessageTokens(message: any) {
+  if (typeof message.content === 'string') {
+    return estimateTokens(message.content)
+  }
+  if (Array.isArray(message.content)) {
+    const textOnly = message.content
+      .map((part: any) => {
+        if (typeof part === 'string')
+          return part
+        if (part && typeof part === 'object' && 'text' in part && !('image_url' in part))
+          return String(part.text ?? '')
+        return ''
+      })
+      .join('')
+    return estimateTokens(textOnly)
+  }
+  return 0
+}
+
+async function generateReport() {
+  if (isLoading.value)
+    return
+  isLoading.value = true
+
+  try {
+    const cardStore = useAiriCardStore()
+    if (cardStore.cards.size === 0 && typeof cardStore.initialize === 'function') {
+      await cardStore.initialize()
+    }
+
+    const index = await chatSessionsRepo.getIndex('local')
+    const sessionIds: string[] = []
+    if (index && index.characters) {
+      for (const charId of Object.keys(index.characters)) {
+        const charSessions = index.characters[charId]
+        if (charSessions && charSessions.sessions) {
+          for (const sid of Object.keys(charSessions.sessions)) {
+            sessionIds.push(sid)
+          }
+        }
+      }
+    }
+
+    const now = new Date()
+    let startLimit = 0
+    let endLimit = now.getTime()
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+
+    if (timePeriod.value === 'today') {
+      startLimit = todayMidnight.getTime()
+    }
+    else if (timePeriod.value === 'yesterday') {
+      const yesterdayMidnight = new Date(todayMidnight.getTime() - 24 * 3600 * 1000)
+      startLimit = yesterdayMidnight.getTime()
+      endLimit = todayMidnight.getTime() - 1
+    }
+    else if (timePeriod.value === 'last_week') {
+      startLimit = todayMidnight.getTime() - 7 * 24 * 3600 * 1000
+    }
+    else if (timePeriod.value === 'last_month') {
+      startLimit = todayMidnight.getTime() - 30 * 24 * 3600 * 1000
+    }
+
+    const slices: { label: string, timestamp: number }[] = []
+    if (timeSlice.value === 'day') {
+      let current = startLimit
+      while (current <= endLimit) {
+        const info = getNewYorkDateInfo(current)
+        slices.push({ label: info.dayStr, timestamp: current })
+        current += 24 * 3600 * 1000
+      }
+    }
+    else {
+      let current = startLimit
+      while (current <= endLimit) {
+        const info = getNewYorkDateInfo(current)
+        slices.push({ label: info.hourStr, timestamp: current })
+        current += 3600 * 1000
+      }
+    }
+
+    const timeSeriesMap: Record<string, number> = {}
+    for (const slice of slices) {
+      timeSeriesMap[slice.label] = 0
+    }
+
+    const characterUsage: Record<string, number> = {}
+    let totalMessages = 0
+    let totalTokens = 0
+
+    const BATCH_SIZE = 10
+    for (let i = 0; i < sessionIds.length; i += BATCH_SIZE) {
+      const batch = sessionIds.slice(i, i + BATCH_SIZE)
+      const records = await Promise.all(batch.map(sid => chatSessionsRepo.getSession(sid)))
+
+      for (const session of records) {
+        if (!session)
+          continue
+        const characterId = session.meta?.characterId || 'unknown'
+        if (session.messages && Array.isArray(session.messages)) {
+          for (const msg of session.messages) {
+            const msgTime = msg.createdAt || session.meta?.createdAt
+            if (!msgTime || msgTime < startLimit || msgTime > endLimit) {
+              continue
+            }
+
+            const info = getNewYorkDateInfo(msgTime)
+            const label = timeSlice.value === 'day' ? info.dayStr : info.hourStr
+
+            if (label in timeSeriesMap) {
+              const tokens = getMessageTokens(msg)
+              timeSeriesMap[label] += tokens
+              characterUsage[characterId] = (characterUsage[characterId] || 0) + tokens
+              totalTokens += tokens
+              totalMessages++
+            }
+          }
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+
+    const timeSeries = slices.map(slice => ({
+      label: slice.label,
+      value: timeSeriesMap[slice.label],
+    }))
+
+    const topCharacters = Object.entries(characterUsage)
+      .map(([id, val]) => {
+        const card = cardStore.cards.get(id)
+        return {
+          id,
+          name: card?.name || id,
+          value: val,
+        }
+      })
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+
+    reportData.value = {
+      timeSeries,
+      topCharacters,
+      totalMessages,
+      totalTokens,
+    }
+  }
+  catch (error) {
+    console.error('Failed to generate token usage report:', error)
+  }
+  finally {
+    isLoading.value = false
+  }
+}
+
+const chartSvgPath = computed(() => {
+  if (!reportData.value || reportData.value.timeSeries.length === 0)
+    return ''
+  const vals = reportData.value.timeSeries.map(d => d.value)
+  const max = Math.max(...vals, 1)
+  const len = vals.length
+
+  const points = vals.map((val, idx) => {
+    const x = len > 1 ? (idx / (len - 1)) * 100 : 50
+    const y = 90 - (val / max) * 80
+    return { x, y }
+  })
+
+  return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ')
+})
+
+const chartAreaPath = computed(() => {
+  const linePath = chartSvgPath.value
+  if (!linePath || !reportData.value)
+    return ''
+  const len = reportData.value.timeSeries.length
+  const lastX = len > 1 ? 100 : 50
+  return `${linePath} L ${lastX} 90 L 0 90 Z`
+})
+
+const chartTicks = computed(() => {
+  if (!reportData.value || reportData.value.timeSeries.length === 0)
+    return []
+  const series = reportData.value.timeSeries
+  const len = series.length
+  if (len <= 7) {
+    return series.map((d, i) => {
+      const cleanLabel = formatTickLabel(d.label)
+      const leftVal = len > 1 ? (i / (len - 1)) * 100 : 50
+      return { label: cleanLabel, left: `${leftVal}%` }
+    })
+  }
+  const ticks = []
+  for (let i = 0; i < 7; i++) {
+    const idx = Math.round((i / 6) * (len - 1))
+    if (series[idx]) {
+      ticks.push({
+        label: formatTickLabel(series[idx].label),
+        left: `${(i / 6) * 100}%`,
+      })
+    }
+  }
+  return ticks
+})
+
+function formatTickLabel(label: string) {
+  if (label.includes(' ')) {
+    const parts = label.split(' ')
+    const dateParts = parts[0].split('-')
+    return `${dateParts[1]}-${dateParts[2]} ${parts[1]}`
+  }
+  else {
+    const dateParts = label.split('-')
+    return `${dateParts[1]}-${dateParts[2]}`
+  }
+}
+
+// Generate the initial report on mount
+onMounted(() => {
+  generateReport()
 })
 </script>
 
@@ -685,43 +951,142 @@ onUnmounted(() => {
                 </div>
               </div>
 
+              <!-- Usage Report Config Controls -->
+              <div class="border border-white/5 rounded-2xl bg-white/5 p-4 space-y-3 dark:bg-neutral-900/40">
+                <div class="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Report Controls</span>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-neutral-400 font-medium uppercase">Time Period</label>
+                    <select
+                      v-model="timePeriod"
+                      class="w-full border border-white/10 rounded-xl bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-200 font-medium focus:border-emerald-500/50 focus:outline-none"
+                    >
+                      <option value="today">
+                        Today
+                      </option>
+                      <option value="yesterday">
+                        Yesterday
+                      </option>
+                      <option value="last_week">
+                        Last Week
+                      </option>
+                      <option value="last_month">
+                        Last Month
+                      </option>
+                    </select>
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-neutral-400 font-medium uppercase">Time Slices</label>
+                    <select
+                      v-model="timeSlice"
+                      class="w-full border border-white/10 rounded-xl bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-200 font-medium focus:border-emerald-500/50 focus:outline-none"
+                    >
+                      <option value="hour">
+                        By Hour
+                      </option>
+                      <option value="day">
+                        By Day
+                      </option>
+                    </select>
+                  </div>
+                </div>
+                <div class="pt-1">
+                  <button
+                    class="w-full flex cursor-pointer items-center justify-center gap-2 border border-emerald-500/20 rounded-xl bg-emerald-500/10 px-4 py-2 text-xs text-emerald-400 font-bold tracking-wide uppercase transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed hover:bg-emerald-500/20 disabled:opacity-50"
+                    :disabled="isLoading"
+                    @click="generateReport"
+                  >
+                    <span v-if="isLoading" class="i-svg-spinners:ring-resize text-sm" />
+                    <span>Generate Report Now</span>
+                  </button>
+                </div>
+              </div>
+
               <!-- Usage Chart Visualization -->
               <div class="border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
                 <div class="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Last 7 Days Usage</span>
-                  <span class="text-[9px] text-neutral-500 font-mono">Mock Data</span>
+                  <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Usage Over Time</span>
+                  <span v-if="reportData" class="text-[9px] text-neutral-400 font-mono">
+                    {{ reportData.totalTokens.toLocaleString() }} tokens / {{ reportData.totalMessages.toLocaleString() }} msgs
+                  </span>
                 </div>
 
-                <!-- Beautiful SVG Line Chart -->
-                <div class="mt-4 h-48 w-full">
-                  <svg class="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
-                        <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <!-- Grid Lines -->
-                    <line x1="0" y1="20" x2="100" y2="20" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" />
-                    <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" />
-                    <line x1="0" y1="80" x2="100" y2="80" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" />
-
-                    <!-- Area Under Curve -->
-                    <path d="M 0 80 Q 15 50 30 65 T 60 30 T 90 20 T 100 25 L 100 100 L 0 100 Z" fill="url(#chartGrad)" />
-
-                    <!-- Line Path -->
-                    <path d="M 0 80 Q 15 50 30 65 T 60 30 T 90 20 T 100 25" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" />
-                  </svg>
+                <div v-if="isLoading" class="mt-4 h-48 w-full flex flex-col items-center justify-center gap-2">
+                  <span class="i-svg-spinners:ring-resize text-2xl text-emerald-400" />
+                  <span class="text-[10px] text-neutral-500">Analyzing sessions database...</span>
                 </div>
+                <div v-else-if="!reportData || reportData.timeSeries.length === 0" class="mt-4 h-48 w-full flex items-center justify-center">
+                  <span class="text-[10px] text-neutral-500 font-medium">No usage data found for this period.</span>
+                </div>
+                <div v-else class="mt-4">
+                  <!-- Beautiful SVG Line Chart -->
+                  <div class="relative h-44 w-full">
+                    <svg class="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
+                          <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+                        </linearGradient>
+                      </defs>
+                      <!-- Grid Lines -->
+                      <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(255,255,255,0.03)" stroke-width="0.5" />
+                      <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.03)" stroke-width="0.5" />
+                      <line x1="0" y1="90" x2="100" y2="90" stroke="rgba(255,255,255,0.03)" stroke-width="0.5" />
 
-                <div class="mt-2 flex justify-between text-[8px] text-neutral-500 font-medium font-mono">
-                  <span>7d ago</span>
-                  <span>6d ago</span>
-                  <span>5d ago</span>
-                  <span>4d ago</span>
-                  <span>3d ago</span>
-                  <span>Yesterday</span>
-                  <span>Today</span>
+                      <!-- Area Under Curve -->
+                      <path :d="chartAreaPath" fill="url(#chartGrad)" />
+
+                      <!-- Line Path -->
+                      <path :d="chartSvgPath" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" />
+                    </svg>
+                  </div>
+
+                  <div class="relative mt-3 h-4 w-full text-[8px] text-neutral-500 font-medium font-mono">
+                    <div
+                      v-for="(tick, idx) in chartTicks"
+                      :key="idx"
+                      class="absolute whitespace-nowrap -translate-x-1/2"
+                      :style="{ left: tick.left }"
+                    >
+                      {{ tick.label }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Most Popular Characters Bar Chart -->
+              <div class="border border-white/5 rounded-2xl bg-white/5 p-4 dark:bg-neutral-900/40">
+                <div class="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Most Popular Characters</span>
+                </div>
+                <div v-if="isLoading" class="mt-4 flex flex-col items-center justify-center gap-2 py-8">
+                  <span class="i-svg-spinners:ring-resize text-2xl text-emerald-400" />
+                </div>
+                <div v-else-if="!reportData || reportData.topCharacters.length === 0" class="mt-4 flex items-center justify-center py-8">
+                  <span class="text-[10px] text-neutral-500 font-medium">No character usage data.</span>
+                </div>
+                <div v-else class="mt-4 space-y-3">
+                  <div
+                    v-for="(char, idx) in reportData.topCharacters"
+                    :key="char.id"
+                    class="space-y-1"
+                  >
+                    <div class="flex items-center justify-between text-[10px] font-medium">
+                      <span class="flex items-center gap-1.5 text-neutral-200">
+                        <span class="text-[9px] text-neutral-500 font-bold font-mono">#{{ idx + 1 }}</span>
+                        {{ char.name }}
+                      </span>
+                      <span class="text-neutral-400 font-mono">{{ char.value.toLocaleString() }} tokens</span>
+                    </div>
+                    <div class="h-2 w-full overflow-hidden border border-white/5 rounded-full bg-neutral-950/60">
+                      <div
+                        class="h-full rounded-full from-emerald-500 to-teal-400 bg-gradient-to-r transition-all duration-500"
+                        :style="{ width: `${(char.value / Math.max(...reportData.topCharacters.map(c => c.value), 1)) * 100}%` }"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
