@@ -151,3 +151,32 @@ A helper search input at the bottom of the sync selection screen simplifies targ
 * **Real-time Results:** Matches characters like `Asuka`, `Asukee`, `Asuhoa`.
 * **"Add / Select All Related" Action:** Clicking next to a search result automatically traverses the sync tree and checks all leaf nodes (chats, custom background files, display models) associated with that character.
 
+---
+
+## 🔒 The Zero-Custody Solution: Credential Delegation via Google AppData Sandbox
+
+### 1. The Monetization Counter-Movement
+The main branch implements centralized custody (forcing data into private customer servers, locking synchronization options, gating features, and introducing intermediary markup via points systems like "Flux Points").
+
+In contrast, our philosophy is **absolute local-first autonomy with zero-custody convenience**.
+
+### 2. The Trust & Liability Problem
+Creating our own centralized database (even just for storing encrypted S3 credentials) opens up backdoor accusations and introduces server-maintenance overhead. We need a system that offers the setup convenience of a single username/password login without our software ever holding custody of the keys.
+
+### 3. The Google Drive OAuth AppData Sandbox Flow
+Instead of hosting a credential database, we delegate authentication and credentials management to **Google Drive's `appDataFolder` sandbox scope**:
+
+* **Minimal Scope Request:** During onboarding, the user is offered a "Restore from Cloud (Google Sign-In)" path. The app requests authorization exclusively for the `https://www.googleapis.com/auth/drive.appdata` OAuth scope.
+* **Sandbox Isolation:** This folder is hidden from the standard Google Drive UI. Users cannot accidentally delete it, and other third-party apps cannot inspect it. Only our open-source client (running locally in their browser/desktop) has access.
+* **The Bootstrap File (`airi_bootstrap.json`):**
+  - **First Time Config:** The user logs in via Google, inputs their S3/Dropbox credentials in the client, and the client uploads them directly to `appDataFolder/airi_bootstrap.json`.
+  - **Second Device Link:** The user signs in with Google. The client downloads `airi_bootstrap.json` from their Google Drive AppData sandbox, decrypts it locally, and initializes the high-speed S3/R2 sync engine instantly.
+* **Serverless Autonomy:** No intermediate server of ours is involved in the handshake or key storage. The code is entirely client-side, making it audited, verifiable, and free of custody liability.
+
+### 4. Adapter Ecosystem Expansion (Roadmap)
+While S3 remains our high-performance asset engine, the credentials workflow should adapt to support a broader storage matrix:
+* **Storage Adapters:** The system should allow the user to select S3/R2, Dropbox, or Google Drive itself as their physical database storage engine.
+* **Independent Tokens:** If Google Drive itself is selected as the main storage engine, the AppData folder is used to hold credentials for other sub-services, or standard storage directories are mapped.
+* **Modular Refresh Handshake:** The client will independently manage token lifecycles (such as OAuth refresh tokens for Dropbox/Google Drive) behind the scenes without interrupting the user's local interaction.
+
+
