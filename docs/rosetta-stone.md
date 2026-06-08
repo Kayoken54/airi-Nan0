@@ -119,6 +119,10 @@ The canonical reference for every storage key, type, and sync behavior is **[`do
 
 The provider architecture lets TTS, LLM, STT, vision, and image generation backends be registered as interchangeable "providers."
 
+For a complete, categorized index of every registered provider, see **[`docs/provider-catalog.md`](./provider-catalog.md)**.
+
+> **Restructuring status:** Provider metadata is still mostly inline in `providers.ts`. Phase 1 extraction is documented in [`docs/project-provider-store-restructuring-plan.md`](./project-provider-store-restructuring-plan.md) — the plan for splitting metadata into dedicated files by provider family. See also [`docs/content/en/docs/advanced/architecture/arch-provider-store-current-structure.md`](./content/en/docs/advanced/architecture/arch-provider-store-current-structure.md) for the current architecture.
+
 ### Core Files
 | Concept | Path |
 | :--- | :--- |
