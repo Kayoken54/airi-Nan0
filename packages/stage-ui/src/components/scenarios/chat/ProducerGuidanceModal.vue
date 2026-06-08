@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useLocalStorage } from '@vueuse/core'
-import { ref, watch } from 'vue'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+import { computed, ref, watch } from 'vue'
+
+import { useChatSessionStore } from '../../../stores/chat/session-store'
 
 const props = defineProps<{
   modelValue: boolean
@@ -12,11 +15,29 @@ const emit = defineEmits<{
   (e: 'submit', payload: { guidance: string, contextDepth: number, count: number, shortReplies: boolean }): void
 }>()
 
+const chatSessionStore = useChatSessionStore()
+
 const guidance = ref('')
 const contextDepth = useLocalStorage('airi:producer:context-depth', 6)
 const autoSend = useLocalStorage('airi:producer:auto-send', true)
 const suggestionCount = useLocalStorage('airi:producer:suggestion-count', 4)
 const shortReplies = useLocalStorage('airi:producer:short-replies', true)
+
+const boundaryMessage = computed(() => {
+  const sessionId = chatSessionStore.activeSessionId
+  if (!sessionId)
+    return ''
+  const messages = chatSessionStore.sessionMessages[sessionId]
+  if (!messages || messages.length === 0)
+    return ''
+  const index = messages.length - contextDepth.value
+  if (index < 0)
+    return ''
+  const msg = messages[index]
+  const role = msg.role === 'user' ? 'You' : props.characterName || 'Assistant'
+  const text = (typeof msg.content === 'string' ? msg.content.slice(0, 300) : '') || ''
+  return `${role}: ${text}`
+})
 
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
@@ -91,7 +112,29 @@ function handleGenerate() {
                   Context Depth
                 </label>
                 <span class="rounded bg-primary-500/10 px-2 py-0.5 text-xs text-primary-500 font-bold font-mono">
-                  {{ contextDepth }} messages
+                  <PopoverRoot>
+                    <PopoverTrigger as-child>
+                      <button class="flex items-center gap-1 outline-none">
+                        {{ contextDepth }} messages
+                        <span class="rounded bg-primary-500/20 px-1 text-[9px] text-primary-600 font-bold leading-relaxed uppercase dark:text-primary-400">Preview</span>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverPortal>
+                      <PopoverContent
+                        side="top"
+                        align="center"
+                        class="z-50 max-w-xs border border-neutral-200 rounded-xl bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+                      >
+                        <div class="text-[10px] text-neutral-400 font-bold tracking-widest uppercase">Boundary Message</div>
+                        <p class="mt-1.5 max-h-24 overflow-y-auto text-xs text-neutral-700 leading-relaxed dark:text-neutral-300">
+                          {{ boundaryMessage || 'No messages in current session' }}
+                        </p>
+                        <div class="mt-2 text-[9px] text-neutral-400 italic">
+                          Message #{{ chatSessionStore.activeSessionId ? (chatSessionStore.sessionMessages[chatSessionStore.activeSessionId]?.length ?? 0) - contextDepth + 1 : '—' }} from the end — inclusive of the count
+                        </div>
+                      </PopoverContent>
+                    </PopoverPortal>
+                  </PopoverRoot>
                 </span>
               </div>
               <input
