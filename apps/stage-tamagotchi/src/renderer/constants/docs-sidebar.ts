@@ -43,6 +43,7 @@ export const DOCS_SIDEBAR: Record<string, SidebarItem[]> = {
             { text: 'Intelligence & Modules', link: 'manual/config/modules' },
             { text: 'System & Data', link: 'manual/config/system-data' },
             { text: 'Studio', link: 'manual/config/studio' },
+            { text: 'Discord Commands', link: 'manual/config/discord-commands' },
           ],
         },
       ],
