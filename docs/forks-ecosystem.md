@@ -74,6 +74,43 @@ The OpenClaw + Shion Eria side project is the interesting thread. They appear to
 
 ## 🟡 Medium Interest — Check Periodically
 
+### [Perilavumme/airi](https://github.com/Perilavumme/airi)
+
+**What they're building:**
+- **DeepSeek latency optimization** — added toggles to default DeepSeek thinking mode off to optimize MVP response times.
+- **Steam builds customization** — introduced options to hide BYOK (Bring Your Own Key) providers for custom Steam distribution builds via environment variables.
+
+**PRs to main:** No evidence yet
+
+**Why this matters:**
+This user is optimizing model latency and tailoring the UI specifically for platform distribution (Steam). Their work on bypassing BYOK features is highly relevant if this fork targets standalone game-like packaging.
+
+---
+
+### [hydraerozine/airi](https://github.com/hydraerozine/airi)
+
+**What they're building:**
+- **Polytrade Presenter** — custom integration for spoken names of HIP-3 equity assets.
+
+**PRs to main:** No evidence yet
+
+**Why this matters:**
+A highly customized, domain-specific companion extension. Shows how others are extending the TTS/voice output layer to read financial or custom market data.
+
+---
+
+### [felixtremblay/airi](https://github.com/felixtremblay/airi)
+
+**What they're building:**
+- **Screenshot tool** — built a modular `airi-screenshot` functionality for the agent's workspace.
+
+**PRs to main:** No evidence yet
+
+**Why this matters:**
+A very practical utility for agents that need to observe and record visual workspace states. Highly reusable candidate.
+
+---
+
 ### [btechioi/NOVA](https://github.com/btechioi/NOVA)
 
 **What they're building:** Unknown — this fork was renamed from "airi" to **NOVA**, which is the strongest signal of intent to build a distinctly branded independent project rather than a staging branch for upstream PRs.
@@ -124,6 +161,9 @@ Clean infrastructure contributor focused on the desktop rendering path. Their El
 | [NashChennc/airi](https://github.com/NashChennc/airi) | NaN (LDS@USTC) | Active contributor | Low (staging) | ✅ Yes | Core agent, Alaya memory, LLM alignment research |
 | [YoukiAkito/airi](https://github.com/YoukiAkito/airi) | LiMomo | Active contributor | Low (staging) | ✅ Yes | Alaya memory optimization |
 | [lulu0119/airi](https://github.com/lulu0119/airi) | lulu0119 | Active contributor | Low (staging) | ✅ Yes | Scale UI, Whiteboard MCP, OpenClaw Shion Eria |
+| [Perilavumme/airi](https://github.com/Perilavumme/airi) | Perilavumme | Contributor | Low | ❌ None | DeepSeek latency optimization, Steam BYOK disable |
+| [hydraerozine/airi](https://github.com/hydraerozine/airi) | hydraerozine | Contributor | Low | ❌ None | Polytrade Presenter, HIP-3 equities |
+| [felixtremblay/airi](https://github.com/felixtremblay/airi) | felixtremblay | Contributor | Low | ❌ None | Screenshot tool (`airi-screenshot`) |
 | [btechioi/NOVA](https://github.com/btechioi/NOVA) | Unknown | **Independent?** | Unknown | ❌ None | Renamed fork — NOVA character? |
 | [BeanDz/airi](https://github.com/BeanDz/airi) | BeanDz | Active contributor | Low (staging) | ✅ Yes | Stage rendering, Electron desktop |
 | [CaoMeiYouRen/airi](https://github.com/CaoMeiYouRen/airi) | 草梅友仁 | Passive | None | ❌ None | Chinese dev blogger, observer |
@@ -147,6 +187,12 @@ Clean infrastructure contributor focused on the desktop rendering path. Their El
 
 ## How to Update This Document
 
-1. Visit the [forks page](https://github.com/moeru-ai/airi/forks?include=active&page=1&period=2y&sort_by=last_updated) filtered to "Recently updated"
-2. Check any forks not already listed here or any listed forks with significant recent activity
-3. Update the relevant entries and the "Last surveyed" date at the top
+To survey active forks on a regular basis:
+
+1. Run the update script:
+   ```bash
+   node scripts/github/update-forks-catalog.mjs
+   ```
+2. The script uses the GitHub API to fetch the 50 newest created forks, sorts them in-memory by their recent `pushed_at` timestamp, compares their commits against upstream `moeru-ai/airi` to filter out passive synced forks, and outputs a list of active forks showing their custom commits.
+3. Review any forks with significant custom commits not already cataloged in this document, and add them under the appropriate category.
+4. Update the "Last surveyed" date at the top.
