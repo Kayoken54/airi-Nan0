@@ -1,0 +1,23 @@
+diff --git a/dist/adapters/webworkers/worker/index.mjs b/dist/adapters/webworkers/worker/index.mjs
+index b7f45b59966cdf3e5e45d6f48168ea835fd3c0ee..79777f2726cc0e7cca3072c86110bc9d7cf2fe70 100644
+--- a/dist/adapters/webworkers/worker/index.mjs
++++ b/dist/adapters/webworkers/worker/index.mjs
+@@ -24,12 +24,17 @@ function createContext(options) {
+ 	};
+ 	self.onmessage = (event) => {
+ 		try {
++			if (!event.data || typeof event.data !== 'object') return;
+ 			const { type, payload } = parseWorkerPayload(event.data);
++			if (!payload) return;
+ 			if (!isWorkerEventa(payload)) ctx.emit(defineInboundEventa(type), payload.body, { raw: { event } });
+ 			else ctx.emit(defineInboundEventa(type), { message: payload.body }, { raw: { event } });
+ 		} catch (error) {
+ 			console.error("Failed to parse WebWorker message:", error);
+-			ctx.emit(workerErrorEvent, { error }, { raw: { event } });
++			ctx.emit(workerErrorEvent, {
++				kind: "parse",
++				error: toError(error, "eventa: webworker message parse error")
++			}, { raw: { event } });
+ 		}
+ 	};
+ 	return { context: ctx };

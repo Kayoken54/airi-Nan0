@@ -285,6 +285,12 @@ overrides:
 packageExtensionsChecksum: sha256-UCFi+cr2PGQ7+Ux3cl4NB/aqHL2xwGcHHm2PMjek+0g=
 
 patchedDependencies:
+  '@moeru/eventa':
+    hash: 202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7
+    path: patches/@moeru__eventa.patch
+  '@moeru/eventa@0.3.0':
+    hash: bae5a63fe8dc6c8251889d169f15df22fcd64724aa05ef7fd88606bd4a235ea9
+    path: patches/@moeru__eventa@0.3.0.patch
   active-win@9.0.0:
     hash: 33d1a24fc919f2c185abd9aab5da1189d639ec5da123c80994a9c8d47196f17e
     path: patches/active-win@9.0.0.patch
@@ -607,7 +613,7 @@ importers:
         version: 1.2.11
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -1088,7 +1094,7 @@ importers:
         version: 3.8.1
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(hono@4.11.3)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(hono@4.11.3)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -1677,7 +1683,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       builder-util-runtime:
         specifier: 'catalog:'
         version: 9.5.1
@@ -1705,7 +1711,7 @@ importers:
         version: 3.0.2(electron@39.7.0)
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@39.7.0)(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@39.7.0)(hono@4.12.2)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -1723,7 +1729,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -1819,7 +1825,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -1831,7 +1837,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@xsai/shared-chat':
         specifier: 'catalog:'
         version: 0.4.0-beta.13
@@ -1840,7 +1846,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@proj-airi/plugin-protocol':
         specifier: workspace:*
         version: link:../plugin-protocol
@@ -1913,7 +1919,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -2016,7 +2022,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -2146,7 +2152,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@valibot/to-json-schema':
         specifier: 1.0.0-rc.0
         version: 1.0.0-rc.0(valibot@1.2.0(typescript@5.9.3))
@@ -2207,7 +2213,7 @@ importers:
         version: 3.8.1
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(hono@4.11.3)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(hono@4.11.3)
       '@orama/orama':
         specifier: 'catalog:'
         version: 3.1.18
@@ -2760,7 +2766,7 @@ importers:
     dependencies:
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@pixiv/three-vrm':
         specifier: ^3.5.1
         version: 3.5.1(three@0.183.1)
@@ -3042,7 +3048,7 @@ importers:
         version: 1.2.4
       '@moeru/eventa':
         specifier: 'catalog:'
-        version: 1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+        version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
       '@proj-airi/server-sdk':
         specifier: workspace:^
         version: link:../../packages/server-sdk
@@ -20047,7 +20053,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@moeru/eventa@0.3.0(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))':
+  '@moeru/eventa@0.3.0(patch_hash=bae5a63fe8dc6c8251889d169f15df22fcd64724aa05ef7fd88606bd4a235ea9)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))':
     dependencies:
       nanoid: 5.1.6
       picomatch: 4.0.3
@@ -20055,7 +20061,7 @@ snapshots:
       electron: 40.8.0
       h3: 2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d)))
 
-  '@moeru/eventa@1.0.0-beta.10(electron@39.7.0)(hono@4.12.2)':
+  '@moeru/eventa@1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@39.7.0)(hono@4.12.2)':
     dependencies:
       nanoid: 5.1.11
       picomatch: 4.0.4
@@ -20063,7 +20069,7 @@ snapshots:
       electron: 39.7.0
       hono: 4.12.2
 
-  '@moeru/eventa@1.0.0-beta.10(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)':
+  '@moeru/eventa@1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)':
     dependencies:
       nanoid: 5.1.11
       picomatch: 4.0.4
@@ -20072,7 +20078,7 @@ snapshots:
       h3: 2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d)))
       hono: 4.12.2
 
-  '@moeru/eventa@1.0.0-beta.10(electron@40.8.0)(hono@4.11.3)':
+  '@moeru/eventa@1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(hono@4.11.3)':
     dependencies:
       nanoid: 5.1.11
       picomatch: 4.0.4
@@ -23990,7 +23996,7 @@ snapshots:
   '@xsai-transformers/embed@0.0.11(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))':
     dependencies:
       '@huggingface/transformers': 3.8.1
-      '@moeru/eventa': 0.3.0(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
+      '@moeru/eventa': 0.3.0(patch_hash=bae5a63fe8dc6c8251889d169f15df22fcd64724aa05ef7fd88606bd4a235ea9)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
       '@moeru/std': 0.1.0-beta.17
       '@xsai-ext/shared-providers': 0.4.0-beta.12
       '@xsai-transformers/shared': 0.0.11(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
@@ -24004,7 +24010,7 @@ snapshots:
   '@xsai-transformers/shared@0.0.11(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))':
     dependencies:
       '@huggingface/transformers': 3.8.1
-      '@moeru/eventa': 0.3.0(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
+      '@moeru/eventa': 0.3.0(patch_hash=bae5a63fe8dc6c8251889d169f15df22fcd64724aa05ef7fd88606bd4a235ea9)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
       '@moeru/std': 0.1.0-beta.17
       '@xsai-ext/shared-providers': 0.4.0-beta.12
       '@xsai/shared': 0.4.3
@@ -24017,7 +24023,7 @@ snapshots:
   '@xsai-transformers/transcription@0.0.11(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))':
     dependencies:
       '@huggingface/transformers': 3.8.1
-      '@moeru/eventa': 0.3.0(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
+      '@moeru/eventa': 0.3.0(patch_hash=bae5a63fe8dc6c8251889d169f15df22fcd64724aa05ef7fd88606bd4a235ea9)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))
       '@moeru/std': 0.1.0-beta.17
       '@xsai-ext/shared-providers': 0.4.0-beta.12
       '@xsai-transformers/shared': 0.0.11(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))

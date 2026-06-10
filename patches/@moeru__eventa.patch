@@ -1,0 +1,14 @@
+diff --git a/dist/adapters/webworkers/worker/index.mjs b/dist/adapters/webworkers/worker/index.mjs
+index d61a324d168d7247e81377457fca24e6067fa657..d947c6cb5e4d1328777697da16db7e11a9c87d02 100644
+--- a/dist/adapters/webworkers/worker/index.mjs
++++ b/dist/adapters/webworkers/worker/index.mjs
+@@ -28,7 +28,9 @@ function createContext(options) {
+ 	};
+ 	self.onmessage = (event) => {
+ 		try {
++			if (!event.data || typeof event.data !== 'object') return;
+ 			const { type, payload } = parseWorkerPayload(event.data);
++			if (!payload) return;
+ 			if (!isWorkerEventa(payload)) ctx.emit(defineInboundEventa(type), payload.body, { raw: { event } });
+ 			else ctx.emit(defineInboundEventa(type), { message: payload.body }, { raw: { event } });
+ 		} catch (error) {

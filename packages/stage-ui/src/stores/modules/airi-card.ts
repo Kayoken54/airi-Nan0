@@ -334,6 +334,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     if (JSON.stringify(next) !== JSON.stringify(prev)) {
       const topConceptId = next?.[next.length - 1]
       console.log(`[AiriCard] Concept Stack changed. Top concept: "${topConceptId}". Syncing manifestation overrides...`, { stack: next })
+      console.log('[AiriCard Store] Concept Stack Watcher triggering syncCardState')
       void syncCardState(activeCard.value, true)
     }
   }, { deep: true })
@@ -484,6 +485,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     if (!extension)
       return
 
+    console.log('[AiriCard Store] syncCardState executed. Force:', force, 'Resolved displayModelId:', extension.active_state?.displayModelId ?? extension.modules?.displayModelId)
+
     // 1. Sync Consciousness with stability guards
     const nextConsciousnessProvider = extension.modules?.consciousness?.provider
     if (nextConsciousnessProvider && activeConsciousnessProvider.value !== nextConsciousnessProvider)
@@ -522,8 +525,12 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       if (nextExpressions) {
         // Apply to both stores; the respective renderer will pick it up
         if (Object.keys(nextExpressions).length > 0) {
-          live2dStore.activeExpressions = { ...nextExpressions }
-          vrmStore.activeExpressions = { ...nextExpressions }
+          if (JSON.stringify(live2dStore.activeExpressions) !== JSON.stringify(nextExpressions)) {
+            live2dStore.activeExpressions = { ...nextExpressions }
+          }
+          if (JSON.stringify(vrmStore.activeExpressions) !== JSON.stringify(nextExpressions)) {
+            vrmStore.activeExpressions = { ...nextExpressions }
+          }
         }
       }
 
@@ -1058,6 +1065,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   watch(activeCard, async (newCard: AiriCard | undefined) => {
+    console.log('[AiriCard Store] activeCard watcher triggered. Card Name:', newCard?.name, 'Active Concepts:', newCard?.extensions?.airi?.active_concepts)
     await syncCardState(newCard)
   })
 
