@@ -2,12 +2,158 @@
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const syncStore = useSyncEngineStore()
 const cardStore = useAiriCardStore()
+
+// Selective Sync Modal mockup states
+const isSelectiveSyncOpen = ref(false)
+const searchCharQuery = ref('')
+
+interface TreeNode {
+  id: string
+  label: string
+  size?: string
+  checked: boolean
+  required?: boolean
+  children?: TreeNode[]
+}
+
+const syncTree = ref<TreeNode[]>([
+  {
+    id: 'metadata',
+    label: 'Database Core & Settings',
+    checked: true,
+    required: true,
+    children: [
+      { id: 'meta-configs', label: 'App Settings & Provider Configurations', checked: true, required: true },
+      { id: 'meta-cards', label: 'Character Cards Database (JSON metadata)', checked: true, required: true },
+      { id: 'meta-shortmemory', label: 'Short-Term Memory summaries', checked: true, required: true },
+    ],
+  },
+  {
+    id: 'chats',
+    label: 'Chat Sessions',
+    checked: true,
+    children: [
+      { id: 'chat-asuka', label: 'Chat History: Asuka Langley Soryu', size: '250 KB', checked: true },
+      { id: 'chat-kiana', label: 'Chat History: Kiana Kaslana', size: '420 KB', checked: true },
+      { id: 'chat-bronya', label: 'Chat History: Bronya Zaychik', size: '1.2 MB', checked: true },
+    ],
+  },
+  {
+    id: 'backgrounds',
+    label: 'Custom Background Images',
+    checked: false,
+    children: [
+      { id: 'bg-cyberpunk', label: 'Neon Cyberpunk Alleyway', size: '4.2 MB', checked: false },
+      { id: 'bg-bedroom', label: 'Cozy Anime Bedroom', size: '5.8 MB', checked: false },
+      { id: 'bg-classroom', label: 'Twilight Classroom', size: '3.1 MB', checked: false },
+    ],
+  },
+  {
+    id: 'models',
+    label: 'Display Models (VRM / Live2D)',
+    checked: false,
+    children: [
+      { id: 'model-asuka-casual', label: 'Asuka (Casual outfit) - VRM', size: '48 MB', checked: false },
+      { id: 'model-asuka-plugsuit', label: 'Asuka (Plugsuit) - VRM', size: '72 MB', checked: false },
+      { id: 'model-kiana-void', label: 'Kiana (Herrscher of the Void) - Live2D', size: '38 MB', checked: false },
+      { id: 'model-bronya-bunny', label: 'Bronya (Bunny) - Live2D', size: '55 MB', checked: false },
+    ],
+  },
+])
+
+const searchMatchesMessage = computed(() => {
+  const query = searchCharQuery.value.trim().toLowerCase()
+  if (!query)
+    return ''
+  if ('asuka'.includes(query)) {
+    return 'Found: Asuka (Chat, 2 Models)'
+  }
+  if ('kiana'.includes(query)) {
+    return 'Found: Kiana (Chat, 1 Model)'
+  }
+  if ('bronya'.includes(query)) {
+    return 'Found: Bronya (Chat, 1 Model)'
+  }
+  return 'No matching characters'
+})
+
+function handleSelectRelated() {
+  const query = searchCharQuery.value.trim().toLowerCase()
+  if (!query)
+    return
+
+  const targetChars: string[] = []
+  if ('asuka'.includes(query))
+    targetChars.push('asuka')
+  if ('kiana'.includes(query))
+    targetChars.push('kiana')
+  if ('bronya'.includes(query))
+    targetChars.push('bronya')
+
+  for (const group of syncTree.value) {
+    if (group.children) {
+      for (const child of group.children) {
+        if (child.required)
+          continue
+
+        const matchesAny = targetChars.some(char => child.id.includes(char) || child.label.toLowerCase().includes(char))
+        if (matchesAny) {
+          child.checked = true
+          group.checked = true
+        }
+      }
+    }
+  }
+}
+
+function toggleChild(parentIndex: number, childIndex: number) {
+  const parent = syncTree.value[parentIndex]
+  const child = parent.children![childIndex]
+  if (child.required)
+    return
+  child.checked = !child.checked
+
+  const anyChecked = parent.children!.some(c => c.checked)
+  parent.checked = anyChecked
+}
+
+function toggleParent(parentIndex: number) {
+  const parent = syncTree.value[parentIndex]
+  if (parent.required)
+    return
+  parent.checked = !parent.checked
+  if (parent.children) {
+    for (const child of parent.children) {
+      if (child.required)
+        continue
+      child.checked = parent.checked
+    }
+  }
+}
+
+function triggerSelectiveSyncMock() {
+  isSelectiveSyncOpen.value = false
+  // Simulate sync starting
+  isSyncing.value = true
+  setTimeout(() => {
+    isSyncing.value = false
+    lastSyncTime.value = Date.now()
+  }, 2000)
+}
 
 function getConflictCharacterName(conflict: any): string {
   const charId = conflict.sessionDetails?.local?.characterId || conflict.sessionDetails?.remote?.characterId
@@ -193,13 +339,22 @@ async function handleRestoreFromBackup() {
           <span class="text-neutral-700 font-semibold dark:text-neutral-300">Manual Synchronization</span>
           <span class="text-xs text-neutral-400 dark:text-neutral-500">Last Synced: {{ formattedLastSync }}</span>
         </div>
-        <button
-          class="ml-auto rounded-xl bg-primary-500 px-5 py-2.5 text-sm text-white font-semibold transition-colors duration-200 hover:bg-primary-600 focus:outline-none"
-          :disabled="isSyncing"
-          @click="syncStore.triggerSync"
-        >
-          {{ isSyncing ? 'Syncing...' : 'Sync Now' }}
-        </button>
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            class="border border-neutral-200 rounded-xl px-4 py-2.5 text-sm text-neutral-600 font-semibold outline-none transition-colors duration-200 dark:border-neutral-700 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            :disabled="isSyncing"
+            @click="isSelectiveSyncOpen = true"
+          >
+            Selective Sync...
+          </button>
+          <button
+            class="rounded-xl bg-primary-500 px-5 py-2.5 text-sm text-white font-semibold transition-colors duration-200 hover:bg-primary-600 focus:outline-none"
+            :disabled="isSyncing"
+            @click="syncStore.triggerSync"
+          >
+            {{ isSyncing ? 'Syncing...' : 'Sync All' }}
+          </button>
+        </div>
       </div>
 
       <div class="flex flex-row items-center border-t border-neutral-200 pt-4 dark:border-neutral-800">
@@ -317,6 +472,115 @@ async function handleRestoreFromBackup() {
       </div>
     </div>
   </div>
+
+  <!-- Selective Sync Modal Dialog -->
+  <DialogRoot :open="isSelectiveSyncOpen" @update:open="isSelectiveSyncOpen = $event">
+    <DialogPortal>
+      <DialogOverlay class="fixed inset-0 z-100 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-fadeOut data-[state=open]:animate-fadeIn" />
+      <DialogContent
+        class="fixed left-1/2 top-1/2 z-100 max-h-[85vh] max-w-2xl w-[90vw] flex flex-col border border-white/10 rounded-2xl bg-neutral-900/95 p-6 text-white shadow-2xl backdrop-blur-xl -translate-x-1/2 -translate-y-1/2 data-[state=closed]:animate-contentHide data-[state=open]:animate-contentShow focus:outline-none"
+      >
+        <DialogTitle class="mb-1 flex items-center gap-2 text-xl font-bold">
+          <div class="i-solar:shield-keyhole-bold-duotone text-2xl text-primary-400" />
+          <span>Selective Sync Scope</span>
+        </DialogTitle>
+        <DialogDescription class="mb-4 text-xs text-neutral-400">
+          Choose which databases and heavy media assets you want to synchronize with your storage backend. Required core metadata is always synced.
+        </DialogDescription>
+
+        <!-- Search Character Helper -->
+        <div class="mb-4 border border-white/5 rounded-xl bg-neutral-950/40 p-3">
+          <div class="mb-1.5 text-[10px] text-primary-400 font-bold tracking-wider uppercase">
+            Select by Character Profile
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1">
+              <input
+                v-model="searchCharQuery"
+                type="text"
+                placeholder="Type character name (e.g. Asuka, Kiana, Bronya)..."
+                class="w-full border border-white/10 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs text-white outline-none transition-colors focus:border-primary-500 placeholder-neutral-500"
+              >
+              <span v-if="searchMatchesMessage" class="absolute right-3 top-1/2 text-[10px] text-primary-400 font-semibold -translate-y-1/2">
+                {{ searchMatchesMessage }}
+              </span>
+            </div>
+            <button
+              class="rounded-lg bg-primary-500 px-3 py-1.5 text-xs text-white font-bold transition-all hover:bg-primary-600 disabled:opacity-50"
+              :disabled="!searchCharQuery"
+              @click="handleSelectRelated"
+            >
+              Select All Related
+            </button>
+          </div>
+        </div>
+
+        <!-- Tree View Container -->
+        <div class="mb-6 max-h-[40vh] flex flex-1 flex-col gap-4 overflow-y-auto border border-white/5 rounded-xl bg-neutral-950/25 p-4 scrollbar-thin">
+          <div v-for="(parent, pIdx) in syncTree" :key="parent.id" class="flex flex-col gap-2">
+            <!-- Parent Node -->
+            <div class="group flex items-center justify-between">
+              <label class="flex cursor-pointer select-none items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  :checked="parent.checked"
+                  :disabled="parent.required"
+                  class="border-white/10 rounded bg-neutral-800 text-primary-500 disabled:opacity-50 focus:ring-0 focus:ring-offset-0"
+                  @change="toggleParent(pIdx)"
+                >
+                <span class="text-xs text-neutral-200 font-bold transition-colors group-hover:text-white" :class="{ 'text-primary-400': parent.required }">
+                  {{ parent.label }}
+                  <span v-if="parent.required" class="ml-1.5 rounded bg-primary-500/25 px-1.5 py-0.5 text-[9px] text-primary-400 tracking-wider uppercase">Required</span>
+                </span>
+              </label>
+            </div>
+
+            <!-- Children Nodes -->
+            <div v-if="parent.children" class="ml-1.5 flex flex-col gap-2.5 border-l border-white/5 pl-6">
+              <div v-for="(child, cIdx) in parent.children" :key="child.id" class="group flex items-center justify-between">
+                <label class="flex cursor-pointer select-none items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    :checked="child.checked"
+                    :disabled="child.required"
+                    class="border-white/10 rounded bg-neutral-800 text-primary-500 disabled:opacity-50 focus:ring-0 focus:ring-offset-0"
+                    @change="toggleChild(pIdx, cIdx)"
+                  >
+                  <span class="text-xs text-neutral-400 transition-colors group-hover:text-neutral-200" :class="{ 'text-neutral-300 font-medium': child.checked }">
+                    {{ child.label }}
+                  </span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <span v-if="child.size" class="text-[10px] text-neutral-500 font-semibold">{{ child.size }}</span>
+                  <span v-if="child.required" class="rounded bg-primary-500/10 px-1.5 py-0.5 text-[9px] text-primary-400">ALWAYS SYNCED</span>
+                  <span v-else-if="child.size" class="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-400">HEAVY ASSET</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Footer -->
+        <div class="flex items-center justify-between border-t border-white/5 pt-4">
+          <span class="text-[10px] text-neutral-400">Values are stored locally for subsequent background sync cycles.</span>
+          <div class="flex gap-2">
+            <button
+              class="border border-white/10 rounded-xl px-4 py-2 text-xs text-neutral-300 font-semibold outline-none transition-colors duration-200 hover:bg-white/5"
+              @click="isSelectiveSyncOpen = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="rounded-xl bg-primary-500 px-4 py-2 text-xs text-white font-bold transition-all hover:bg-primary-600"
+              @click="triggerSelectiveSyncMock"
+            >
+              Sync Selected
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 
   <div
     v-motion
