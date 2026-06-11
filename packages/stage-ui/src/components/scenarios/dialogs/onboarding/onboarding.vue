@@ -9,16 +9,25 @@ import type {
 } from './types'
 
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import StepCharacterSelection from './step-character-selection.vue'
 import StepEasySetup from './step-easy-setup.vue'
+import StepGoogleOAuth from './step-google-oauth.vue'
+import StepManualAdapter from './step-manual-adapter.vue'
 import StepModeSelection from './step-mode-selection.vue'
 import StepModelSelection from './step-model-selection.vue'
 import StepProviderConfiguration from './step-provider-configuration.vue'
+import StepProviderResolver from './step-provider-resolver.vue'
 import StepProviderSelection from './step-provider-selection.vue'
+import StepSelectiveSync from './step-selective-sync.vue'
+import StepStartChoice from './step-start-choice.vue'
+import StepSyncOptions from './step-sync-options.vue'
+import StepSyncProgress from './step-sync-progress.vue'
 import StepWelcome from './step-welcome.vue'
 
+import { fetchSession } from '../../../../libs/auth'
+import { useAuthStore } from '../../../../stores/auth'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useConsciousnessStore } from '../../../../stores/modules/consciousness'
 import { useHearingStore } from '../../../../stores/modules/hearing'
@@ -38,6 +47,10 @@ const step = ref(0)
 const direction = ref<'next' | 'previous'>('next')
 const pendingProviderConfig = ref<ProviderConfigData | null>(null)
 const onboardingMode = ref<'easy' | 'custom'>('easy')
+const onboardingPath = ref<'new' | 'returning'>('new')
+const returningMethod = ref<'google' | 'manual'>('google')
+const isGoogleAuthenticated = ref(false)
+const isGoogleLinking = ref(false)
 
 const providersStore = useProvidersStore()
 const { providers, allChatProvidersMetadata, addedProviders } = storeToRefs(providersStore)
@@ -200,8 +213,67 @@ async function saveProviderConfiguration(data: ProviderConfigData) {
 }
 
 async function handleSave() {
+  localStorage.removeItem('airi-onboarding-state')
   emit('configured')
 }
+
+// Persist onboarding state to localStorage so redirects do not lose user context
+function saveOnboardingState() {
+  localStorage.setItem('airi-onboarding-state', JSON.stringify({
+    step: step.value,
+    onboardingMode: onboardingMode.value,
+    onboardingPath: onboardingPath.value,
+    returningMethod: returningMethod.value,
+    isGoogleAuthenticated: isGoogleAuthenticated.value,
+    isGoogleLinking: isGoogleLinking.value,
+    pendingProviderConfig: pendingProviderConfig.value,
+    selectedProviderId: selectedProviderId.value,
+    selectedCharacterId: selectedCharacterId.value,
+  }))
+}
+
+watch([step, onboardingMode, onboardingPath, returningMethod, isGoogleAuthenticated, isGoogleLinking, pendingProviderConfig, selectedProviderId, selectedCharacterId], () => {
+  saveOnboardingState()
+}, { deep: true })
+
+const authStore = useAuthStore()
+
+onMounted(async () => {
+  // 1. Force check google session callback on load (even if sync isn't fully enabled yet)
+  try {
+    const hasActiveSync = localStorage.getItem('settings/privacy/remote-sync-enabled') === 'true'
+    if (hasActiveSync) {
+      await fetchSession()
+    }
+  }
+  catch (err) {
+    console.error('Failed to fetch authentication session:', err)
+  }
+
+  if (authStore.isAuthenticated) {
+    isGoogleAuthenticated.value = true
+  }
+
+  // 2. Restore onboarding progress
+  const saved = localStorage.getItem('airi-onboarding-state')
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved)
+      step.value = parsed.step ?? 0
+      onboardingMode.value = parsed.onboardingMode ?? 'easy'
+      onboardingPath.value = parsed.onboardingPath ?? 'new'
+      returningMethod.value = parsed.returningMethod ?? 'google'
+      isGoogleAuthenticated.value = parsed.isGoogleAuthenticated || authStore.isAuthenticated || isGoogleAuthenticated.value
+      isGoogleLinking.value = parsed.isGoogleLinking ?? false
+      pendingProviderConfig.value = parsed.pendingProviderConfig ?? null
+      selectedProviderId.value = parsed.selectedProviderId ?? ''
+      selectedCharacterId.value = parsed.selectedCharacterId ?? 'default'
+    }
+    catch (e) {
+      console.error('Failed to parse onboarding state', e)
+    }
+  }
+})
 
 const allSteps = computed<OnboardingStep[]>(() => {
   const steps: OnboardingStep[] = [
@@ -210,6 +282,18 @@ const allSteps = computed<OnboardingStep[]>(() => {
       component: StepWelcome,
     },
     {
+      id: 'start-choice',
+      component: StepStartChoice,
+      props: () => ({
+        onSelectPath: (path: 'new' | 'returning') => {
+          onboardingPath.value = path
+        },
+      }),
+    },
+  ]
+
+  if (onboardingPath.value === 'new') {
+    steps.push({
       id: 'mode-selection',
       component: StepModeSelection,
       props: () => ({
@@ -217,74 +301,149 @@ const allSteps = computed<OnboardingStep[]>(() => {
           onboardingMode.value = mode
         },
       }),
-    },
-  ]
+    })
 
-  if (onboardingMode.value === 'easy') {
+    if (onboardingMode.value === 'easy') {
+      steps.push({
+        id: 'easy-setup',
+        component: StepEasySetup,
+        beforeNext: async (data: any) => {
+          await configureEasyMode(data)
+          return true
+        },
+      })
+    }
+    else if (onboardingMode.value === 'custom') {
+      steps.push(
+        {
+          id: 'provider-selection',
+          component: StepProviderSelection,
+          props: () => ({
+            selectedProviderId: selectedProviderId.value,
+            availableProviders: availableProviders.value,
+            onSelectProvider: selectProvider,
+          }),
+        },
+        {
+          id: 'provider-configuration',
+          component: StepProviderConfiguration,
+          props: () => ({
+            selectedProviderId: selectedProviderId.value,
+            selectedProvider: selectedProvider.value,
+          }),
+          beforeNext: async () => {
+            if (!pendingProviderConfig.value)
+              return false
+
+            await saveProviderConfiguration(pendingProviderConfig.value)
+            pendingProviderConfig.value = null
+            return true
+          },
+        },
+        ...extraSteps.map(s => ({
+          ...s,
+          props: () => ({
+            ...s.props?.(),
+          }),
+        })),
+        {
+          id: 'model-selection',
+          component: StepModelSelection,
+        },
+      )
+    }
+
     steps.push({
-      id: 'easy-setup',
-      component: StepEasySetup,
-      beforeNext: async (data: any) => {
-        await configureEasyMode(data)
+      id: 'character-selection',
+      component: StepCharacterSelection,
+      props: () => ({
+        selectedCharacterId: selectedCharacterId.value,
+        onSelectCharacter: (id: string) => {
+          selectedCharacterId.value = id
+        },
+      }),
+      beforeNext: async () => {
+        await airiCardStore.seedDefaults(selectedCharacterId.value)
+        await airiCardStore.activateCard(selectedCharacterId.value)
         return true
       },
     })
   }
-  else if (onboardingMode.value === 'custom') {
+  else {
+    steps.push({
+      id: 'sync-options',
+      component: StepSyncOptions,
+      props: () => ({
+        onSelectMethod: (method: 'google' | 'manual') => {
+          returningMethod.value = method
+          isGoogleLinking.value = false
+        },
+      }),
+    })
+
+    if (returningMethod.value === 'google') {
+      steps.push(
+        {
+          id: 'google-oauth',
+          component: StepGoogleOAuth,
+          beforeNext: async () => {
+            isGoogleAuthenticated.value = true
+            return true
+          },
+        },
+        {
+          id: 'provider-resolver',
+          component: StepProviderResolver,
+          beforeNext: async (data: any) => {
+            if (data && data.manualFallback) {
+              returningMethod.value = 'manual'
+              step.value = 3 // index of manual-adapter in computed sequence
+              return false // cancel default next navigation
+            }
+            return true
+          },
+        },
+      )
+    }
+    else {
+      steps.push({
+        id: 'manual-adapter',
+        component: StepManualAdapter,
+      })
+    }
+
     steps.push(
       {
-        id: 'provider-selection',
-        component: StepProviderSelection,
+        id: 'selective-sync',
+        component: StepSelectiveSync,
         props: () => ({
-          selectedProviderId: selectedProviderId.value,
-          availableProviders: availableProviders.value,
-          onSelectProvider: selectProvider,
+          isGoogleAuthenticated: isGoogleAuthenticated.value,
         }),
-      },
-      {
-        id: 'provider-configuration',
-        component: StepProviderConfiguration,
-        props: () => ({
-          selectedProviderId: selectedProviderId.value,
-          selectedProvider: selectedProvider.value,
-        }),
-        beforeNext: async () => {
-          if (!pendingProviderConfig.value)
-            return false
-
-          await saveProviderConfiguration(pendingProviderConfig.value)
-          pendingProviderConfig.value = null
+        beforeNext: async (data: any) => {
+          if (data && data.saveToGoogle) {
+            isGoogleLinking.value = true
+          }
           return true
         },
       },
-      ...extraSteps.map(s => ({
-        ...s,
-        props: () => ({
-          ...s.props?.(),
-        }),
-      })),
-      {
-        id: 'model-selection',
-        component: StepModelSelection,
-      },
     )
-  }
 
-  steps.push({
-    id: 'character-selection',
-    component: StepCharacterSelection,
-    props: () => ({
-      selectedCharacterId: selectedCharacterId.value,
-      onSelectCharacter: (id: string) => {
-        selectedCharacterId.value = id
-      },
-    }),
-    beforeNext: async () => {
-      await airiCardStore.seedDefaults(selectedCharacterId.value)
-      await airiCardStore.activateCard(selectedCharacterId.value)
-      return true
-    },
-  })
+    if (isGoogleLinking.value) {
+      steps.push({
+        id: 'google-oauth-link',
+        component: StepGoogleOAuth,
+        beforeNext: async () => {
+          isGoogleAuthenticated.value = true
+          return true
+        },
+      })
+    }
+
+    steps.push({
+      id: 'sync-progress',
+      component: StepSyncProgress,
+    })
+  }
 
   return steps
 })

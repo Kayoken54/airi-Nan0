@@ -146,18 +146,21 @@ graph TD
 
     %% Returning User Path
     Choice -->|"Returning User"| RetAuth{"Sync & Restore Options"}
-    RetAuth -->|"Google Sign-In"| OAuth["Google OAuth (Read Credentials from AppData)"]
+    RetAuth -->|"Google Sign-In"| OAuth["Google OAuth"]
     RetAuth -->|"Manual Config"| ManualSync["Configure Adapter (S3, Local FS, etc.)"]
 
     OAuth --> ResolveProviders{"Resolve Providers in AppData"}
     ResolveProviders -->|"Single Provider Found"| InitClient["Initialize Provider Client"]
     ResolveProviders -->|"Multiple Providers Found"| SelectProvider["Present List & User Selects"]
+    ResolveProviders -->|"No Providers Found (Empty-Handed)"| ManualSync
 
     ManualSync --> InitClient
     SelectProvider --> InitClient
 
-    InitClient --> SelSync["Selective Sync Checklist (Remote-Wins)"]
-    SelSync --> SyncDone["Trigger Sync, Restore Databases, and Reload"]
+    InitClient --> SelSync["Selective Sync Checklist"]
+    SelSync -->|"Manual Path & Check: Save to Google"| SaveOAuth["Google OAuth (Save Credentials)"]
+    SaveOAuth --> SyncDone["Trigger Sync, Restore Databases, and Reload"]
+    SelSync -->|"Default Path / Skip Linkage"| SyncDone
 ```
 
 ---

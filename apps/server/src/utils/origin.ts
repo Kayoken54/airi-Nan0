@@ -4,17 +4,6 @@ export function getTrustedOrigin(origin: string): string {
     return origin
   }
 
-  // 2. Allow Production (Exact Match)
-  if (origin === 'https://airi.moeru.ai') {
-    return origin
-  }
-
-  // 3. Allow Dynamic Subdomains (Strict Regex)
-  // Matches: https://foo.kwaa.workers.dev
-  if (/^https:\/\/.*\.kwaa\.workers\.dev$/.test(origin)) {
-    return origin
-  }
-
-  // Default: Block
+  // 2. Block all other production domains by default (can be extended by settings/env)
   return ''
 }

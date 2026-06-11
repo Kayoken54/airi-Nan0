@@ -7,9 +7,10 @@ export { default as ProviderSettingsContainer } from './provider-settings-contai
 export { default as ProviderSettingsLayout } from './provider-settings-layout.vue'
 export { default as ProviderValidationAlerts } from './provider-validation-alerts.vue'
 
+export { default as SelectiveSyncPanel } from './selective-sync-panel.vue'
 export { default as SpeechPlaygroundOpenAICompatible } from './speech-playground-openai-compatible.vue'
 export { default as SpeechPlayground } from './speech-playground.vue'
-export { default as SpeechProviderSettings } from './speech-provider-settings.vue'
 
+export { default as SpeechProviderSettings } from './speech-provider-settings.vue'
 export { default as TranscriptionPlayground } from './transcription-playground.vue'
 export { default as TranscriptionProviderSettings } from './transcription-provider-settings.vue'

@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth'
 
 export type OAuthProvider = 'google' | 'github'
 
-export const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://airi-api.moeru.ai'
+export const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000'
 export const REMOTE_SYNC_STORAGE_KEY = 'settings/privacy/remote-sync-enabled'
 
 export function isRemoteSyncEnabled() {
@@ -20,16 +20,28 @@ export const authClient = createAuthClient({
 })
 
 export async function fetchSession() {
-  if (!isRemoteSyncEnabled())
+  if (!isRemoteSyncEnabled()) {
+    console.log('[Auth] fetchSession skipped: remote sync not enabled in localStorage')
     return false
+  }
 
-  const { data } = await authClient.getSession()
-  if (data) {
-    const authStore = useAuthStore()
-
-    authStore.user = data.user
-    authStore.session = data.session
-    return true
+  console.log('[Auth] fetchSession: calling authClient.getSession()...')
+  try {
+    const res = await authClient.getSession()
+    console.log('[Auth] fetchSession response:', res)
+    if (res.data) {
+      const authStore = useAuthStore()
+      authStore.user = res.data.user
+      authStore.session = res.data.session
+      console.log('[Auth] fetchSession successfully updated authStore with user:', res.data.user.email)
+      return true
+    }
+    else {
+      console.warn('[Auth] fetchSession returned no data (user not logged in or cookie blocked):', res)
+    }
+  }
+  catch (err) {
+    console.error('[Auth] fetchSession error during getSession call:', err)
   }
 
   return false
