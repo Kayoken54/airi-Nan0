@@ -261,6 +261,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
   const activeProvider = useLocalStorageManualReset<string>('settings/sync/active-provider', 'local-fs')
   const fsBackupPath = useLocalStorageManualReset<string>('settings/sync/fs-path', '')
 
+  const selectiveSyncEnabled = useLocalStorageManualReset<boolean>('settings/sync/selective-enabled', false)
+  const selectiveCheckedIds = useLocalStorageManualReset<string[]>('settings/sync/selective-checked-ids', [])
+
   // S3 Configuration State
   const s3Endpoint = useLocalStorageManualReset<string>('settings/sync/s3-endpoint', '')
   const s3Bucket = useLocalStorageManualReset<string>('settings/sync/s3-bucket', '')
@@ -445,6 +448,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 5. Upload backgrounds present locally but missing/incomplete on remote
       for (const [id, entry] of localBgs.entries()) {
+        if (selectiveSyncEnabled.value) {
+          const charId = entry.characterId || 'shared'
+          const bundleId = charId === 'shared' ? 'bg-char-shared' : `bg-char-${charId}`
+          if (!selectiveCheckedIds.value.includes(bundleId)) {
+            await logDebug(`Skipping upload of background ${id} because its bundle ${bundleId} is not selected in selective sync.`)
+            continue
+          }
+        }
         const remoteInfo = remoteBgs.get(id)
         if (!remoteInfo || !remoteInfo.png || !remoteInfo.json) {
           await logDebug(`Uploading background to remote: ${id} (title: ${entry.title}, characterId: ${entry.characterId})`)
@@ -474,6 +485,18 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         await logDebug(`Checking background ${id}: existsLocally=${existsLocally}, hasJson=${!!remoteInfo.json}, hasPng=${!!remoteInfo.png}`)
 
         if (!existsLocally && remoteInfo.json && remoteInfo.png) {
+          if (selectiveSyncEnabled.value && remoteInfo.json) {
+            const readJson = await client.readFile(remoteInfo.json)
+            if (readJson.success && readJson.content) {
+              const metadata = JSON.parse(readJson.content)
+              const charId = metadata.characterId || 'shared'
+              const bundleId = charId === 'shared' ? 'bg-char-shared' : `bg-char-${charId}`
+              if (!selectiveCheckedIds.value.includes(bundleId)) {
+                await logDebug(`Skipping download of background ${id} because its bundle ${bundleId} is not selected in selective sync.`)
+                continue
+              }
+            }
+          }
           await logDebug(`Downloading background from remote: ${id}`)
           const readJson = await client.readFile(remoteInfo.json)
           if (!readJson.success || !readJson.content) {
@@ -602,6 +625,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 5. Upload local-only models (not in remote manifest and not in local deleted list)
       for (const [id, entry] of localModels.entries()) {
+        if (selectiveSyncEnabled.value) {
+          const modelNodeId = `model-${id}`
+          if (!selectiveCheckedIds.value.includes(modelNodeId)) {
+            console.log(`[SyncEngine] Skipping upload of model ${id} because it is not selected in selective sync.`)
+            continue
+          }
+        }
         if (!manifest.models[id]) {
           // Check if we have sync history for it
           const hasSyncHistory = await storage.getItemRaw<number>(`local:sync-metadata/timestamps/${id}`)
@@ -697,6 +727,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         if (deletedModelIds.has(id))
           continue
         if (!localModels.has(id)) {
+          if (selectiveSyncEnabled.value) {
+            const modelNodeId = `model-${id}`
+            if (!selectiveCheckedIds.value.includes(modelNodeId)) {
+              console.log(`[SyncEngine] Skipping download of model ${id} because it is not selected in selective sync.`)
+              continue
+            }
+          }
           console.log(`[SyncEngine] Downloading model from remote: ${id} (${remoteModel.name})`)
           const readBinRes = await client.readFile(`assets/models/${id}.bin`, 'base64')
           if (!readBinRes.success || !readBinRes.content) {
@@ -1195,6 +1232,31 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         if (!localKey)
           return
 
+        if (selectiveSyncEnabled.value && localKey.startsWith('local:chat/sessions/')) {
+          let charId: string | null = null
+          const localVal = await storage.getItemRaw<any>(localKey)
+          if (localVal && localVal.meta?.characterId) {
+            charId = localVal.meta.characterId
+          }
+          else {
+            const readRes = await client.readFile(remoteFile.relPath)
+            if (readRes.success && readRes.content) {
+              try {
+                const remoteVal = JSON.parse(readRes.content)
+                charId = remoteVal.meta?.characterId || null
+              }
+              catch (e) {}
+            }
+          }
+          if (charId) {
+            const chatNodeId = `chat-${charId}`
+            if (!selectiveCheckedIds.value.includes(chatNodeId)) {
+              await logDebug(`Skipping reconcile of chat session ${localKey} because character chat ${chatNodeId} is not selected.`)
+              return
+            }
+          }
+        }
+
         const localTime = localTimestamps.get(localKey)
         await logDebug(`Reconciling key: ${localKey}, localTime=${localTime}, remoteMtime=${remoteFile.mtime}, remoteSize=${remoteFile.size}`)
 
@@ -1307,6 +1369,17 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       })
 
       await parallelLimit(localKeysToUpload, 15, async (fullKey) => {
+        if (selectiveSyncEnabled.value && fullKey.startsWith('local:chat/sessions/')) {
+          const localVal = await storage.getItemRaw<any>(fullKey)
+          const charId = localVal?.meta?.characterId
+          if (charId) {
+            const chatNodeId = `chat-${charId}`
+            if (!selectiveCheckedIds.value.includes(chatNodeId)) {
+              await logDebug(`Skipping local-only upload of chat session ${fullKey} because character chat ${chatNodeId} is not selected.`)
+              return
+            }
+          }
+        }
         const relPath = getRelPathForKey(fullKey)
         console.log(`[SyncEngine] Key ${fullKey} exists locally only. Uploading... Path: ${relPath}`)
 
@@ -1365,6 +1438,19 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         if (!item) {
           await storage.removeItem(fullQueueKey)
           return
+        }
+
+        if (selectiveSyncEnabled.value && item.key.startsWith('local:chat/sessions/')) {
+          const localVal = await storage.getItemRaw<any>(item.key)
+          const charId = localVal?.meta?.characterId
+          if (charId) {
+            const chatNodeId = `chat-${charId}`
+            if (!selectiveCheckedIds.value.includes(chatNodeId)) {
+              await logDebug(`Skipping outbox processing for chat session ${item.key} because character chat ${chatNodeId} is not selected.`)
+              await storage.removeItem(fullQueueKey)
+              return
+            }
+          }
         }
 
         const conflictKey = `local:sync-metadata/conflicts/${item.key.replace('local:', '')}`
@@ -1849,5 +1935,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     loadConflicts,
     initializeFromLocalBackup,
     forceRestoreFromRemote,
+    selectiveSyncEnabled,
+    selectiveCheckedIds,
   }
 })

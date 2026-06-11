@@ -1,21 +1,25 @@
 <script setup lang="ts">
+import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
+import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const syncStore = useSyncEngineStore()
 const cardStore = useAiriCardStore()
-
-function getConflictCharacterName(conflict: any): string {
-  const charId = conflict.sessionDetails?.local?.characterId || conflict.sessionDetails?.remote?.characterId
-  if (!charId)
-    return ''
-  const card = cardStore.cards.get(charId)
-  return card?.name || charId
-}
+const backgroundStore = useBackgroundStore()
+const displayModelsStore = useDisplayModelsStore()
 
 const {
   syncEnabled,
@@ -26,7 +30,376 @@ const {
   lastSyncTime,
   syncError,
   conflicts,
+  selectiveSyncEnabled,
+  selectiveCheckedIds,
 } = storeToRefs(syncStore)
+
+// Selective Sync Modal mockup states
+const isSelectiveSyncOpen = ref(false)
+const searchCharQuery = ref('')
+
+interface TreeNode {
+  id: string
+  label: string
+  size?: string
+  checked: boolean
+  required?: boolean
+  children?: TreeNode[]
+}
+
+const syncTree = ref<TreeNode[]>([
+  {
+    id: 'metadata',
+    label: 'Database Core & Settings',
+    checked: true,
+    required: true,
+    children: [
+      { id: 'meta-configs', label: 'App Settings & Provider Configurations', checked: true, required: true },
+      { id: 'meta-cards', label: 'Character Cards Database (JSON metadata)', checked: true, required: true },
+      { id: 'meta-shortmemory', label: 'Short-Term Memory summaries', checked: true, required: true },
+    ],
+  },
+  {
+    id: 'chats',
+    label: 'Chat Sessions',
+    checked: true,
+    children: [
+      { id: 'chat-asuka', label: 'Chat History: Asuka Langley Soryu', size: '250 KB', checked: true },
+      { id: 'chat-kiana', label: 'Chat History: Kiana Kaslana', size: '420 KB', checked: true },
+      { id: 'chat-bronya', label: 'Chat History: Bronya Zaychik', size: '1.2 MB', checked: true },
+    ],
+  },
+  {
+    id: 'backgrounds',
+    label: 'Custom Background Images',
+    checked: false,
+    children: [],
+  },
+  {
+    id: 'models',
+    label: 'Display Models (VRM / Live2D)',
+    checked: false,
+    children: [],
+  },
+])
+
+function updateSyncTree() {
+  const checkedMap: Record<string, boolean> = {}
+
+  if (selectiveSyncEnabled.value && selectiveCheckedIds.value && selectiveCheckedIds.value.length > 0) {
+    for (const id of selectiveCheckedIds.value) {
+      checkedMap[id] = true
+    }
+  }
+  else {
+    const saveCheckedState = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        checkedMap[node.id] = node.checked
+        if (node.children) {
+          saveCheckedState(node.children)
+        }
+      }
+    }
+    saveCheckedState(syncTree.value)
+  }
+
+  // 1. Core Metadata (Required)
+  const metadataNode: TreeNode = {
+    id: 'metadata',
+    label: 'Database Core & Settings',
+    checked: true,
+    required: true,
+    children: [
+      { id: 'meta-configs', label: 'App Settings & Provider Configurations', checked: true, required: true },
+      { id: 'meta-cards', label: 'Character Cards Database (JSON metadata)', checked: true, required: true },
+      { id: 'meta-shortmemory', label: 'Short-Term Memory summaries', checked: true, required: true },
+    ],
+  }
+
+  // 2. Chats (Representing dynamic profiles/chats in system)
+  // Check if we have active cards to build the list, or keep basic placeholder list
+  const chatChildren: TreeNode[] = []
+  if (cardStore.cards.size > 0) {
+    for (const [id, card] of cardStore.cards.entries()) {
+      const chatNodeId = `chat-${id}`
+      chatChildren.push({
+        id: chatNodeId,
+        label: card.name || 'Unnamed Session',
+        size: '150 KB', // Simulated size for chats
+        checked: checkedMap[chatNodeId] !== false,
+      })
+    }
+  }
+  else {
+    chatChildren.push(
+      { id: 'chat-asuka', label: 'Asuka Langley Soryu', size: '250 KB', checked: checkedMap['chat-asuka'] !== false },
+      { id: 'chat-kiana', label: 'Kiana Kaslana', size: '420 KB', checked: checkedMap['chat-kiana'] !== false },
+      { id: 'chat-bronya', label: 'Bronya Zaychik', size: '1.2 MB', checked: checkedMap['chat-bronya'] !== false },
+    )
+  }
+
+  const chatsNode: TreeNode = {
+    id: 'chats',
+    label: 'Chat Sessions',
+    checked: checkedMap.chats !== false,
+    children: chatChildren,
+  }
+  chatsNode.checked = chatChildren.some(c => c.checked)
+
+  // 3. Backgrounds (Live entries)
+  const bgEntries = Array.from(backgroundStore.entries.values()).filter(e => e.type !== 'builtin')
+  const bgGroups: Record<string, { entries: typeof bgEntries, totalSize: number }> = {}
+  for (const entry of bgEntries) {
+    const charId = entry.characterId || 'shared'
+    if (!bgGroups[charId]) {
+      bgGroups[charId] = { entries: [], totalSize: 0 }
+    }
+    bgGroups[charId].entries.push(entry)
+    bgGroups[charId].totalSize += entry.blob?.size || 0
+  }
+
+  const backgroundChildren: TreeNode[] = []
+  for (const [charId, group] of Object.entries(bgGroups)) {
+    let id = ''
+    let label = ''
+    if (charId === 'shared') {
+      id = 'bg-char-shared'
+      label = 'Shared / Global Backgrounds'
+    }
+    else {
+      const card = cardStore.cards.get(charId)
+      if (card) {
+        id = `bg-char-${charId}`
+        label = `${card.name}'s Backgrounds`
+      }
+      else {
+        id = `bg-char-uncategorized-${charId}`
+        label = `Orphaned (${charId.slice(0, 8)})`
+      }
+    }
+
+    const count = group.entries.length
+    const sizeStr = `${formatSize(group.totalSize)} (${count} image${count === 1 ? '' : 's'})`
+    backgroundChildren.push({
+      id,
+      label,
+      size: sizeStr,
+      checked: checkedMap[id] || false,
+      totalSize: group.totalSize, // keep size for sorting
+    } as any)
+  }
+
+  // Sort backgrounds by totalSize desc
+  backgroundChildren.sort((a: any, b: any) => b.totalSize - a.totalSize)
+
+  const backgroundsNode: TreeNode = {
+    id: 'backgrounds',
+    label: 'Custom Background Images',
+    checked: checkedMap.backgrounds || false,
+    children: backgroundChildren,
+  }
+  if (backgroundChildren.length > 0) {
+    backgroundsNode.checked = backgroundChildren.some(c => c.checked)
+  }
+
+  // 4. Display Models (Live entries)
+  const modelEntries = displayModelsStore.displayModels.filter(m => m.type === 'file')
+  const modelChildren: TreeNode[] = modelEntries.map((model) => {
+    const sizeBytes = (model as any).file?.size || 0
+    return {
+      id: `model-${model.id}`,
+      label: `${model.name} (${model.format.toUpperCase()})`,
+      size: formatSize(sizeBytes),
+      checked: checkedMap[`model-${model.id}`] || false,
+    }
+  })
+
+  const modelsNode: TreeNode = {
+    id: 'models',
+    label: 'Display Models (VRM / Live2D / Spine / MMD)',
+    checked: checkedMap.models || false,
+    children: modelChildren,
+  }
+  if (modelChildren.length > 0) {
+    modelsNode.checked = modelChildren.some(c => c.checked)
+  }
+
+  syncTree.value = [
+    metadataNode,
+    chatsNode,
+    backgroundsNode,
+    modelsNode,
+  ]
+}
+
+watch(
+  [() => backgroundStore.entries, () => displayModelsStore.displayModels, () => cardStore.cards],
+  () => {
+    updateSyncTree()
+  },
+  { deep: true, immediate: true },
+)
+
+const searchMatchesMessage = computed(() => {
+  const query = searchCharQuery.value.trim().toLowerCase()
+  if (!query)
+    return ''
+
+  const foundEntry = Array.from(cardStore.cards.entries()).find(([_, card]) =>
+    card.name?.toLowerCase().includes(query),
+  )
+  if (!foundEntry)
+    return 'No matching characters'
+
+  const [cardId, matchedCard] = foundEntry
+  const charBgs = Array.from(backgroundStore.entries.values()).filter(e =>
+    e.type !== 'builtin' && e.characterId === cardId,
+  )
+
+  const referencedModelIds = new Set<string>()
+  const defaultModelId = matchedCard.extensions?.airi?.modules?.displayModelId
+  if (defaultModelId)
+    referencedModelIds.add(defaultModelId)
+
+  const visualAssets = matchedCard.extensions?.airi?.visual_assets || {}
+  for (const asset of Object.values(visualAssets)) {
+    if (asset.manifestation?.modelId) {
+      referencedModelIds.add(asset.manifestation.modelId)
+    }
+  }
+
+  const matchedModels = displayModelsStore.displayModels.filter(m =>
+    m.type === 'file' && referencedModelIds.has(m.id),
+  )
+
+  return `Found: ${matchedCard.name} (${charBgs.length} Backgrounds, ${matchedModels.length} Models)`
+})
+
+function handleSelectRelated() {
+  const query = searchCharQuery.value.trim().toLowerCase()
+  if (!query)
+    return
+
+  const foundEntry = Array.from(cardStore.cards.entries()).find(([_, card]) =>
+    card.name?.toLowerCase().includes(query),
+  )
+  if (!foundEntry)
+    return
+
+  const [cardId, matchedCard] = foundEntry
+  const targetIds = new Set<string>()
+
+  // 1. Character background bundle ID
+  targetIds.add(`bg-char-${cardId}`)
+
+  // 2. Referenced display models and backgrounds
+  const defaultModelId = matchedCard.extensions?.airi?.modules?.displayModelId
+  if (defaultModelId)
+    targetIds.add(`model-${defaultModelId}`)
+  const defaultBgId = matchedCard.extensions?.airi?.modules?.activeBackgroundId
+  if (defaultBgId) {
+    const bgEntry = backgroundStore.entries.get(defaultBgId)
+    if (bgEntry) {
+      const charId = bgEntry.characterId || 'shared'
+      targetIds.add(charId === 'shared' ? 'bg-char-shared' : `bg-char-${charId}`)
+    }
+  }
+
+  const visualAssets = matchedCard.extensions?.airi?.visual_assets || {}
+  for (const asset of Object.values(visualAssets)) {
+    if (asset.manifestation?.modelId) {
+      targetIds.add(`model-${asset.manifestation.modelId}`)
+    }
+    if (asset.manifestation?.backgroundId) {
+      const bgEntry = backgroundStore.entries.get(asset.manifestation.backgroundId)
+      if (bgEntry) {
+        const charId = bgEntry.characterId || 'shared'
+        targetIds.add(charId === 'shared' ? 'bg-char-shared' : `bg-char-${charId}`)
+      }
+    }
+  }
+
+  const cardNameLower = matchedCard.name?.toLowerCase() || ''
+
+  for (const group of syncTree.value) {
+    if (group.children) {
+      for (const child of group.children) {
+        if (child.required)
+          continue
+
+        const isChatMatch = group.id === 'chats' && (
+          child.id.includes(cardId)
+          || (cardNameLower && child.id.includes(cardNameLower))
+          || child.label.toLowerCase().includes(cardNameLower)
+        )
+
+        if (targetIds.has(child.id) || isChatMatch) {
+          child.checked = true
+          group.checked = true
+        }
+      }
+    }
+  }
+}
+
+function toggleChild(parentIndex: number, childIndex: number) {
+  const parent = syncTree.value[parentIndex]
+  const child = parent.children![childIndex]
+  if (child.required)
+    return
+  child.checked = !child.checked
+
+  const anyChecked = parent.children!.some(c => c.checked)
+  parent.checked = anyChecked
+}
+
+function toggleParent(parentIndex: number) {
+  const parent = syncTree.value[parentIndex]
+  if (parent.required)
+    return
+  parent.checked = !parent.checked
+  if (parent.children) {
+    for (const child of parent.children) {
+      if (child.required)
+        continue
+      child.checked = parent.checked
+    }
+  }
+}
+
+async function triggerSelectiveSync() {
+  const checkedIds: string[] = []
+  const collectChecked = (nodes: TreeNode[]) => {
+    for (const node of nodes) {
+      if (node.checked) {
+        checkedIds.push(node.id)
+      }
+      if (node.children) {
+        collectChecked(node.children)
+      }
+    }
+  }
+  collectChecked(syncTree.value)
+
+  selectiveCheckedIds.value = checkedIds
+  selectiveSyncEnabled.value = true
+
+  isSelectiveSyncOpen.value = false
+  await syncStore.triggerSync()
+}
+
+async function handleSyncAll() {
+  selectiveSyncEnabled.value = false
+  await syncStore.triggerSync()
+}
+
+function getConflictCharacterName(conflict: any): string {
+  const charId = conflict.sessionDetails?.local?.characterId || conflict.sessionDetails?.remote?.characterId
+  if (!charId)
+    return ''
+  const card = cardStore.cards.get(charId)
+  return card?.name || charId
+}
 
 const formattedLastSync = computed(() => {
   if (!lastSyncTime.value)
@@ -193,13 +566,22 @@ async function handleRestoreFromBackup() {
           <span class="text-neutral-700 font-semibold dark:text-neutral-300">Manual Synchronization</span>
           <span class="text-xs text-neutral-400 dark:text-neutral-500">Last Synced: {{ formattedLastSync }}</span>
         </div>
-        <button
-          class="ml-auto rounded-xl bg-primary-500 px-5 py-2.5 text-sm text-white font-semibold transition-colors duration-200 hover:bg-primary-600 focus:outline-none"
-          :disabled="isSyncing"
-          @click="syncStore.triggerSync"
-        >
-          {{ isSyncing ? 'Syncing...' : 'Sync Now' }}
-        </button>
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            class="border border-neutral-200 rounded-xl px-4 py-2.5 text-sm text-neutral-600 font-semibold outline-none transition-colors duration-200 dark:border-neutral-700 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            :disabled="isSyncing"
+            @click="isSelectiveSyncOpen = true"
+          >
+            Selective Sync...
+          </button>
+          <button
+            class="rounded-xl bg-primary-500 px-5 py-2.5 text-sm text-white font-semibold transition-colors duration-200 hover:bg-primary-600 focus:outline-none"
+            :disabled="isSyncing"
+            @click="handleSyncAll"
+          >
+            {{ isSyncing ? 'Syncing...' : 'Sync All' }}
+          </button>
+        </div>
       </div>
 
       <div class="flex flex-row items-center border-t border-neutral-200 pt-4 dark:border-neutral-800">
@@ -317,6 +699,115 @@ async function handleRestoreFromBackup() {
       </div>
     </div>
   </div>
+
+  <!-- Selective Sync Modal Dialog -->
+  <DialogRoot :open="isSelectiveSyncOpen" @update:open="isSelectiveSyncOpen = $event">
+    <DialogPortal>
+      <DialogOverlay class="fixed inset-0 z-100 bg-black/60 backdrop-blur-sm data-[state=closed]:animate-fadeOut data-[state=open]:animate-fadeIn" />
+      <DialogContent
+        class="fixed left-1/2 top-1/2 z-100 max-h-[85vh] max-w-2xl w-[90vw] flex flex-col border border-white/10 rounded-2xl bg-neutral-900/95 p-6 text-white shadow-2xl backdrop-blur-xl -translate-x-1/2 -translate-y-1/2 data-[state=closed]:animate-contentHide data-[state=open]:animate-contentShow focus:outline-none"
+      >
+        <DialogTitle class="mb-1 flex items-center gap-2 text-xl font-bold">
+          <div class="i-solar:shield-keyhole-bold-duotone text-2xl text-primary-400" />
+          <span>Selective Sync Scope</span>
+        </DialogTitle>
+        <DialogDescription class="mb-4 text-xs text-neutral-400">
+          Choose which databases and heavy media assets you want to synchronize with your storage backend. Required core metadata is always synced.
+        </DialogDescription>
+
+        <!-- Search Character Helper -->
+        <div class="mb-4 border border-white/5 rounded-xl bg-neutral-950/40 p-3">
+          <div class="mb-1.5 text-[10px] text-primary-400 font-bold tracking-wider uppercase">
+            Select by Character Profile
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1">
+              <input
+                v-model="searchCharQuery"
+                type="text"
+                placeholder="Type character name (e.g. Asuka, Kiana, Bronya)..."
+                class="w-full border border-white/10 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs text-white outline-none transition-colors focus:border-primary-500 placeholder-neutral-500"
+              >
+              <span v-if="searchMatchesMessage" class="absolute right-3 top-1/2 text-[10px] text-primary-400 font-semibold -translate-y-1/2">
+                {{ searchMatchesMessage }}
+              </span>
+            </div>
+            <button
+              class="rounded-lg bg-primary-500 px-3 py-1.5 text-xs text-white font-bold transition-all hover:bg-primary-600 disabled:opacity-50"
+              :disabled="!searchCharQuery"
+              @click="handleSelectRelated"
+            >
+              Select All Related
+            </button>
+          </div>
+        </div>
+
+        <!-- Tree View Container -->
+        <div class="mb-6 max-h-[40vh] flex flex-1 flex-col gap-4 overflow-y-auto border border-white/5 rounded-xl bg-neutral-950/25 p-4 scrollbar-thin">
+          <div v-for="(parent, pIdx) in syncTree" :key="parent.id" class="flex flex-col gap-2">
+            <!-- Parent Node -->
+            <div class="group flex items-center justify-between">
+              <label class="flex cursor-pointer select-none items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  :checked="parent.checked"
+                  :disabled="parent.required"
+                  class="border-white/10 rounded bg-neutral-800 text-primary-500 disabled:opacity-50 focus:ring-0 focus:ring-offset-0"
+                  @change="toggleParent(pIdx)"
+                >
+                <span class="text-xs text-neutral-200 font-bold transition-colors group-hover:text-white" :class="{ 'text-primary-400': parent.required }">
+                  {{ parent.label }}
+                  <span v-if="parent.required" class="ml-1.5 rounded bg-primary-500/25 px-1.5 py-0.5 text-[9px] text-primary-400 tracking-wider uppercase">Required</span>
+                </span>
+              </label>
+            </div>
+
+            <!-- Children Nodes -->
+            <div v-if="parent.children" class="ml-1.5 flex flex-col gap-2.5 border-l border-white/5 pl-6">
+              <div v-for="(child, cIdx) in parent.children" :key="child.id" class="group flex items-center justify-between">
+                <label class="flex cursor-pointer select-none items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    :checked="child.checked"
+                    :disabled="child.required"
+                    class="border-white/10 rounded bg-neutral-800 text-primary-500 disabled:opacity-50 focus:ring-0 focus:ring-offset-0"
+                    @change="toggleChild(pIdx, cIdx)"
+                  >
+                  <span class="text-xs text-neutral-400 transition-colors group-hover:text-neutral-200" :class="{ 'text-neutral-300 font-medium': child.checked }">
+                    {{ child.label }}
+                  </span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <span v-if="child.size" class="text-[10px] text-neutral-500 font-semibold">{{ child.size }}</span>
+                  <span v-if="child.required" class="rounded bg-primary-500/10 px-1.5 py-0.5 text-[9px] text-primary-400">ALWAYS SYNCED</span>
+                  <span v-else-if="child.size" class="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-400">HEAVY ASSET</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Footer -->
+        <div class="flex items-center justify-between border-t border-white/5 pt-4">
+          <span class="text-[10px] text-neutral-400">Values are stored locally for subsequent background sync cycles.</span>
+          <div class="flex gap-2">
+            <button
+              class="border border-white/10 rounded-xl px-4 py-2 text-xs text-neutral-300 font-semibold outline-none transition-colors duration-200 hover:bg-white/5"
+              @click="isSelectiveSyncOpen = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="rounded-xl bg-primary-500 px-4 py-2 text-xs text-white font-bold transition-all hover:bg-primary-600"
+              @click="triggerSelectiveSync"
+            >
+              Sync Selected
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 
   <div
     v-motion
