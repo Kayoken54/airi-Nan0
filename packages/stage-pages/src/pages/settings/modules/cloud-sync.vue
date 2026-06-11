@@ -21,6 +21,19 @@ const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const displayModelsStore = useDisplayModelsStore()
 
+const {
+  syncEnabled,
+  syncInterval,
+  conflictStrategy,
+  activeProvider,
+  isSyncing,
+  lastSyncTime,
+  syncError,
+  conflicts,
+  selectiveSyncEnabled,
+  selectiveCheckedIds,
+} = storeToRefs(syncStore)
+
 // Selective Sync Modal mockup states
 const isSelectiveSyncOpen = ref(false)
 const searchCharQuery = ref('')
@@ -387,19 +400,6 @@ function getConflictCharacterName(conflict: any): string {
   const card = cardStore.cards.get(charId)
   return card?.name || charId
 }
-
-const {
-  syncEnabled,
-  syncInterval,
-  conflictStrategy,
-  activeProvider,
-  isSyncing,
-  lastSyncTime,
-  syncError,
-  conflicts,
-  selectiveSyncEnabled,
-  selectiveCheckedIds,
-} = storeToRefs(syncStore)
 
 const formattedLastSync = computed(() => {
   if (!lastSyncTime.value)
