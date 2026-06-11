@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { SelectiveSyncPanel } from '@proj-airi/stage-ui'
+import SelectiveSyncPanel from '@proj-airi/stage-ui/components/scenarios/providers/selective-sync-panel.vue'
+
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSyncEngineStore } from '@proj-airi/stage-ui/stores/sync-engine'
 import { storeToRefs } from 'pinia'
