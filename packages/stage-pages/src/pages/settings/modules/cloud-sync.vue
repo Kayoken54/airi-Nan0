@@ -72,15 +72,23 @@ const syncTree = ref<TreeNode[]>([
 
 function updateSyncTree() {
   const checkedMap: Record<string, boolean> = {}
-  const saveCheckedState = (nodes: TreeNode[]) => {
-    for (const node of nodes) {
-      checkedMap[node.id] = node.checked
-      if (node.children) {
-        saveCheckedState(node.children)
-      }
+
+  if (selectiveSyncEnabled.value && selectiveCheckedIds.value && selectiveCheckedIds.value.length > 0) {
+    for (const id of selectiveCheckedIds.value) {
+      checkedMap[id] = true
     }
   }
-  saveCheckedState(syncTree.value)
+  else {
+    const saveCheckedState = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        checkedMap[node.id] = node.checked
+        if (node.children) {
+          saveCheckedState(node.children)
+        }
+      }
+    }
+    saveCheckedState(syncTree.value)
+  }
 
   // 1. Core Metadata (Required)
   const metadataNode: TreeNode = {
@@ -346,14 +354,30 @@ function toggleParent(parentIndex: number) {
   }
 }
 
-function triggerSelectiveSyncMock() {
+async function triggerSelectiveSync() {
+  const checkedIds: string[] = []
+  const collectChecked = (nodes: TreeNode[]) => {
+    for (const node of nodes) {
+      if (node.checked) {
+        checkedIds.push(node.id)
+      }
+      if (node.children) {
+        collectChecked(node.children)
+      }
+    }
+  }
+  collectChecked(syncTree.value)
+
+  selectiveCheckedIds.value = checkedIds
+  selectiveSyncEnabled.value = true
+
   isSelectiveSyncOpen.value = false
-  // Simulate sync starting
-  isSyncing.value = true
-  setTimeout(() => {
-    isSyncing.value = false
-    lastSyncTime.value = Date.now()
-  }, 2000)
+  await syncStore.triggerSync()
+}
+
+async function handleSyncAll() {
+  selectiveSyncEnabled.value = false
+  await syncStore.triggerSync()
 }
 
 function getConflictCharacterName(conflict: any): string {
@@ -373,6 +397,8 @@ const {
   lastSyncTime,
   syncError,
   conflicts,
+  selectiveSyncEnabled,
+  selectiveCheckedIds,
 } = storeToRefs(syncStore)
 
 const formattedLastSync = computed(() => {
@@ -551,7 +577,7 @@ async function handleRestoreFromBackup() {
           <button
             class="rounded-xl bg-primary-500 px-5 py-2.5 text-sm text-white font-semibold transition-colors duration-200 hover:bg-primary-600 focus:outline-none"
             :disabled="isSyncing"
-            @click="syncStore.triggerSync"
+            @click="handleSyncAll"
           >
             {{ isSyncing ? 'Syncing...' : 'Sync All' }}
           </button>
@@ -773,7 +799,7 @@ async function handleRestoreFromBackup() {
             </button>
             <button
               class="rounded-xl bg-primary-500 px-4 py-2 text-xs text-white font-bold transition-all hover:bg-primary-600"
-              @click="triggerSelectiveSyncMock"
+              @click="triggerSelectiveSync"
             >
               Sync Selected
             </button>
