@@ -33,6 +33,7 @@ import { useConsciousnessStore } from '../../../../stores/modules/consciousness'
 import { useHearingStore } from '../../../../stores/modules/hearing'
 import { useSpeechStore } from '../../../../stores/modules/speech'
 import { useProvidersStore } from '../../../../stores/providers'
+import { useSyncEngineStore } from '../../../../stores/sync-engine'
 
 interface Emits {
   (e: 'configured'): void
@@ -400,6 +401,20 @@ const allSteps = computed<OnboardingStep[]>(() => {
               step.value = 3 // index of manual-adapter in computed sequence
               return false // cancel default next navigation
             }
+
+            // Set active provider based on selected backup target
+            if (data && data.selectedBackupId) {
+              const syncStore = useSyncEngineStore()
+              if (data.selectedBackupId === 's3-backup') {
+                syncStore.activeProvider = 's3'
+              }
+              else if (data.selectedBackupId === 'gdrive-backup') {
+                syncStore.activeProvider = 'gdrive'
+              }
+              else {
+                syncStore.activeProvider = 'local'
+              }
+            }
             return true
           },
         },
@@ -409,6 +424,24 @@ const allSteps = computed<OnboardingStep[]>(() => {
       steps.push({
         id: 'manual-adapter',
         component: StepManualAdapter,
+        beforeNext: async (data: any) => {
+          if (!data)
+            return false
+
+          const syncStore = useSyncEngineStore()
+          syncStore.activeProvider = data.adapterType
+          if (data.adapterType === 's3') {
+            syncStore.s3Endpoint = data.s3.endpoint
+            syncStore.s3Bucket = data.s3.bucket
+            syncStore.s3Region = data.s3.region
+            syncStore.s3AccessKeyId = data.s3.accessKey
+            syncStore.s3SecretAccessKey = data.s3.secretKey
+          }
+          else {
+            syncStore.fsBackupPath = data.local.path
+          }
+          return true
+        },
       })
     }
 
