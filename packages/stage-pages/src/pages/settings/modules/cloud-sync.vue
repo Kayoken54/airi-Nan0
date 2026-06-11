@@ -57,9 +57,9 @@ const syncTree = ref<TreeNode[]>([
     label: 'Custom Background Images',
     checked: false,
     children: [
-      { id: 'bg-cyberpunk', label: 'Neon Cyberpunk Alleyway', size: '4.2 MB', checked: false },
-      { id: 'bg-bedroom', label: 'Cozy Anime Bedroom', size: '5.8 MB', checked: false },
-      { id: 'bg-classroom', label: 'Twilight Classroom', size: '3.1 MB', checked: false },
+      { id: 'bg-char-asuka', label: 'Asuka Langley Soryu\'s Backgrounds', size: '12.5 MB (3 images)', checked: false },
+      { id: 'bg-char-kiana', label: 'Kiana Kaslana\'s Backgrounds', size: '18.2 MB (5 images)', checked: false },
+      { id: 'bg-char-shared', label: 'Shared / Global Backgrounds', size: '4.5 MB (2 images)', checked: false },
     ],
   },
   {
@@ -80,13 +80,13 @@ const searchMatchesMessage = computed(() => {
   if (!query)
     return ''
   if ('asuka'.includes(query)) {
-    return 'Found: Asuka (Chat, 2 Models)'
+    return 'Found: Asuka (Chat, 3 Backgrounds, 2 Models)'
   }
   if ('kiana'.includes(query)) {
-    return 'Found: Kiana (Chat, 1 Model)'
+    return 'Found: Kiana (Chat, 5 Backgrounds, 1 Model)'
   }
   if ('bronya'.includes(query)) {
-    return 'Found: Bronya (Chat, 1 Model)'
+    return 'Found: Bronya (Chat, 0 Backgrounds, 1 Model)'
   }
   return 'No matching characters'
 })
