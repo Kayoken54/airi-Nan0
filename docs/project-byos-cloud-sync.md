@@ -145,11 +145,29 @@ We use a hierarchical installer-style tree representation of the remote backup d
 * **Core Requirements / Unchecked Limits:**
   * Some core configuration/state keys (e.g., core settings/local index) might be mandatory/non-deselectable if sync is active, while bulky assets (models, voice files, backgrounds) are entirely optional.
 
-### 3. "Select by Character" Helper Utility
-A helper search input at the bottom of the sync selection screen simplifies targeting specific character profiles:
+### 3. "Select by Character" Helper Utility & Concept Mapping
+A helper search input at the bottom of the sync selection screen simplifies targeting specific character profiles and their complex assets:
 * **Search Input:** User types `asu`
 * **Real-time Results:** Matches characters like `Asuka`, `Asukee`, `Asuhoa`.
-* **"Add / Select All Related" Action:** Clicking next to a search result automatically traverses the sync tree and checks all leaf nodes (chats, custom background files, display models) associated with that character.
+* **Concept Mapping (1:N Relations):** A character no longer maps to a single model file. The helper parses the character card's `visual_assets` (concepts) array. Each concept can define up to four keys:
+  * Model file (`.glb`, heavy asset)
+  * Background image (`.png`/`.jpg`, heavy asset)
+  * Voice profile configuration (light metadata)
+  * Workflow configuration (light metadata)
+* **"Add / Select All Related" Macro Action:** Clicking next to a character result executes a UI macro that checks:
+  * The character's card and associated chat sessions.
+  * Every distinct model file ID referenced in the character's concepts list.
+  * Every custom background image ID referenced in the character's concepts list.
+* **Manual Override Capability:** Because the helper merely sets checkbox states on the master Selective Sync tree, the user can still manually uncheck individual heavy assets (e.g., unchecking heavy backgrounds under the root "Background Images" node) before initiating sync.
+
+### 4. Avoiding Data Rifts (Metadata vs. Payload Separation)
+To prevent partial syncs from corrupting cloud state or causing local crashes, the engine splits sync operations by asset weight:
+* **Global Metadata (Always Synced):** Core database schemas, settings, and the character cards JSON itself (`local:airi-cards`) are always fully synchronized. A device with partial assets will still have a complete character card database containing references to all concepts and their remote asset paths.
+* **Lazy/Selective Payloads:** Only the binary payloads (the actual GLB files and background images) are downloaded selectively.
+* **Local Missing State Handling:** If a user switches a character to a concept whose assets are not stored locally:
+  * The reference in the character card JSON is **never** deleted or altered (preventing sync-back corruption).
+  * The UI displays a cloud-download icon next to the concept.
+  * The app falls back to a default asset or prompts the user: *"Heavy assets for this concept are available in your cloud storage. Download now?"*
 
 ---
 
