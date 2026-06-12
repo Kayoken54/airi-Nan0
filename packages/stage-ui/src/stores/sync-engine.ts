@@ -1405,22 +1405,30 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
           const localVal = await storage.getItemRaw(localKey)
           if (localVal !== undefined && localVal !== null) {
-            // First check: if the remote file has identical contents, just align the local timestamp
-            const readRes = await client.readFile(remoteFile.relPath)
-            if (readRes.success && readRes.content) {
-              try {
-                const remoteVal = JSON.parse(readRes.content)
-                if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
-                  await logDebug(`[SyncEngine] Case A content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime}.`)
-                  await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
-                  return
+            const localSerialized = typeof localVal === 'string' ? localVal : JSON.stringify(localVal, null, 2)
+            const localSize = new TextEncoder().encode(localSerialized).byteLength
+
+            if (localSize === remoteFile.size) {
+              // First check: if the remote file has identical contents, just align the local timestamp
+              const readRes = await client.readFile(remoteFile.relPath)
+              if (readRes.success && readRes.content) {
+                try {
+                  const remoteVal = JSON.parse(readRes.content)
+                  if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
+                    await logDebug(`[SyncEngine] Case A content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime} (skipped download).`)
+                    await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
+                    return
+                  }
                 }
+                catch (e) {}
               }
-              catch (e) {}
+            }
+            else {
+              await logDebug(`[SyncEngine] Case A size mismatch for ${localKey} (local size: ${localSize}, remote size: ${remoteFile.size}). Skipping remote read for content comparison.`)
             }
 
             if (conflictStrategy.value === 'local-wins') {
-              await logDebug(`[SyncEngine] Local wins for ${localKey} (Case A). Overwriting remote...`)
+              console.log(`[SyncEngine] Uploading (local-wins/Case A): ${localKey} -> remote (${remoteFile.relPath})`)
               const writeRes = await client.writeFile(remoteFile.relPath, JSON.stringify(localVal, null, 2))
               if (writeRes.success && writeRes.mtime) {
                 await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, writeRes.mtime)
@@ -1436,7 +1444,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             }
           }
 
-          await logDebug(`[SyncEngine] Key ${localKey} missing locally (or safe). Downloading from remote...`)
+          console.log(`[SyncEngine] Downloading (missing local): remote (${remoteFile.relPath}) -> ${localKey}`)
           const readRes = await client.readFile(remoteFile.relPath)
           if (readRes.success && readRes.content) {
             const data = JSON.parse(readRes.content)
@@ -1452,25 +1460,33 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             return
           }
 
-          // First check: if the remote file has identical contents, just align the local timestamp
           const localVal = await storage.getItemRaw(localKey)
           if (localVal) {
-            const readRes = await client.readFile(remoteFile.relPath)
-            if (readRes.success && readRes.content) {
-              try {
-                const remoteVal = JSON.parse(readRes.content)
-                if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
-                  await logDebug(`[SyncEngine] Case B content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime}.`)
-                  await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
-                  return
+            const localSerialized = typeof localVal === 'string' ? localVal : JSON.stringify(localVal, null, 2)
+            const localSize = new TextEncoder().encode(localSerialized).byteLength
+
+            if (localSize === remoteFile.size) {
+              // First check: if the remote file has identical contents, just align the local timestamp
+              const readRes = await client.readFile(remoteFile.relPath)
+              if (readRes.success && readRes.content) {
+                try {
+                  const remoteVal = JSON.parse(readRes.content)
+                  if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
+                    await logDebug(`[SyncEngine] Case B content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime} (skipped download).`)
+                    await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
+                    return
+                  }
                 }
+                catch (e) {}
               }
-              catch (e) {}
+            }
+            else {
+              await logDebug(`[SyncEngine] Case B size mismatch for ${localKey} (local size: ${localSize}, remote size: ${remoteFile.size}). Skipping remote read for content comparison.`)
             }
           }
 
           if (conflictStrategy.value === 'local-wins') {
-            await logDebug(`[SyncEngine] Local wins for ${localKey} (Case B). Overwriting remote...`)
+            console.log(`[SyncEngine] Uploading (local-wins/Case B): ${localKey} -> remote (${remoteFile.relPath})`)
             if (localVal) {
               const writeRes = await client.writeFile(remoteFile.relPath, JSON.stringify(localVal, null, 2))
               if (writeRes.success && writeRes.mtime) {
@@ -1487,7 +1503,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             return
           }
 
-          console.log(`[SyncEngine] Remote file for ${localKey} is newer (or remote-wins). Overwriting local...`)
+          console.log(`[SyncEngine] Downloading (remote newer/Case B): remote (${remoteFile.relPath}) -> ${localKey}`)
           const readRes = await client.readFile(remoteFile.relPath)
           if (readRes.success && readRes.content) {
             const data = JSON.parse(readRes.content)
@@ -1496,14 +1512,38 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           }
         }
         else if (localTime > remoteFile.mtime) {
+          const localVal = await storage.getItemRaw(localKey)
+          if (localVal) {
+            const localSerialized = typeof localVal === 'string' ? localVal : JSON.stringify(localVal, null, 2)
+            const localSize = new TextEncoder().encode(localSerialized).byteLength
+
+            if (localSize === remoteFile.size) {
+              // Check: if remote file has identical contents despite older timestamp, just align local timestamp
+              const readRes = await client.readFile(remoteFile.relPath)
+              if (readRes.success && readRes.content) {
+                try {
+                  const remoteVal = JSON.parse(readRes.content)
+                  if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
+                    await logDebug(`[SyncEngine] Case C content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime} (skipped upload).`)
+                    await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
+                    return
+                  }
+                }
+                catch (e) {}
+              }
+            }
+            else {
+              await logDebug(`[SyncEngine] Case C size mismatch for ${localKey} (local size: ${localSize}, remote size: ${remoteFile.size}). Skipping remote read for content comparison.`)
+            }
+          }
+
           const isConflict = await checkSyncConflict(localKey, localTime, remoteFile, 'local-newer')
           if (isConflict) {
             console.log(`[SyncEngine] Conflict safety guard blocked auto-overwrite of remote file for key ${localKey}`)
             return
           }
 
-          console.log(`[SyncEngine] Local key ${localKey} is newer. Preparing upload...`)
-          const localVal = await storage.getItemRaw(localKey)
+          console.log(`[SyncEngine] Uploading (local newer/Case C): ${localKey} -> remote (${remoteFile.relPath})`)
           if (localVal) {
             const writeRes = await client.writeFile(remoteFile.relPath, JSON.stringify(localVal, null, 2))
             if (!writeRes.success) {
@@ -1532,7 +1572,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           }
         }
         const relPath = getRelPathForKey(fullKey)
-        console.log(`[SyncEngine] Key ${fullKey} exists locally only. Uploading... Path: ${relPath}`)
+        console.log(`[SyncEngine] Uploading (local only): ${fullKey} -> remote (${relPath})`)
 
         const localValRaw = await storage.getItemRaw(fullKey)
         const localVal = await storage.getItem(fullKey)
