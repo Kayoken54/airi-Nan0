@@ -1682,10 +1682,10 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       const key = localStorage.key(i)
       if (key && !shouldExcludeLocalStorageKey(key)) {
         const val = localStorage.getItem(key) || ''
-        const cachedVal = await storage.getItemRaw<{ value: string }>(`local:localstorage/${key}`)
-        if (!cachedVal || cachedVal.value !== val) {
+        const cachedVal = await storage.getItemRaw<{ value: string, originalKey?: string }>(`local:localstorage/${key}`)
+        if (!cachedVal || cachedVal.value !== val || cachedVal.originalKey !== key) {
           await logDebug(`dumpLocalStorageToIndexedDb: key=${key} has changed. Writing to IndexedDB.`)
-          await storage.setItemRaw(`local:localstorage/${key}`, { value: val })
+          await storage.setItemRaw(`local:localstorage/${key}`, { value: val, originalKey: key })
         }
       }
     }
@@ -1697,30 +1697,31 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     let anyChanged = false
     try {
       const rawLocalKeys = await storage.getKeys('local')
-      const localKeys = rawLocalKeys.map(normalizeStorageKey).filter((k): k is string => k !== null)
-      for (const fullKey of localKeys) {
-        if (fullKey.startsWith('local:localstorage/')) {
+      for (const rawKey of rawLocalKeys) {
+        const fullKey = normalizeStorageKey(rawKey)
+        if (fullKey && fullKey.startsWith('local:localstorage/')) {
           const key = fullKey.substring('local:localstorage/'.length)
           if (!shouldExcludeLocalStorageKey(key)) {
-            const valObj = await storage.getItemRaw<{ value: string }>(fullKey)
+            const valObj = await storage.getItemRaw<{ value: string, originalKey?: string }>(rawKey)
             if (valObj && typeof valObj === 'object' && 'value' in valObj) {
               const val = valObj.value
+              const targetKey = valObj.originalKey || key
               if (val !== null && val !== undefined) {
-                const currentVal = localStorage.getItem(key)
+                const currentVal = localStorage.getItem(targetKey)
                 if (currentVal !== val) {
-                  await logDebug(`restoreLocalStorageFromIndexedDb: key=${key} updated from IndexedDB.`)
+                  await logDebug(`restoreLocalStorageFromIndexedDb: key=${targetKey} updated from IndexedDB.`)
                   try {
-                    localStorage.setItem(key, val)
+                    localStorage.setItem(targetKey, val)
                     anyChanged = true
                     window.dispatchEvent(new StorageEvent('storage', {
-                      key,
+                      key: targetKey,
                       newValue: val,
                       storageArea: localStorage,
                     }))
                   }
                   catch (quotaErr) {
-                    console.error(`[SyncEngine] Failed to write key ${key} to localStorage:`, quotaErr)
-                    await logDebug(`Failed to write key ${key} to localStorage (quota exceeded).`)
+                    console.error(`[SyncEngine] Failed to write key ${targetKey} to localStorage:`, quotaErr)
+                    await logDebug(`Failed to write key ${targetKey} to localStorage (quota exceeded).`)
                   }
                 }
               }
@@ -1751,26 +1752,27 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     const restored: string[] = []
     try {
       const rawLocalKeys = await storage.getKeys('local')
-      const localKeys = rawLocalKeys.map(normalizeStorageKey).filter((k): k is string => k !== null)
-      for (const fullKey of localKeys) {
-        if (fullKey.startsWith('local:localstorage/')) {
+      for (const rawKey of rawLocalKeys) {
+        const fullKey = normalizeStorageKey(rawKey)
+        if (fullKey && fullKey.startsWith('local:localstorage/')) {
           const key = fullKey.substring('local:localstorage/'.length)
           if (shouldExcludeLocalStorageKey(key))
             continue
-          // Only restore if the key is currently absent from localStorage
-          if (localStorage.getItem(key) !== null)
-            continue
-          const valObj = await storage.getItemRaw<{ value: string }>(fullKey)
+          const valObj = await storage.getItemRaw<{ value: string, originalKey?: string }>(rawKey)
           if (valObj && typeof valObj === 'object' && 'value' in valObj) {
             const val = valObj.value
+            const targetKey = valObj.originalKey || key
+            // Only restore if the key is currently absent from localStorage
+            if (localStorage.getItem(targetKey) !== null)
+              continue
             if (val !== null && val !== undefined) {
               try {
-                localStorage.setItem(key, val)
-                restored.push(key)
-                await logDebug(`restoreLocalStorageFromIndexedDbSafe: restored missing key=${key}`)
+                localStorage.setItem(targetKey, val)
+                restored.push(targetKey)
+                await logDebug(`restoreLocalStorageFromIndexedDbSafe: restored missing key=${targetKey}`)
               }
               catch (quotaErr) {
-                console.error(`[SyncEngine] Safe restore: quota exceeded for key ${key}:`, quotaErr)
+                console.error(`[SyncEngine] Safe restore: quota exceeded for key ${targetKey}:`, quotaErr)
               }
             }
           }
