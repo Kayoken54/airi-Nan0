@@ -634,11 +634,20 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       // 2. Read remote manifest
       let manifest: { models: Record<string, { id: string, format: string, name: string, importedAt: number, previewImage?: string, hasTextures: boolean, hasPreview?: boolean }> } = { models: {} }
       let manifestExists = false
+      let remoteManifestMtime = 0
       try {
         const readRes = await client.readFile('assets/models/manifest.json')
         if (readRes.success && readRes.content) {
           manifest = JSON.parse(readRes.content)
           manifestExists = true
+        }
+
+        const listRes = await client.listFiles()
+        if (listRes.success && listRes.files) {
+          const manifestFile = listRes.files.find(f => f.relPath.replace(/\\/g, '/') === 'assets/models/manifest.json')
+          if (manifestFile) {
+            remoteManifestMtime = manifestFile.mtime
+          }
         }
       }
       catch (e) {
@@ -688,7 +697,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       // 4. Load all local models from localforage (excluding presets & deleted models)
       const localModels = new Map<string, any>()
       await localforage.iterate<any, void>((val, key) => {
-        if (key.startsWith('display-model-') && !deletedModelIds.has(key)) {
+        if (key.startsWith('display-model-') && !key.endsWith('-textures') && !deletedModelIds.has(key)) {
           localModels.set(key, val)
         }
       })
@@ -705,7 +714,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         if (!manifest.models[id]) {
           // Check if we have sync history for it
           const hasSyncHistory = await storage.getItemRaw<number>(`local:sync-metadata/timestamps/${id}`)
-          if (hasSyncHistory && manifestExists) {
+          const isStaleManifest = remoteManifestMtime > 0 && hasSyncHistory && hasSyncHistory > remoteManifestMtime
+
+          if (hasSyncHistory && manifestExists && !isStaleManifest) {
             console.log(`[SyncEngine] Model ${id} (${entry.name}) has sync history but is missing from remote manifest. Deleting locally.`)
             await localforage.removeItem(id)
             await localforage.removeItem(`${id}-textures`)
@@ -808,6 +819,11 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           const readBinRes = await client.readFile(`assets/models/${id}.bin`, 'base64')
           if (!readBinRes.success || !readBinRes.content) {
             console.error(`[SyncEngine] Failed to read remote model binary for ${id}:`, readBinRes.error)
+            if (readBinRes.error?.includes('ENOENT')) {
+              console.warn(`[SyncEngine] Remote model binary for ${id} is missing on storage. Removing from manifest.`)
+              delete manifest.models[id]
+              manifestModified = true
+            }
             continue
           }
 
@@ -1380,6 +1396,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         }
 
         if (localTime === undefined) {
+          const queueKey = `outbox:queue/${localKey.replace('local:', '')}`
+          const hasPendingOutbox = await storage.getItemRaw(queueKey).then(val => val !== null && val !== undefined)
+          if (hasPendingOutbox) {
+            await logDebug(`[SyncEngine] Skipping download for ${localKey} because it has pending local changes in the outbox.`)
+            return
+          }
+
           const localVal = await storage.getItemRaw(localKey)
           if (localVal !== undefined && localVal !== null) {
             await logDebug(`[Case A] Local key ${localKey} exists but localTime is undefined. Running safety check.`)
@@ -1399,6 +1422,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           }
         }
         else if (remoteFile.mtime > localTime || conflictStrategy.value === 'remote-wins') {
+          const queueKey = `outbox:queue/${localKey.replace('local:', '')}`
+          const hasPendingOutbox = await storage.getItemRaw(queueKey).then(val => val !== null && val !== undefined)
+          if (hasPendingOutbox) {
+            await logDebug(`[SyncEngine] Skipping overwrite for ${localKey} because it has pending local changes in the outbox.`)
+            return
+          }
+
           // Case B: Remote file is newer OR strategy is remote-wins -> Download and overwrite local
           const isConflict = conflictStrategy.value === 'remote-wins' ? false : await checkSyncConflict(localKey, localTime, remoteFile, 'remote-newer')
           if (isConflict) {

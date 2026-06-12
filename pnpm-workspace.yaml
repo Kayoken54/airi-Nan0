@@ -21,6 +21,8 @@ overrides:
   string.prototype.matchall: npm:@nolyfill/string.prototype.matchall@^1.0.44
   vite: ~6.2.5
 patchedDependencies:
+  '@moeru/eventa': patches/@moeru__eventa.patch
+  '@moeru/eventa@0.3.0': patches/@moeru__eventa@0.3.0.patch
   active-win@9.0.0: patches/active-win@9.0.0.patch
   mineflayer-pathfinder: patches/mineflayer-pathfinder.patch
   mineflayer@4.33.0: patches/mineflayer@4.33.0.patch
