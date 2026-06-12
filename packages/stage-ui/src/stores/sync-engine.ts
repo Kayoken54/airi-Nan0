@@ -1405,6 +1405,20 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
           const localVal = await storage.getItemRaw(localKey)
           if (localVal !== undefined && localVal !== null) {
+            // First check: if the remote file has identical contents, just align the local timestamp
+            const readRes = await client.readFile(remoteFile.relPath)
+            if (readRes.success && readRes.content) {
+              try {
+                const remoteVal = JSON.parse(readRes.content)
+                if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
+                  await logDebug(`[SyncEngine] Case A content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime}.`)
+                  await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
+                  return
+                }
+              }
+              catch (e) {}
+            }
+
             if (conflictStrategy.value === 'local-wins') {
               await logDebug(`[SyncEngine] Local wins for ${localKey} (Case A). Overwriting remote...`)
               const writeRes = await client.writeFile(remoteFile.relPath, JSON.stringify(localVal, null, 2))
@@ -1438,9 +1452,25 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             return
           }
 
+          // First check: if the remote file has identical contents, just align the local timestamp
+          const localVal = await storage.getItemRaw(localKey)
+          if (localVal) {
+            const readRes = await client.readFile(remoteFile.relPath)
+            if (readRes.success && readRes.content) {
+              try {
+                const remoteVal = JSON.parse(readRes.content)
+                if (JSON.stringify(localVal) === JSON.stringify(remoteVal)) {
+                  await logDebug(`[SyncEngine] Case B content identical for ${localKey}. Aligning timestamp to remote ${remoteFile.mtime}.`)
+                  await storage.setItemRaw(`local:sync-metadata/timestamps/${localKey.replace('local:', '')}`, remoteFile.mtime)
+                  return
+                }
+              }
+              catch (e) {}
+            }
+          }
+
           if (conflictStrategy.value === 'local-wins') {
             await logDebug(`[SyncEngine] Local wins for ${localKey} (Case B). Overwriting remote...`)
-            const localVal = await storage.getItemRaw(localKey)
             if (localVal) {
               const writeRes = await client.writeFile(remoteFile.relPath, JSON.stringify(localVal, null, 2))
               if (writeRes.success && writeRes.mtime) {
