@@ -337,6 +337,18 @@ async function handleCommitEdit() {
         { type: 'text', text: newText },
       ]
 
+      // If the message has rawContent, update it as well so the rendering logic gets the new text while preserving actor tags
+      if (typeof nextMessages[index].rawContent === 'string') {
+        const oldRaw = nextMessages[index].rawContent
+        const actorMatch = oldRaw.match(/<\|ACTOR:\s*([\w-]+)\s*(?:\|>|>)/i)
+        if (actorMatch) {
+          nextMessages[index].rawContent = `${actorMatch[0]} ${newText}`
+        }
+        else {
+          nextMessages[index].rawContent = newText
+        }
+      }
+
       // Pure in-place save: set session messages without slicing or ingesting
       await chatSession.setSessionMessages(activeSessionId, nextMessages)
 
