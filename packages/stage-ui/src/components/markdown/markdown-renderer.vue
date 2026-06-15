@@ -253,9 +253,83 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
     if (highlightsRegistry) {
       highlightsRegistry.set('spoken-highlight', highlight)
     }
+    scrollRangeIntoView(range)
   }
   catch (error) {
     console.error('[MarkdownRenderer] Highlight registration failed:', error)
+  }
+}
+
+let lastScrollTime = 0
+
+function findScrollContainer(el: HTMLElement): HTMLElement | null {
+  let parent = el.parentElement
+  while (parent) {
+    const style = window.getComputedStyle(parent)
+    const overflowY = style.overflowY
+    const isScrollable = overflowY === 'auto' || overflowY === 'scroll' || parent.scrollHeight > parent.clientHeight + 10
+    if (isScrollable && parent.clientHeight > 0) {
+      return parent
+    }
+    parent = parent.parentElement
+  }
+  return null
+}
+
+function scrollRangeIntoView(range: Range) {
+  if (!containerRef.value)
+    return
+
+  const container = findScrollContainer(containerRef.value)
+  if (!container)
+    return
+
+  const rangeRect = range.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+
+  // Safety margins: trigger scroll if range is within 24px of the viewport edges
+  const isAbove = rangeRect.top < containerRect.top + 24
+  const isBelow = rangeRect.bottom > containerRect.bottom - 24
+
+  const maxScroll = container.scrollHeight - container.clientHeight
+
+  if (isBelow) {
+    // Already resting at the bottom of the container, do not attempt to scroll further
+    if (container.scrollTop >= maxScroll - 10)
+      return
+
+    const now = Date.now()
+    if (now - lastScrollTime > 1000) { // Throttle updates
+      lastScrollTime = now
+
+      // Nudge scroll down just enough to reveal the range plus safety padding
+      const targetScroll = Math.min(maxScroll, container.scrollTop + (rangeRect.bottom - containerRect.bottom) + 40)
+      if (targetScroll > container.scrollTop + 5) {
+        container.scrollTo({
+          top: targetScroll,
+          behavior: 'smooth',
+        })
+      }
+    }
+  }
+  else if (isAbove) {
+    // Already resting at the top of the container
+    if (container.scrollTop <= 10)
+      return
+
+    const now = Date.now()
+    if (now - lastScrollTime > 1000) { // Throttle updates
+      lastScrollTime = now
+
+      // Nudge scroll up just enough to reveal the range plus safety padding
+      const targetScroll = Math.max(0, container.scrollTop + (rangeRect.top - containerRect.top) - 40)
+      if (targetScroll < container.scrollTop - 5) {
+        container.scrollTo({
+          top: targetScroll,
+          behavior: 'smooth',
+        })
+      }
+    }
   }
 }
 
