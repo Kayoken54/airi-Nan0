@@ -88,25 +88,33 @@ export function filterEntriesByUniverse<T extends { universeId?: string }>(
 ```
 ## 4. User-Facing UI Touchpoints & Workflows
 
-### 4.1 Creating a New Chat Session
-In the **Parallel Timelines** modal, clicking `+ Start New Timeline` interrupts the auto-creation flow and spawns the **Universe Picker Dialog**.
-* The picker features a **Combobox** (searchable dropdown) control:
-  * **Search/Filter**: Typing in the combobox filters the list of existing Universes (e.g. `"global"`, `"seaside-cottage-main"`).
-  * **Creation Inline**: If the typed text does not match any existing universe, the combobox displays a special entry: `+ Create new universe "{input}"`.
-* Choosing an existing universe associates the new session immediately with that world's memories.
-* Choosing the "Create New" option initializes a new flat `universeId` with a blank memory bank.
+### 4.1 The Common Universe Picker Dialog (`UniversePickerModal.vue`)
+To keep the UI clean, elegant, and unified, we introduce a dedicated **Universe Picker Modal**. This modal acts as a value-returning dialog: it prompts the user to choose or create a universe, and on **Confirm**, it resolves and returns the selected `universeId` (slug) to the caller.
 
-### 4.2 Forking a Conversation
-When a user forks a chat from the chat bubble context menu:
-1. The app copies messages up to that point.
-2. It interrupts the process with the **Universe Picker Dialog**:
-   * **Keep in same Universe (Parallel Path)**: The branch stays linked to the parent's `universeId`. Both threads read/write to the same memory bank.
-   * **Clone to New Universe (Alternate Timeline)**: The user types a name in the Combobox to create a brand new isolated Universe. The migration resolver copies all past memories of this timeline to the new ID, isolating all future memories.
+* **Modal Structure**:
+  * **Header**: Title and clear subtext explaining what the choice affects.
+  * **Spacious List of Existing Universes**: Rendered as large, clickable cards/list items (e.g. `Global`, `Seaside Cottage Alt`).
+  * **Create New Section**: A dedicated text input box (`"Or, start a brand new universe:"`) with a `[ + Create New ]` button.
+  * **Actions**: A `Cancel` button and a primary `Confirm` button.
 
-### 4.3 Editing Existing Sessions & The Timelines Modal
+### 4.2 Reused Workflow Entry Points
+
+#### 4.2.1 Creating a New Chat Session
+1. In the **Parallel Timelines** modal, the user clicks `+ Start New Timeline`.
+2. This intercepts the auto-creation flow and immediately opens `UniversePickerModal` (defaulting to the active universe or `global`).
+3. The user selects an existing universe or types a name to create a new one, then clicks **Confirm**.
+4. The system creates the new session using the returned `universeId` and redirects to the chat.
+
+#### 4.2.2 Forking a Conversation
+1. The user right-clicks a message bubble and selects "Fork to Background" or "Fork and Switch".
+2. The app compiles the copied messages and opens `UniversePickerModal` (defaulting to the parent timeline's current universe).
+3. The user simply reviews and clicks **Confirm** to keep it in the same universe, or selects/creates a new one to branch memories.
+4. The system forks the session under that selected `universeId`.
+
+#### 4.2.3 Editing an Existing Session & Parallel Timelines List
 We must allow users to retroactively assign or change a session's Universe:
 * **The Universe Action Button**: In the **Parallel Timelines** modal (`ChatSessionModal.vue`), next to the `Edit Title (Pencil)` and `Delete (Trash)` buttons inside each session block, we add a new **Universe (Globe/Map) Icon Button**.
-  * Clicking it spawns the common **Universe Picker Dialog** (containing the Combobox), allowing the user to select an existing universe or spin up a new one for this specific session.
+  * Clicking it opens `UniversePickerModal` pre-selected with that session's current universe.
   * Confirming the picker triggers the **Session Migration & Relinking Flow** (Section 3).
 * **The Universe Badge**: Each session block in the Parallel Timelines list displays a flat styled **Universe Badge** (next to the message count) to indicate its active database context.
   * For example:
