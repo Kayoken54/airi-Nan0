@@ -1,5 +1,7 @@
 import type { Card, ccv3 } from '@proj-airi/ccc'
 
+import type { VoiceProfile } from '../providers'
+
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useLive2d } from '@proj-airi/stage-ui-live2d'
 import { useModelStore } from '@proj-airi/stage-ui-three'
@@ -217,6 +219,7 @@ export interface AiriExtension {
     activeBackgroundId?: string | null
     active_expressions?: Record<string, number>
   }
+  voice_profiles?: VoiceProfile[]
 }
 
 export interface AiriCard extends Card {

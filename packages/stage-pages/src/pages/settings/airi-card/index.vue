@@ -10,6 +10,7 @@ import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { DisplayModelFormat, useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
+import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { AiriCardSchema } from '@proj-airi/stage-ui/types'
 import { Button, InputFile } from '@proj-airi/ui'
@@ -36,6 +37,7 @@ const { cards, activeCardId } = storeToRefs(cardStore)
 const modelStore = useModelStore()
 const stageModelStore = useSettingsStageModel()
 const backgroundStore = useBackgroundStore()
+const speechStore = useSpeechStore()
 const { activeExpressions } = storeToRefs(modelStore)
 const { stageModelSelected } = storeToRefs(stageModelStore)
 
@@ -631,9 +633,43 @@ function buildCharaCardV2(card: AiriCard) {
 }
 
 async function getCardWithExportedBackground(cardId: string): Promise<AiriCard | undefined> {
-  const card = cardStore.getCard(cardId)
-  if (!card)
+  const originalCard = cardStore.getCard(cardId)
+  if (!originalCard)
     return undefined
+
+  // Clone to avoid modifying the reactive store card directly
+  const card = JSON.parse(JSON.stringify(originalCard)) as AiriCard
+
+  // Collect and append voice profiles referencing virtual-audio-studio
+  const voiceIds = new Set<string>()
+  const speechConfig = card.extensions?.airi?.modules?.speech
+  if (speechConfig && speechConfig.provider === 'virtual-audio-studio' && speechConfig.voice_id) {
+    voiceIds.add(speechConfig.voice_id)
+  }
+  const assets = card.extensions?.airi?.visual_assets
+  if (assets) {
+    for (const key of Object.keys(assets)) {
+      const concept = assets[key]
+      if (concept.speech && concept.speech.provider === 'virtual-audio-studio' && concept.speech.voice_id) {
+        voiceIds.add(concept.speech.voice_id)
+      }
+    }
+  }
+
+  const profiles: any[] = []
+  for (const id of voiceIds) {
+    const profile = speechStore.savedVoiceProfiles.find(p => p.id === id)
+    if (profile) {
+      profiles.push(JSON.parse(JSON.stringify(profile)))
+    }
+  }
+
+  if (profiles.length > 0) {
+    if (!card.extensions.airi) {
+      card.extensions.airi = {} as any
+    }
+    card.extensions.airi.voice_profiles = profiles
+  }
 
   const activeBackgroundId = card.extensions?.airi?.modules?.activeBackgroundId
 
@@ -891,9 +927,14 @@ async function exportCardPng(cardId: string) {
 
 // Card activation
 async function activateCard(id: string) {
-  activeCardId.value = id
-  const artistryStore = useArtistryStore()
-  artistryStore.resetState()
+  try {
+    await cardStore.activateCard(id)
+    const artistryStore = useArtistryStore()
+    artistryStore.resetState()
+  }
+  catch (err) {
+    console.error('[index.vue] Failed to activate card:', err)
+  }
 }
 
 // Clear editing state when creation/edit dialog closes

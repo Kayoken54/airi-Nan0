@@ -271,6 +271,23 @@ async function finalizeImport() {
       },
     }
 
+    // Import embedded virtual voice profiles into speech store
+    const embeddedProfiles = props.cardData.extensions?.airi?.voice_profiles
+    if (Array.isArray(embeddedProfiles)) {
+      for (const profile of embeddedProfiles) {
+        if (profile && profile.id) {
+          const exists = speechStore.savedVoiceProfiles.some((p: any) => p.id === profile.id)
+          if (!exists) {
+            console.log(`[ImportWizard] Importing virtual voice profile: ${profile.name} (${profile.id})`)
+            speechStore.saveVoiceProfile(profile)
+          }
+          else {
+            console.warn(`[ImportWizard] Skipping voice profile import for existing ID: ${profile.id}`)
+          }
+        }
+      }
+    }
+
     const newId = await cardStore.addCard(finalCard)
     emit('imported', newId)
     emit('update:modelValue', false)

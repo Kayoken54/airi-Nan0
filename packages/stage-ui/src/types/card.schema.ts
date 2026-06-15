@@ -174,6 +174,7 @@ const AiriExtensionSchema = looseObject({
     activeBackgroundId: optional(string()),
     active_expressions: optional(record(string(), number())),
   })),
+  voice_profiles: optional(array(record(string(), unknown()))),
 })
 
 /**
