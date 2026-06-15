@@ -86,29 +86,38 @@ export function filterEntriesByUniverse<T extends { universeId?: string }>(
   })
 }
 ```
-
----
-
 ## 4. User-Facing UI Touchpoints & Workflows
 
 ### 4.1 Creating a New Chat Session
-In the **Create Session** dialog:
-* The user is presented with a dropdown: **Universe Context**.
-* **Options**:
-  * `Global (Default)`
-  * `[Existing Universe Names for this character, e.g., Seaside Cottage]`
-  * `Create New Universe...`
-* If they select an existing universe, the new thread immediately utilizes all existing memories and relationship context of that world.
-* If they select "Create New Universe," the system spawns a fresh `universeId` with a blank slate of memories.
+In the **Parallel Timelines** modal, clicking `+ Start New Timeline` interrupts the auto-creation flow and spawns the **Universe Picker Dialog**.
+* The picker features a **Combobox** (searchable dropdown) control:
+  * **Search/Filter**: Typing in the combobox filters the list of existing Universes (e.g. `"global"`, `"seaside-cottage-main"`).
+  * **Creation Inline**: If the typed text does not match any existing universe, the combobox displays a special entry: `+ Create new universe "{input}"`.
+* Choosing an existing universe associates the new session immediately with that world's memories.
+* Choosing the "Create New" option initializes a new flat `universeId` with a blank memory bank.
 
 ### 4.2 Forking a Conversation
-When a user forks a chat from a specific message:
-1. The app creates a new chat session copying all messages up to that point.
-2. It prompts the user:
-   * **Keep in same Universe (Parallel Thread)**: The new thread shares the existing memory pool of the parent. Actions in either thread write to the same memory bank.
-   * **Clone to New Universe (Alternate Timeline)**: Spawns a new `universeId`, copies the existing memory database records over to the new ID, and isolates all future memories of this fork.
+When a user forks a chat from the chat bubble context menu:
+1. The app copies messages up to that point.
+2. It interrupts the process with the **Universe Picker Dialog**:
+   * **Keep in same Universe (Parallel Path)**: The branch stays linked to the parent's `universeId`. Both threads read/write to the same memory bank.
+   * **Clone to New Universe (Alternate Timeline)**: The user types a name in the Combobox to create a brand new isolated Universe. The migration resolver copies all past memories of this timeline to the new ID, isolating all future memories.
 
-### 4.3 UI Component Queries
+### 4.3 Editing Existing Sessions & The Timelines Modal
+We must allow users to retroactively assign or change a session's Universe:
+* **The Universe Action Button**: In the **Parallel Timelines** modal (`ChatSessionModal.vue`), next to the `Edit Title (Pencil)` and `Delete (Trash)` buttons inside each session block, we add a new **Universe (Globe/Map) Icon Button**.
+  * Clicking it spawns the common **Universe Picker Dialog** (containing the Combobox), allowing the user to select an existing universe or spin up a new one for this specific session.
+  * Confirming the picker triggers the **Session Migration & Relinking Flow** (Section 3).
+* **The Universe Badge**: Each session block in the Parallel Timelines list displays a flat styled **Universe Badge** (next to the message count) to indicate its active database context.
+  * For example:
+    * **Chloe as Girlfriend**
+      * `Jun 15, 2026 13:34` | `[icon] 33 messages` | `[icon] chloe-uni-gf`
+      * `Last active Jun 15, 2026 19:40`
+    * **Seafood Syndicate**
+      * `Jun 15, 2026 13:34` | `[icon] 39 messages` | `[icon] global`
+      * `Last active Jun 15, 2026 17:06`
+
+### 4.4 UI Component Queries
 * **Echo Chips Ticker**: Filters chips by `activeSession.universeId`.
 * **Latest Text Entries / DNA Snaps**: Renders memories matching the active session's `universeId`.
 * **Stage Background Picker / Image Journal**: Presets and journal photos are filtered by `universeId`.
