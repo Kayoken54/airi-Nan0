@@ -647,14 +647,52 @@ const dynamicStyles = computed(() => {
     actorIds.add(match[1].trim())
   }
 
+  const cardStore = useAiriCardStore()
+  const visualAssets = cardStore.activeCard?.extensions?.airi?.visual_assets || {}
+
+  // Combine visual asset keys and parsed actor IDs to ensure we cover all candidates
+  const allKeys = Array.from(new Set([
+    ...Object.keys(visualAssets),
+    ...actorIds,
+  ])).sort()
+
+  const minDistance = 30 // minimum degrees of separation on the 360-degree color wheel
+  const assignedHues: number[] = []
+  const hueMap: Record<string, number> = {}
+
+  for (const key of allKeys) {
+    let hash = 0
+    for (let i = 0; i < key.length; i++) {
+      hash = key.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    let h = Math.abs(hash) % 360
+
+    // Resolve circular hue collisions
+    let attempts = 0
+    while (attempts < 360) {
+      let conflict = false
+      for (const assigned of assignedHues) {
+        const diff = Math.abs(h - assigned)
+        const distance = Math.min(diff, 360 - diff)
+        if (distance < minDistance) {
+          conflict = true
+          break
+        }
+      }
+      if (!conflict) {
+        break
+      }
+      h = (h + 45) % 360 // shift deterministically
+      attempts++
+    }
+
+    assignedHues.push(h)
+    hueMap[key] = h
+  }
+
   let css = ''
   for (const actorId of actorIds) {
-    // Generate a stable Hue based on the actor's ID string
-    let hash = 0
-    for (let i = 0; i < actorId.length; i++) {
-      hash = actorId.charCodeAt(i) + ((hash << 5) - hash)
-    }
-    const h = Math.abs(hash) % 360
+    const h = hueMap[actorId] ?? 0
 
     // Light Mode colors (Rich, deep, high contrast)
     css += `.actor-color-${actorId} { color: hsl(${h}, 70%, 35%) !important; }\n`
