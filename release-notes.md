@@ -1,26 +1,24 @@
-# Release Notes: AIRI v0.9.8-stable.20260611
+# Release Notes: AIRI v0.9.9-stable.20260615
 
-Welcome to **AIRI v0.9.8-stable.20260611**! This stable release introduces selective sync filtering for BYOS cloud backups, custom touch dragging controls for Electron windows, local S3 cloud sync engine support, a new token usage stats dashboard, dynamic user-managed CORS bypass settings, and significant enhancements to Sparkle AI and Live2D model importing.
+Welcome to **AIRI v0.9.9-stable.20260615**! This stable release delivers a major upgrade to the BYOS Cloud Sync & Onboarding engine (featuring Google AppData restore integration, local-wins conflict strategies, and PGlite database support), introduces bundled Audio Studio voice profiles for character cards, adds multi-model stage controls, and addresses key visual bugs in Web Stage layouts.
 
 ---
 
 ## 🚀 Key Highlights
 
-### ☁️ BYOS Selective Sync & S3 Cloud Support
-* **Selective Sync Filtering**: Added a new **Selective Sync Modal** that allows users to group assets (like background images) by character ID bundle and choose exactly which directories and character files are backed up to the cloud.
-* **S3 Engine Integration**: Implemented a full S3-compatible cloud storage sync engine alongside a provider selector dropdown in the cloud-sync settings interface.
-* **Sync Health Upgrades**: Added safeguards to prevent OOM, EBUSY, and provider configurations being wiped on startup sync.
+### ☁️ Google AppData Sync & Onboarding Upgrades
+* **Google AppData Backup Flow**: Wired up the actual Google AppData cloud backup and restore sequence, complete with onboarding verification, visual progress simulation, and profile avatar population.
+* **PGlite DB Integration**: Integrated embedded **PGlite** database structures to power the backend onboarding auth linkage.
+* **Sync Engine Stabilization**: Restructured conflict resolution to use a **"local-wins"** strategy, prevented multi-window scheduling collisions in Electron, optimized reconciliation via content size pre-checks, and fixed duplicate localStorage keys.
+* **Remote Catalog in Selective Sync**: Populated the selective sync visual tree directly with remote catalog assets and added a manual tree refresh control.
 
-### 🖥️ Desktop & Touch Control Stabilization
-* **Electron Touch Dragging**: Added custom touch-gesture dragging support for the **Control Strip** and **Actor Stage** windows in Electron, making touch-screen interaction extremely smooth.
-* **Dynamic CORS Bypass settings**: Relocated and redesigned the connection settings interface to allow users to dynamically manage their own CORS bypass URLs (with new support for `opencode.ai` and `pioneer.ai`).
+### 🎭 Actor Stage & Multi-Model Controls
+* **Bundled Audio Studio Profiles**: Character cards (`.json` or archives) can now bundle and auto-import customized Audio Studio voice profiles.
+* **Batch VRM Importer**: Added support for selecting and batch importing multiple VRM models at once in the model selector.
+* **Motion & 'None' Stage Options**: Unified the Control Strip settings to support motion trigger libraries and a 'None' option for all 4 character stage model types (Live2D, VRM, Spine, MMD).
+* **Actor Sync Barriers**: Implemented a playback barrier, prefetching buffers, dynamic state scoping, and single-flight guards to synchronize actors smoothly across processes.
 
-### 🎮 Sparkle AI & Dating Sim Enhancements
-* **Sparkle AI Templates**: Added Multi-Role system prompt templates and Studio concept context injection while preserving existing system prompt core details.
-* **Dating Sim Upgrades**: Default turns increased to 18, S3 sync bootstrapping fixed, and added a dynamic mode selection modal.
-* **Database & Usage Dashboard**: Implemented a comprehensive **Token Usage Stats** dashboard and full database exporter in `stage-ui`.
-
-### 🎨 Live2D & UI Improvements
-* **Self-Healing Imports**: The Live2D importer now automatically heals expression files nested inside subdirectories when importing new cards.
-* **Chat Composer Revamp**: Modularized the composer code, simplified chat labels, and added support for displaying 4x model formats in the header.
-* **Producer Guidance Modal**: Added a boundary message preview popover.
+### 🎨 Visual & Layout Improvements
+* **Spine Web Glitch Fix**: Resolved WebGL context locking issues and NaN bone offset layout calculations affecting Spine rendering on the web landing stage.
+* **Selectable Actor Chips**: Allowed text chips inside the chat log to be selected and copied naturally.
+* **Dating Sim Window Persistence**: Fixed positioning and window state restoration bugs when opening or closing the Dating Sim panel.
