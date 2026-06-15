@@ -137,3 +137,19 @@ By adopting the flat **Universe** model:
 2. We eliminate the recursive tree-traversal lookup bugs and timestamp math.
 3. We naturally resolve how brand-new threads hook into existing memory states.
 4. We keep the database layer flat, maintainable, and highly performant.
+
+---
+
+## 7. Backward Compatibility & Legacy Migration Heuristics
+
+To ensure smooth operation when users upgrade from earlier versions of AIRI, the database layer implements fallback defaults and a one-time "Smart-Heal" routine on startup:
+
+### 7.1 Fallback Defaulting
+* All existing entries (Text Journal, STMM, Echo Chips, Backgrounds) that do not possess a `universeId` field are treated as part of the `"global"` universe.
+* Query filters use the safe fallback expression: `entry.universeId || 'global'`.
+
+### 7.2 Smart-Heal Migration Heuristic
+To allow legacy chat histories to be migrated to new universes in the future, the system must bind existing `null`-sessionId memory entries to their corresponding sessions. On boot, the migration manager inspects the sessions list per character:
+1. **Single-Session Character**: If a character has **exactly one** chat session in their history, the system updates all legacy memories, daily blocks, and background images for that character, setting their `sessionId` to that single session's ID.
+2. **Multi-Session Character**: If a character has **two or more** chat sessions in their history, their legacy memory `sessionId` fields are left as `null`. This prevents misattribution of memories, leaving them safely shared in the `"global"` memory pool.
+
