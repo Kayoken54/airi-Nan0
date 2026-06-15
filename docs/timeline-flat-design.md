@@ -35,18 +35,34 @@ Instead of bound timelines, we introduce the concept of a **Universe** (or Group
 
 By shifting to the Universe model, we simplify the database queries and data tagging across all 6 memory pillars:
 
-| Memory Pillar | Storage Key / Location | Flat Universe Strategy |
-| :--- | :--- | :--- |
-| **1. Chat Sessions** | `local:chat/sessions/{sessionId}` | Tagged with `universeId`. Multiple sessions can share the same `universeId`. |
-| **2. Text Journal (LTMM)** | `local:memory/text-journal/{userId}` | Each memory block is tagged with `universeId`. Queries perform a flat filter: `where entry.universeId === activeSession.universeId` (fallback to `'global'`). |
-| **3. Short-Term Memory** | `local:memory/short-term/{userId}` | Daily summary blocks are tagged and queried by `universeId`. |
-| **4. Echo Chips** | `local:memory/echo-chips/{userId}` | Emotional anchor chips are tagged and queried by `universeId`. |
-| **5. Lifetime Artifact** | `local:memory/lifetime/{universeId}` | The synthesized character personality blueprint is isolated per `universeId`. |
-| **6. Image Journal** | `localforage` index entries | Photo gallery metadata and custom backdrops are tagged by `universeId`. |
+| Memory Pillar | Storage Key / Location | Flat Universe Strategy | Schema Updates |
+| :--- | :--- | :--- | :--- |
+| **1. Chat Sessions** | `local:chat/sessions/{sessionId}` | Tagged with `universeId`. Multiple sessions can share the same `universeId`. | Add `universeId: string` to metadata. |
+| **2. Text Journal (LTMM)** | `local:memory/text-journal/{userId}` | Each memory block is tagged with `universeId` and `sessionId`. Queries filter by `universeId`. | Add `universeId?: string` and `sessionId?: string` to `TextJournalEntry`. |
+| **3. Short-Term Memory** | `local:memory/short-term/{userId}` | Daily summary blocks are tagged and queried by `universeId` and track original `sessionId`. | Add `universeId?: string` and `sessionId?: string` to `ShortTermMemoryBlock`. |
+| **4. Echo Chips** | `local:memory/echo-chips/{userId}` | Emotional anchor chips are tagged and queried by `universeId`. | Add `universeId?: string` and `sessionId?: string` to `EchoChip`. |
+| **5. Lifetime Artifact** | `local:memory/lifetime/{universeId}` | The synthesized character personality blueprint is isolated per `universeId`. | Keyed directly by `{universeId}`. |
+| **6. Image Journal** | `localforage` index entries | Photo gallery metadata and custom backdrops are tagged by `universeId` and `sessionId`. | Add `universeId?: string` and `sessionId?: string` to `BackgroundEntry`. |
 
 ---
 
-## 3. Core Database & Query Helpers
+## 3. The Session Migration & Relinking Flow
+
+Decoupling sessions and tagging individual memory elements with `sessionId` and `universeId` resolves a major implementation gap: **How do we migrate a storyline after the facts have already been created?**
+
+In your Chloe GF Universe example:
+1. You run a session under the default `"global"` universe. The AI writes text memories, generates selfies, and saves echo chips. All of them are saved with `sessionId = "{activeSessionId}"` and `universeId = "global"`.
+2. You decide to isolate this timeline and switch the chat session to `"chloe-gf-uni"`.
+3. **The Migration Resolver**:
+   When the session's `universeId` is updated in the UI, the system runs a background migration transaction:
+   * Query the Text Journal, STMM, Echo Chips, and Background stores for all entries matching `entry.sessionId === activeSessionId`.
+   * Update their `universeId` property to `"chloe-gf-uni"`.
+   * Persist the updated records.
+4. **Outcome**: All text memories, daily summaries, emotional anchors, and generated gallery photos created during that session are cleanly pulled into the new universe. They disappear from the `"global"` timeline instantly, leaving the original universe completely untainted.
+
+---
+
+## 4. Core Database & Query Helpers
 
 The query pipeline drops recursive ancestry checks entirely. The database filters become standard flat checks:
 
