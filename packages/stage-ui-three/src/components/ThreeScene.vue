@@ -224,6 +224,7 @@ function onTresReady(context: TresContext) {
 }
 
 let unsubscribeTriggerEmotion: (() => void) | undefined
+let unsubscribeTriggerMotion: (() => void) | undefined
 
 onMounted(() => {
   if (envSelect.value === 'skyBox') {
@@ -238,12 +239,17 @@ onMounted(() => {
       modelRef.value?.setExpression(name, intensity, decayMs)
     }
   })
+  unsubscribeTriggerMotion = modelStore.onTriggerMotion((name) => {
+    modelRef.value?.playTransientAnimation(name)
+  })
 })
 
 onUnmounted(() => {
   disposeRenderTarget()
   if (unsubscribeTriggerEmotion)
     unsubscribeTriggerEmotion()
+  if (unsubscribeTriggerMotion)
+    unsubscribeTriggerMotion()
 })
 
 const vrmFrameHook = shallowRef<((vrm: VRM, delta: number) => void) | undefined>(undefined)
@@ -332,6 +338,9 @@ watch(directionalLightRotation, (newRotation) => {
 defineExpose({
   setExpression: (expression: string, intensity = 1, resetMs?: number) => {
     modelRef.value?.setExpression(expression, intensity, resetMs)
+  },
+  playTransientAnimation: (key: string) => {
+    modelRef.value?.playTransientAnimation(key)
   },
   setVrmFrameHook: (hook?: (vrm: VRM, delta: number) => void) => {
     vrmFrameHook.value = hook

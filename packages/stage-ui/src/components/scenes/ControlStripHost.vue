@@ -15,7 +15,7 @@ import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync
 import { createPlaybackManager, createSpeechPipeline } from '@proj-airi/pipelines-audio'
 import { useLive2d } from '@proj-airi/stage-ui-live2d'
 import { useMmd } from '@proj-airi/stage-ui-mmd'
-import { useModelStore } from '@proj-airi/stage-ui-three'
+import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
 import { createQueue } from '@proj-airi/stream-kit'
 import { useBroadcastChannel, useEventListener } from '@vueuse/core'
 import { generateSpeech } from '@xsai/generate-speech'
@@ -82,6 +82,7 @@ const providersStore = useProvidersStore()
 const consciousnessStore = useConsciousnessStore()
 const live2dStore = useLive2d()
 const vrmStore = useModelStore()
+const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 const viewUpdateCleanups: Array<() => void> = []
 
 // Caption + Presentation broadcast channels
@@ -204,8 +205,13 @@ const emotionsQueue = createQueue<EmotionPayload>({
     async (ctx) => {
       if (stageModelRenderer.value === 'vrm') {
         const emotionName = ctx.data.name
-        console.info('[Stage] VRM emotion processing (standalone window active):', { name: emotionName, intensity: ctx.data.intensity })
-        vrmStore.triggerEmotion(emotionName, ctx.data.intensity)
+        console.info('[Stage] VRM emotion/motion processing (standalone window active):', { name: emotionName, intensity: ctx.data.intensity })
+        if (customVrmAnimationsStore.animationKeys.includes(emotionName)) {
+          vrmStore.triggerMotion(emotionName)
+        }
+        else {
+          vrmStore.triggerEmotion(emotionName, ctx.data.intensity)
+        }
       }
       else if (stageModelRenderer.value === 'live2d') {
         const emotionName = ctx.data.name
@@ -1051,6 +1057,7 @@ onMounted(async () => {
   db.value = drizzle({ connection: { bundles: getImportUrlBundles() } })
   await db.value.execute(`CREATE TABLE memory_test (vec FLOAT[768]);`)
   state.value = 'mounted'
+  void customVrmAnimationsStore.loadCustomAnimations()
 })
 
 function canvasElement() {

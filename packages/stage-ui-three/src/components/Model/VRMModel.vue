@@ -438,6 +438,70 @@ function onAnimationFinished(e: any) {
   }
 }
 
+async function playTransientAnimation(key: string) {
+  if (!vrm.value || !vrmAnimationMixer)
+    return
+
+  const url = customVrmAnimationsStore.resolveAnimationUrl(key)
+  if (!url)
+    return
+
+  try {
+    let clip = clipCache.get(url)
+    if (!clip) {
+      const animation = await loadVRMAnimation(url)
+      const loadedClip = await clipFromVRMAnimation(vrm.value, animation)
+      if (!loadedClip)
+        return
+
+      reAnchorRootPositionTrack(loadedClip, vrm.value, initialHipWorldPosition.value ?? undefined)
+      loadedClip.tracks = loadedClip.tracks.filter(track => !track.name.includes('blendShapes') && !track.name.includes('expressions'))
+      clipCache.set(url, loadedClip)
+      clip = loadedClip
+    }
+
+    const newAction = vrmAnimationMixer!.clipAction(clip)
+    const fadeDuration = 0.5
+
+    newAction.setLoop(LoopOnce, 1)
+    newAction.clampWhenFinished = true
+    newAction.reset()
+    newAction.setEffectiveWeight(1)
+    newAction.play()
+
+    emit('playStatus', {
+      duration: clip.duration,
+      url,
+    })
+
+    if (currentAction && currentAction !== newAction) {
+      newAction.crossFadeFrom(currentAction, fadeDuration, true)
+    }
+    else {
+      newAction.fadeIn(fadeDuration)
+    }
+
+    currentAction = newAction
+
+    const onFinished = (e: any) => {
+      if (e.action === newAction) {
+        vrmAnimationMixer?.removeEventListener('finished', onFinished)
+        const cycle = vrmCycleAnimationUrls.value
+        if (cycle.length > 0) {
+          playNextIdleCycleAnimation()
+        }
+        else {
+          playBaseAnimation()
+        }
+      }
+    }
+    vrmAnimationMixer.addEventListener('finished', onFinished)
+  }
+  catch (err) {
+    console.error('[VRMModel] Failed to play transient animation:', err)
+  }
+}
+
 // look at mouse
 function lookAtMouse(
   mouseX: number,
@@ -858,6 +922,9 @@ defineExpose({
     else {
       vrmEmote.value?.setEmotion(expression, intensity)
     }
+  },
+  playTransientAnimation(key: string) {
+    void playTransientAnimation(key)
   },
   setVrmFrameHook(hook?: VrmFrameHook) {
     vrmFrameHook.value = hook
