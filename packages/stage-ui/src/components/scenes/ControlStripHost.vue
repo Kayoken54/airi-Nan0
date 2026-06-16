@@ -205,6 +205,7 @@ const emotionsQueue = createQueue<EmotionPayload>({
       if (stageModelRenderer.value === 'vrm') {
         const emotionName = ctx.data.name
         console.info('[Stage] VRM emotion processing (standalone window active):', { name: emotionName, intensity: ctx.data.intensity })
+        vrmStore.triggerEmotion(emotionName, ctx.data.intensity)
       }
       else if (stageModelRenderer.value === 'live2d') {
         const emotionName = ctx.data.name
@@ -719,7 +720,7 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
 
     const transformedText = speechStore.transformTextForSpeech(request.text, activeSpeechProvider.value)
 
-    if (!transformedText.trim() && !request.special)
+    if (!transformedText.trim())
       return null
 
     const input = ssmlEnabled.value

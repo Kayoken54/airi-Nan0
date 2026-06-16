@@ -55,10 +55,17 @@ export type FieldValueOf<D> = D extends SelectField<infer T> ? T
 
 type BroadcastChannelEvents
   = | BroadcastChannelEventShouldUpdateView
+    | BroadcastChannelEventTriggerEmotion
 
 interface BroadcastChannelEventShouldUpdateView {
   type: 'should-update-view'
   reason?: string
+}
+
+interface BroadcastChannelEventTriggerEmotion {
+  type: 'trigger-emotion'
+  name: string
+  intensity: number
 }
 
 export const useModelStore = defineStore('modelStore', () => {
@@ -67,6 +74,7 @@ export const useModelStore = defineStore('modelStore', () => {
   const activeVrmIdentity = ref<string>('')
   const { post, data } = useBroadcastChannel<BroadcastChannelEvents, BroadcastChannelEvents>({ name: 'airi-stores-live2d' })
   const shouldUpdateViewHooks = ref(new Set<(reason?: string) => void>())
+  const triggerEmotionHooks = ref(new Set<(name: string, intensity: number) => void>())
 
   const onShouldUpdateView = (hook: (reason?: string) => void) => {
     shouldUpdateViewHooks.value.add(hook)
@@ -80,9 +88,24 @@ export const useModelStore = defineStore('modelStore', () => {
     shouldUpdateViewHooks.value.forEach(hook => hook(reason))
   }
 
+  const onTriggerEmotion = (hook: (name: string, intensity: number) => void) => {
+    triggerEmotionHooks.value.add(hook)
+    return () => {
+      triggerEmotionHooks.value.delete(hook)
+    }
+  }
+
+  function triggerEmotion(name: string, intensity: number) {
+    post({ type: 'trigger-emotion', name, intensity })
+    triggerEmotionHooks.value.forEach(hook => hook(name, intensity))
+  }
+
   watch(data, (event) => {
     if (event.type === 'should-update-view') {
       shouldUpdateViewHooks.value.forEach(hook => hook(event.reason))
+    }
+    else if (event.type === 'trigger-emotion') {
+      triggerEmotionHooks.value.forEach(hook => hook(event.name, event.intensity))
     }
   })
 
@@ -239,6 +262,8 @@ export const useModelStore = defineStore('modelStore', () => {
 
     onShouldUpdateView,
     shouldUpdateView,
+    onTriggerEmotion,
+    triggerEmotion,
 
     resetModelStore,
   }

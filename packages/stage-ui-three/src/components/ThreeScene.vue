@@ -223,14 +223,21 @@ function onTresReady(context: TresContext) {
   tresCanvasRef.value = context
 }
 
+let unsubscribeTriggerEmotion: (() => void) | undefined
+
 onMounted(() => {
   if (envSelect.value === 'skyBox') {
     skyBoxEnvRef.value?.reload(skyBoxSrc.value)
   }
+  unsubscribeTriggerEmotion = modelStore.onTriggerEmotion((name, intensity) => {
+    modelRef.value?.setExpression(name, intensity)
+  })
 })
 
 onUnmounted(() => {
   disposeRenderTarget()
+  if (unsubscribeTriggerEmotion)
+    unsubscribeTriggerEmotion()
 })
 
 const vrmFrameHook = shallowRef<((vrm: VRM, delta: number) => void) | undefined>(undefined)
