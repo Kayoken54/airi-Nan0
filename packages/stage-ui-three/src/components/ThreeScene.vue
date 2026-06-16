@@ -230,7 +230,13 @@ onMounted(() => {
     skyBoxEnvRef.value?.reload(skyBoxSrc.value)
   }
   unsubscribeTriggerEmotion = modelStore.onTriggerEmotion((name, intensity) => {
-    modelRef.value?.setExpression(name, intensity)
+    if (name === 'neutral') {
+      modelRef.value?.setExpression(name, intensity)
+    }
+    else {
+      const decayMs = intensity * 3000
+      modelRef.value?.setExpression(name, intensity, decayMs)
+    }
   })
 })
 
