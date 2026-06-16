@@ -387,6 +387,7 @@ Cross-window communication relies on named `BroadcastChannel` instances. These a
 | `airi:director-notes-sync` | Director note creation/archival (see §16) |
 | `airi:short-term-memory-sync` | Short-term memory block updates |
 | `airi:lifetime-memory-sync` | Lifetime memory artifact changes |
+| `airi-stores-live2d` | VRM/Three.js store synchronization — broadcasts view updates, emotion triggers, and transient motion triggers across windows |
 | `CHAT_STREAM_CHANNEL_NAME` | Chat stream + journal refresh events (exported constant from session-store) |
 
 ---

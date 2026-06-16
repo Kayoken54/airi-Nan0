@@ -193,9 +193,6 @@ useEventListener(typeof window !== 'undefined' ? window : null, 'vrm-node-visibi
 
 const { currentMotion } = storeToRefs(live2dStore)
 
-const temporaryVrma = ref<string | null>(null)
-let temporaryVrmaTimeout: ReturnType<typeof setTimeout> | null = null
-
 // Animation scheduling has been decoupled
 
 // Animation queue and computed attributes decoupled
@@ -1011,14 +1008,6 @@ chatHookCleanups.push(onAssistantResponseEnd(async (message) => {
   currentChatIntent = null
   currentChatIntentReceivedLiteral.value = false
 
-  if (stageModelRenderer.value === 'vrm') {
-    // Reset to idle animation when the entire turn ends
-    if (temporaryVrmaTimeout) {
-      clearTimeout(temporaryVrmaTimeout)
-      temporaryVrmaTimeout = null
-    }
-    temporaryVrma.value = null
-  }
   // const res = await embed({
   //   ...transformersProvider.embed('Xenova/nomic-embed-text-v1'),
   //   input: message,
