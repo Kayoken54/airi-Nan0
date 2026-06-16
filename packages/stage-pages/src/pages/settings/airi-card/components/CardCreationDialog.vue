@@ -313,13 +313,24 @@ const actingModelExpressionOptions = computed(() => {
     const mappedMotions: string[] = []
     const unmappedMotions: string[] = []
 
+    const normalize = (s: string) =>
+      s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
+
     live2dStore.availableMotions.forEach((m) => {
       if (hiddenMotions.includes(m.fileName))
         return
 
       const name = m.fileName.split('/').pop() || m.fileName
       const cleanName = name.replace('.motion3.json', '').replace('.json', '')
-      const mappedName = motionMappings[m.fileName]
+
+      const mNorm = normalize(m.fileName)
+      let mappedName
+      for (const [mapKey, val] of Object.entries(motionMappings)) {
+        if (normalize(mapKey) === mNorm) {
+          mappedName = val as string
+          break
+        }
+      }
 
       if (mappedName) {
         mappedMotions.push(mappedName)
@@ -382,13 +393,24 @@ const actingIdleAnimationOptions = computed(() => {
     const mappedMotions: { label: string, value: string }[] = []
     const unmappedMotions: { label: string, value: string }[] = []
 
+    const normalize = (s: string) =>
+      s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
+
     live2dStore.availableMotions.forEach((m) => {
       if (hiddenMotions.includes(m.fileName))
         return
 
       const name = m.fileName.split('/').pop() || m.fileName
       const cleanName = name.replace('.motion3.json', '').replace('.json', '')
-      const mappedName = motionMappings[m.fileName]
+
+      const mNorm = normalize(m.fileName)
+      let mappedName
+      for (const [mapKey, val] of Object.entries(motionMappings)) {
+        if (normalize(mapKey) === mNorm) {
+          mappedName = val as string
+          break
+        }
+      }
 
       if (mappedName) {
         mappedMotions.push({ label: mappedName, value: mappedName })
@@ -469,11 +491,28 @@ function insertModelExpression(name: string) {
   if (isLive2d.value) {
     const isExpression = live2dExpressions.value.some(e => e.name === name)
     const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
+    const normalize = (s: string) =>
+      s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
+
+    const normName = normalize(name)
     const isMotion = live2dStore.availableMotions.some((m) => {
       const displayName = m.fileName.split('/').pop() || m.fileName
       const cleanName = displayName.replace('.motion3.json', '').replace('.json', '')
-      const mappedName = motionMappings[m.fileName]
-      return displayName === name || cleanName === name || mappedName === name
+
+      const mNorm = normalize(m.fileName)
+      let mappedName
+      for (const [mapKey, val] of Object.entries(motionMappings)) {
+        if (normalize(mapKey) === mNorm) {
+          mappedName = val as string
+          break
+        }
+      }
+
+      const normDisplay = normalize(displayName)
+      const normClean = normalize(cleanName)
+      const normMapped = mappedName ? normalize(mappedName) : undefined
+
+      return normDisplay === normName || normClean === normName || normMapped === normName
     })
 
     if (isExpression) {

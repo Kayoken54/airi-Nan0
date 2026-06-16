@@ -49,9 +49,22 @@ const live2d = useLive2d()
 const {
   modelParameters,
   currentMotion,
+
 } = storeToRefs(live2d)
 
 const positioningStore = usePositioningStore()
+
+const isReplayDisabledForModel = computed({
+  get: () => {
+    const modelId = props.modelId || 'global'
+    return live2d.modelParamReplayDisabled[modelId] ?? true
+  },
+  set: (val) => {
+    const modelId = props.modelId || 'global'
+    live2d.modelParamReplayDisabled[modelId] = val
+    live2d.modelParamReplayDisabled = { ...live2d.modelParamReplayDisabled }
+  },
+})
 
 const scale = computed({
   get: () => positioningStore.getPosition(props.modelId || 'global').scale,
@@ -112,6 +125,7 @@ const saveLive2dState = useDebounceFn(() => {
     ...extensions.airi.modules.live2d,
     motionMappings: { ...motionMappings.value },
     hiddenMotions: [...hiddenMotions.value],
+
   }
 
   airiCardStore.updateCard(activeCardId.value, { extensions })
@@ -733,6 +747,15 @@ onUnmounted(() => {
           <span :class="['text-xs', 'text-neutral-500', 'dark:text-neutral-400']">{{ t('settings.live2d.fps.description') }}</span>
         </div>
         <SelectTab v-model="live2dMaxFps" :options="fpsOptions" size="sm" :class="['w-48', 'shrink-0']" />
+      </div>
+
+      <!-- Disable Custom Parameter Replay -->
+      <div :class="['flex', 'items-center', 'justify-between']">
+        <div :class="['flex', 'flex-col', 'gap-1']">
+          <span :class="['text-sm', 'text-neutral-600', 'dark:text-neutral-400']">Disable Custom Parameter Replay</span>
+          <span :class="['text-xs', 'text-neutral-500', 'dark:text-neutral-400']">Bypasses raw parameter overrides to prevent conflicts during motion animations (recommended for Juewa).</span>
+        </div>
+        <Checkbox v-model="isReplayDisabledForModel" />
       </div>
 
       <!-- Extract Colors -->

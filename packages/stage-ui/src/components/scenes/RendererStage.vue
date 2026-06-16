@@ -79,6 +79,23 @@ const {
 
 const vrmStore = useModelStore()
 
+const { post: postStageModelReady } = useBroadcastChannel<string, string>({ name: 'airi-stage-model-ready' })
+watch(componentState, (state) => {
+  console.info('[RendererStage] componentState changed:', state)
+  if (state === 'mounted') {
+    console.info('[RendererStage] Model is mounted, posting ready signal to airi-stage-model-ready')
+    postStageModelReady('ready')
+  }
+}, { immediate: true })
+
+watch(() => activeCard.value?.extensions?.airi?.active_concepts, (newConcepts) => {
+  console.info('[RendererStage] Active concepts changed:', newConcepts)
+  if (componentState.value === 'mounted') {
+    console.info('[RendererStage] Model is already mounted for concept change, posting ready signal immediately')
+    postStageModelReady('ready')
+  }
+}, { deep: true })
+
 const reducedRenderScale = computed(() => {
   const nextScale = Math.min(vrmStore.renderScale, 0.75)
   return Math.max(0.5, nextScale)

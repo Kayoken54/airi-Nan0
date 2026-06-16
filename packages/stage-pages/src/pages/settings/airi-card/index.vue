@@ -666,7 +666,7 @@ async function getCardWithExportedBackground(cardId: string): Promise<AiriCard |
   const assets = card.extensions?.airi?.visual_assets
   if (assets) {
     for (const key of Object.keys(assets)) {
-      const concept = assets[key]
+      const concept = assets[key] as any
       if (concept.speech && concept.speech.provider === 'virtual-audio-studio' && concept.speech.voice_id) {
         voiceIds.add(concept.speech.voice_id)
       }

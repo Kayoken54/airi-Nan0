@@ -221,23 +221,64 @@ const emotionsQueue = createQueue<EmotionPayload>({
           // Final fallback: try motion mapping
           const motionGroup = (EMOTION_EmotionMotionName_value as any)[emotionName]
           if (motionGroup) {
+            live2dStore.triggerMotion(motionGroup)
             currentMotion.value = { group: motionGroup }
           }
           else {
             // New fallback: try to find motion by name in availableMotions (Ground Truth)
             const motionMappings = (activeCard.value as any)?.extensions?.airi?.modules?.live2d?.motionMappings || {}
+
+            // Normalize helper for robust key matching across dynamic suffixes/directories
+            const normalize = (s: string) =>
+              s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
+
+            const normEmotion = normalize(emotionName)
+            console.info('[Stage Debug] looking up motion mapping:', {
+              emotionName,
+              normEmotion,
+              activeCardName: activeCard.value?.name,
+              motionMappingsKeys: Object.keys(motionMappings),
+              motionMappingsValues: Object.values(motionMappings),
+              availableMotions: live2dStore.availableMotions.map((m: any) => ({
+                motionName: m.motionName,
+                fileName: m.fileName,
+                name: m.fileName.split('/').pop(),
+              })),
+            })
             const matchedMotion = live2dStore.availableMotions.find((m: any) => {
               const name = m.fileName.split('/').pop() || m.fileName
               const cleanName = name.replace('.motion3.json', '').replace('.json', '')
-              const mappedName = motionMappings[m.fileName]
-              return name === emotionName || m.fileName === emotionName || cleanName === emotionName || mappedName === emotionName
+
+              const mNorm = normalize(m.fileName)
+              let mappedName
+              for (const [mapKey, val] of Object.entries(motionMappings)) {
+                if (normalize(mapKey) === mNorm) {
+                  mappedName = val as string
+                  break
+                }
+              }
+
+              const normName = normalize(name)
+              const normClean = normalize(cleanName)
+              const normMapped = mappedName ? normalize(mappedName) : undefined
+
+              return normName === normEmotion
+                || normalize(m.fileName) === normEmotion
+                || normClean === normEmotion
+                || normMapped === normEmotion
             })
             if (matchedMotion) {
+              live2dStore.triggerMotion(matchedMotion.motionName, matchedMotion.motionIndex)
               currentMotion.value = { group: matchedMotion.motionName, index: matchedMotion.motionIndex }
               console.info('[Stage] Triggered Live2D motion from dropdown name:', emotionName)
             }
             else {
-              console.warn('[Stage] No Live2D explicit mapping, name match, or motion found for:', emotionName)
+              console.warn('[Stage] No Live2D explicit mapping, name match, or motion found for:', emotionName, {
+                availableExpressions: live2dStore.availableExpressions.map(e => ({ name: e.name, fileName: e.fileName })),
+                emotionMappings: live2dStore.emotionMappings,
+                availableMotions: live2dStore.availableMotions.map(m => m.fileName),
+                motionMappings,
+              })
             }
           }
         }
@@ -957,6 +998,7 @@ chatHookCleanups.push(onBeforeMessageComposed(async () => {
 }))
 
 chatHookCleanups.push(onBeforeSend(async () => {
+  live2dStore.triggerMotion(EmotionThinkMotionName)
   currentMotion.value = { group: EmotionThinkMotionName }
 }))
 

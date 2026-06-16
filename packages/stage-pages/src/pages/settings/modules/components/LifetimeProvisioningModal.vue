@@ -84,15 +84,15 @@ async function loadCounts() {
 }
 
 async function startProvisioning() {
-  await store.provision(props.characterId, false, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
+  await store.provision(props.characterId, 'global', false, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
 }
 
 async function resumeProvisioning() {
-  await store.provision(props.characterId, true, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
+  await store.provision(props.characterId, 'global', true, requestInterval.value, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
 }
 
 async function restartProvisioning() {
-  await store.restart(props.characterId, contextLimitTokens.value, Number.parseInt(tokenPreset.value))
+  await store.restart(props.characterId, 'global', contextLimitTokens.value, Number.parseInt(tokenPreset.value))
 }
 
 function close() {

@@ -377,6 +377,16 @@ const {
   activeExpressions,
 } = storeToRefs(live2dStore)
 
+function findExpressionData(fileName: string) {
+  const targetBase = fileName.split(/[\\/]/).pop()?.toLowerCase()
+  return expressionData.value.find((e: any) => {
+    if (e.fileName === fileName)
+      return true
+    const eBase = e.fileName.split(/[\\/]/).pop()?.toLowerCase()
+    return !!targetBase && targetBase === eBase
+  })
+}
+
 const themeColorsHue = toRef(() => props.themeColorsHue)
 const themeColorsHueDynamic = toRef(() => props.themeColorsHueDynamic)
 const live2dIdleAnimationEnabled = toRef(() => props.live2dIdleAnimationEnabled)
@@ -839,7 +849,11 @@ async function loadModel() {
     motionManagerUpdate.register((ctx) => {
       // Diagnostic: keep raw Param* replay disabled while testing motion playback
       // conflicts between discovered parameters and active motion curves.
-      return
+      const modelId = props.modelId
+      const isReplayDisabled = modelId ? (live2dStore.modelParamReplayDisabled[modelId] ?? true) : true
+      if (isReplayDisabled) {
+        return
+      }
 
       const params = ctx.modelParameters.value
       // Only apply keys that start with "Param" and aren't the standard ones managed by other plugins
@@ -946,6 +960,7 @@ async function loadModel() {
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
       if (!live2dIdleAnimationEnabled.value) {
+        restoreNeutralParameterBaseline(coreModel)
         return
       }
 
@@ -1000,6 +1015,9 @@ async function loadModel() {
             index: selectedMotion.index,
           }
         })
+      }
+      else {
+        restoreNeutralParameterBaseline(coreModel)
       }
     })
 
@@ -1184,10 +1202,14 @@ async function loadModel() {
       // 2c. Clean up any activeExpressions keys that do not exist in the current availableExpressions
       // This ensures we don't keep ghost expressions from previously loaded models when switching.
       const validKeys = new Set(availableExpressions.value.map(e => e.fileName))
+      const validBasenames = new Set(
+        availableExpressions.value.map(e => e.fileName.split(/[\\/]/).pop()?.toLowerCase()).filter(Boolean),
+      )
       const nextActiveExpressions = { ...activeExpressions.value }
       let hasDeletes = false
       for (const key of Object.keys(nextActiveExpressions)) {
-        if (!validKeys.has(key)) {
+        const keyBase = key.split(/[\\/]/).pop()?.toLowerCase()
+        if (!validKeys.has(key) && (!keyBase || !validBasenames.has(keyBase))) {
           delete nextActiveExpressions[key]
           hasDeletes = true
         }
@@ -1200,7 +1222,7 @@ async function loadModel() {
       if (expressionData.value.length > 0 && Object.keys(activeExpressions.value).length > 0) {
         for (const [fileName, weight] of Object.entries(activeExpressions.value)) {
           if (weight > 0) {
-            const expEntry = expressionData.value.find((e: any) => e.fileName === fileName)
+            const expEntry = findExpressionData(fileName)
             if (expEntry?.data?.Parameters) {
               for (const param of expEntry.data.Parameters) {
                 const id = param.Id || param.id
@@ -1379,6 +1401,59 @@ watch([themeColorsHueDynamic, live2dShadowEnabled], ([dynamic, shadowEnabled]) =
   }
 }, { immediate: true })
 
+watch(activeExpressions, (newExps, oldExps) => {
+  if (!model.value || expressionData.value.length === 0)
+    return
+
+  console.info('[Live2D Model] activeExpressions changed:', newExps)
+
+  // 1. Gather all parameters that need to be reset
+  const paramsToReset = new Set<string>()
+
+  // Find which expressions are now inactive
+  const oldKeys = oldExps ? Object.keys(oldExps) : []
+  for (const key of oldKeys) {
+    if (!newExps?.[key]) {
+      const expEntry = findExpressionData(key)
+      if (expEntry?.data?.Parameters) {
+        expEntry.data.Parameters.forEach((param: any) => {
+          const id = param.Id || param.id
+          if (id !== undefined) {
+            paramsToReset.add(id)
+          }
+        })
+      }
+    }
+  }
+
+  // Reset those parameters to neutral default first
+  paramsToReset.forEach((id) => {
+    // Find default value from neutral baseline
+    const paramIds = (model.value?.internalModel?.coreModel as any)?._parameterIds || []
+    const paramIndex = paramIds.indexOf(id)
+    if (paramIndex !== -1) {
+      const defaultVal = neutralParameterBaseline.value[paramIndex] ?? 0
+      modelParameters.value[id] = defaultVal
+    }
+  })
+
+  // 2. Apply all active expressions' parameters
+  for (const [fileName, weight] of Object.entries(newExps || {})) {
+    if (weight > 0) {
+      const expEntry = findExpressionData(fileName)
+      if (expEntry?.data?.Parameters) {
+        for (const param of expEntry.data.Parameters) {
+          const id = param.Id || param.id
+          const value = param.Value ?? param.value
+          if (id !== undefined && value !== undefined) {
+            modelParameters.value[id] = value
+          }
+        }
+      }
+    }
+  }
+}, { deep: true })
+
 watch(mouthOpenSize, (value) => {
   const coreModel = getCoreModel()
   if (coreModel) {
@@ -1492,7 +1567,13 @@ watch(live2dIdleAnimationEnabled, (enabled) => {
 
 onMounted(() => {
   const removeListener = listenBeatSyncBeatSignal(() => beatSync.scheduleBeat())
-  onUnmounted(() => removeListener())
+  const cleanupTriggerMotion = live2dStore.onTriggerMotion((group, index) => {
+    setMotion(group, index)
+  })
+  onUnmounted(() => {
+    removeListener()
+    cleanupTriggerMotion()
+  })
 })
 
 onMounted(async () => {

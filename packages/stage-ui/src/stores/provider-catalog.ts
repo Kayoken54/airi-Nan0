@@ -26,7 +26,7 @@ export const useProviderCatalogStore = defineStore('provider-catalog', () => {
         if (!res.ok) {
           throw new Error('Failed to fetch providers')
         }
-        const data = await res.json()
+        const data = (await res.json()) as any
 
         const newConfigs: Record<string, ProviderCatalogProvider> = {}
         for (const item of data) {

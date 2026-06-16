@@ -414,6 +414,20 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     if (!existingCard)
       return false
 
+    // Avoid redundant writes and loops if fields are deeply equal
+    let hasChanges = false
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'updatedAt')
+        continue
+      if (JSON.stringify((existingCard as any)[key]) !== JSON.stringify(value)) {
+        hasChanges = true
+        break
+      }
+    }
+    if (!hasChanges) {
+      return true
+    }
+
     const updatedCard = {
       ...existingCard,
       ...updates,
@@ -515,17 +529,12 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       }
 
       // 3.5 Sync Manifestation Expressions (Unified for VRM/Live2D)
-      const nextExpressions = extension.active_state?.active_expressions
-      if (nextExpressions) {
-        // Apply to both stores; the respective renderer will pick it up
-        if (Object.keys(nextExpressions).length > 0) {
-          if (JSON.stringify(live2dStore.activeExpressions) !== JSON.stringify(nextExpressions)) {
-            live2dStore.activeExpressions = { ...nextExpressions }
-          }
-          if (JSON.stringify(vrmStore.activeExpressions) !== JSON.stringify(nextExpressions)) {
-            vrmStore.activeExpressions = { ...nextExpressions }
-          }
-        }
+      const nextExpressions = extension.active_state?.active_expressions || {}
+      if (JSON.stringify(live2dStore.activeExpressions) !== JSON.stringify(nextExpressions)) {
+        live2dStore.activeExpressions = { ...nextExpressions }
+      }
+      if (JSON.stringify(vrmStore.activeExpressions) !== JSON.stringify(nextExpressions)) {
+        vrmStore.activeExpressions = { ...nextExpressions }
       }
 
       // Surgical sync of Live2D parameters if they belong to the active model
@@ -711,8 +720,9 @@ export const useAiriCardStore = defineStore('airi-card', () => {
           }
 
           // Expressions: additive/merge (if concepts support expressions)
-          if ((concept as any).manifestation?.expressions) {
-            Object.assign(foldedExpressions, (concept as any).manifestation.expressions)
+          const exprs = (concept as any).manifestation?.active_expressions || (concept as any).manifestation?.expressions
+          if (exprs) {
+            Object.assign(foldedExpressions, exprs)
           }
         }
 

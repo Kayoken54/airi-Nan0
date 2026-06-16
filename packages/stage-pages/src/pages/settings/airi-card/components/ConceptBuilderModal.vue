@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useLive2d } from '@proj-airi/stage-ui-live2d'
+import { useModelStore } from '@proj-airi/stage-ui-three'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -56,6 +58,33 @@ const providersStore = useProvidersStore()
 const speechStore = useSpeechStore()
 const backgroundStore = useBackgroundStore()
 const airiCardStore = useAiriCardStore()
+const live2dStore = useLive2d()
+const modelStore = useModelStore()
+
+const availableExpressions = computed(() => {
+  const list: { key: string, name: string, type: 'live2d' | 'vrm' }[] = []
+  for (const exp of live2dStore.availableExpressions) {
+    list.push({ key: exp.fileName, name: exp.name, type: 'live2d' })
+  }
+  for (const exp of modelStore.availableExpressions) {
+    list.push({ key: exp, name: exp, type: 'vrm' })
+  }
+  return list
+})
+
+function toggleExpression(key: string) {
+  if (selectedExpressions.value[key] !== undefined) {
+    delete selectedExpressions.value[key]
+  }
+  else {
+    selectedExpressions.value[key] = 1
+  }
+  selectedExpressions.value = { ...selectedExpressions.value }
+}
+
+function isExpressionActive(key: string) {
+  return selectedExpressions.value[key] !== undefined && selectedExpressions.value[key] > 0
+}
 
 const { activeSpeechProvider } = storeToRefs(speechStore)
 
@@ -512,6 +541,34 @@ function handleSave() {
 
               <p class="mt-1 text-[10px] text-neutral-500 italic">
                 Forces a base model swap (Live2D/VRM/Spine/MMD) when this concept is active.
+              </p>
+            </div>
+
+            <!-- Active Expressions Override -->
+            <div class="flex flex-col gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+              <label class="text-sm text-neutral-700 font-bold dark:text-neutral-300">Active Expressions / Outfits</label>
+
+              <div v-if="availableExpressions.length === 0" class="text-xs text-neutral-400 italic">
+                No expressions available for the active model.
+              </div>
+              <div v-else class="max-h-48 flex flex-wrap gap-1.5 overflow-y-auto p-1">
+                <button
+                  v-for="exp in availableExpressions"
+                  :key="exp.key"
+                  type="button"
+                  :class="[
+                    'rounded-lg px-2.5 py-1.5 text-[11px] transition-all duration-150 border select-none font-medium',
+                    isExpressionActive(exp.key)
+                      ? 'bg-primary-500/10 border-primary-500/30 text-primary-600 dark:text-primary-400'
+                      : 'bg-neutral-50 border-neutral-200 dark:bg-neutral-800/60 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                  ]"
+                  @click="toggleExpression(exp.key)"
+                >
+                  {{ exp.name }}
+                </button>
+              </div>
+              <p class="text-[10px] text-neutral-500 italic">
+                Toggles facial expressions or outfit presets (e.g. preset2 for black dress) to layer onto the base state.
               </p>
             </div>
           </div>
