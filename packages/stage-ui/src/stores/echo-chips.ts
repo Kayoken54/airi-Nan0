@@ -104,7 +104,7 @@ function normalizeChipType(input: any): EchoChipType {
 
 export const useEchoesStore = defineStore('echo-chips', () => {
   const { userId } = storeToRefs(useAuthStore())
-  const { cards } = storeToRefs(useAiriCardStore())
+  const { cards, activeCardId } = storeToRefs(useAiriCardStore())
   const { activeProvider: globalProviderId, activeModel: globalModelId } = storeToRefs(useConsciousnessStore())
   const providersStore = useProvidersStore()
   const llmStore = useLLM()

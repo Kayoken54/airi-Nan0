@@ -82,27 +82,41 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
   }
 
   async function recordDirectorDecision(note: DirectorNote) {
-    directorNotes.value.push(note)
-    await directorNotesRepo.saveNotes(note.sessionId, directorNotes.value)
+    const notes = await directorNotesRepo.getNotes(note.sessionId)
+    notes.push(note)
+    await directorNotesRepo.saveNotes(note.sessionId, notes)
+    if (note.sessionId === chatSessionStore.activeSessionId) {
+      directorNotes.value = notes
+    }
     broadcastDirectorEvent({ type: 'director-note-added', sessionId: note.sessionId, note: toRaw(note) })
   }
 
-  async function updateDirectorDecision(noteId: string, updates: Partial<DirectorNote>) {
-    const note = directorNotes.value.find(n => n.id === noteId)
+  async function updateDirectorDecision(noteId: string, updates: Partial<DirectorNote>, targetSessionId?: string) {
+    const resolvedSessionId = targetSessionId || chatSessionStore.activeSessionId
+    if (!resolvedSessionId)
+      return
+
+    const notes = await directorNotesRepo.getNotes(resolvedSessionId)
+    const note = notes.find(n => n.id === noteId)
     if (note) {
       Object.assign(note, updates)
-      await directorNotesRepo.saveNotes(note.sessionId, directorNotes.value)
-      broadcastDirectorEvent({ type: 'director-note-updated', sessionId: note.sessionId, noteId, updates: toRaw(updates) })
+      await directorNotesRepo.saveNotes(resolvedSessionId, notes)
+      if (resolvedSessionId === chatSessionStore.activeSessionId) {
+        directorNotes.value = notes
+      }
+      broadcastDirectorEvent({ type: 'director-note-updated', sessionId: resolvedSessionId, noteId, updates: toRaw(updates) })
     }
   }
 
   async function archiveSessionNotes(sessionId: string) {
-    directorNotes.value.forEach((note) => {
-      if (note.sessionId === sessionId) {
-        note.isArchived = true
-      }
+    const notes = await directorNotesRepo.getNotes(sessionId)
+    notes.forEach((note) => {
+      note.isArchived = true
     })
-    await directorNotesRepo.saveNotes(sessionId, directorNotes.value)
+    await directorNotesRepo.saveNotes(sessionId, notes)
+    if (sessionId === chatSessionStore.activeSessionId) {
+      directorNotes.value = notes
+    }
     broadcastDirectorEvent({ type: 'director-notes-archived', sessionId })
   }
 
@@ -668,7 +682,10 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
         notificationDescription += `\n🎯 Concepts: ${selectedConcepts.join(', ')}`
       }
 
-      const sessionId = chatSessionStore.activeSessionId
+      const targetCardId = cardId
+      const sessionId = targetCardId
+        ? (chatSessionStore.getCharacterIndex(targetCardId)?.activeSessionId || chatSessionStore.activeSessionId)
+        : chatSessionStore.activeSessionId
       const noteId = Date.now().toString()
       const noteState = thresholdMet ? 'pending' : 'done'
 
@@ -750,7 +767,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
           const entryId = await backgroundStore.addBackground('journal', blob, analysis.title || 'Autonomous Scene', analysis.prompt, cardId)
           artistLog('Generation complete and added to journal.', { entryId })
 
-          await updateDirectorDecision(noteId, { state: 'done' })
+          await updateDirectorDecision(noteId, { state: 'done' }, sessionId)
 
           // 5. Route based on spawnMode
           // If Dating Sim is active and has an explicit scenery override (not 'inherit'),

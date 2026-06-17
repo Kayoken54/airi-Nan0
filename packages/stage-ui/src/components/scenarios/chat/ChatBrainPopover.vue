@@ -2,7 +2,7 @@
 import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { useAiriCardStore } from '../../../stores/modules/airi-card'
 import { useConsciousnessStore } from '../../../stores/modules/consciousness'
@@ -175,6 +175,17 @@ function handleSelectFavorite(fav: FavoriteModel) {
     } as any)
   }
 }
+
+const activeModelDisplay = computed(() => {
+  const matched = favorites.value.find(
+    fav => fav.provider === activeProvider.value && fav.model === activeModel.value,
+  )
+  if (matched) {
+    return matched.name
+  }
+  const modelShort = activeModel.value?.split('/').pop() || activeModel.value || 'None'
+  return `${modelShort} / ${activeProvider.value || 'None'}`
+})
 </script>
 
 <template>
@@ -221,8 +232,8 @@ function handleSelectFavorite(fav: FavoriteModel) {
             <span class="size-1.5 animate-pulse rounded-full bg-emerald-500" />
             <span class="text-neutral-400 font-bold tracking-tight uppercase">Active</span>
           </div>
-          <span class="max-w-48 truncate text-neutral-700 font-semibold font-mono dark:text-neutral-300">
-            {{ activeProvider }} / {{ activeModel?.split('/').pop() || activeModel || 'None' }}
+          <span class="max-w-48 truncate text-neutral-700 font-semibold font-mono dark:text-neutral-300" :title="activeModelDisplay">
+            {{ activeModelDisplay }}
           </span>
         </div>
 
