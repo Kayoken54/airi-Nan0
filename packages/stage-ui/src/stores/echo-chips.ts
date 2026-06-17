@@ -108,6 +108,7 @@ export const useEchoesStore = defineStore('echo-chips', () => {
   const { activeProvider: globalProviderId, activeModel: globalModelId } = storeToRefs(useConsciousnessStore())
   const providersStore = useProvidersStore()
   const llmStore = useLLM()
+  const chatSessionStore = useChatSessionStore()
 
   const chips = ref<EchoChip[]>([])
   const loading = ref(false)
@@ -118,7 +119,6 @@ export const useEchoesStore = defineStore('echo-chips', () => {
   }
 
   const sortedChips = computed(() => {
-    const chatSessionStore = useChatSessionStore()
     const targetCharacterId = activeCardId.value
     const activeSessionId = targetCharacterId
       ? (chatSessionStore.getCharacterIndex(targetCharacterId)?.activeSessionId || chatSessionStore.activeSessionId)

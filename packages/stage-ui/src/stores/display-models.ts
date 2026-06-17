@@ -48,6 +48,8 @@ export interface DisplayModelFile {
   name: string
   previewImage?: string
   importedAt: number
+  nsfw?: boolean
+  groups?: string[]
 }
 
 export interface DisplayModelURL {
@@ -58,6 +60,8 @@ export interface DisplayModelURL {
   name: string
   previewImage?: string
   importedAt: number
+  nsfw?: boolean
+  groups?: string[]
 }
 
 const displayModelsPresets: DisplayModel[] = [
@@ -88,13 +92,23 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     const models = [...displayModelsPresets]
 
     try {
-      await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string }, void>((val, key) => {
+      await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string, nsfw?: boolean, groups?: string[] }, void>((val, key) => {
         if (key.startsWith('display-model-')) {
           if (!val.file) {
             console.warn(`[DisplayModels] Model ${key} is missing file property! Skipping.`, val)
             return
           }
-          models.push({ id: key, format: val.format, type: 'file', file: val.file, name: val.file.name, importedAt: val.importedAt, previewImage: val.previewImage })
+          models.push({
+            id: key,
+            format: val.format,
+            type: 'file',
+            file: val.file,
+            name: val.file.name,
+            importedAt: val.importedAt,
+            previewImage: val.previewImage,
+            nsfw: val.nsfw,
+            groups: val.groups,
+          })
         }
       })
     }
@@ -693,6 +707,40 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
   }
 
+  async function updateDisplayModelMeta(id: string, updates: { nsfw?: boolean, groups?: string[] }) {
+    await until(displayModelsFromIndexedDBLoading).toBe(false)
+    const displayModel = id.startsWith('display-model-')
+      ? await localforage.getItem<DisplayModelFile>(id)
+      : displayModels.value.find(m => m.id === id)
+
+    if (!displayModel)
+      return
+
+    if ('nsfw' in updates) {
+      displayModel.nsfw = updates.nsfw
+    }
+    if ('groups' in updates) {
+      displayModel.groups = updates.groups
+    }
+
+    // Update reactive state
+    const index = displayModels.value.findIndex(m => m.id === id)
+    if (index !== -1) {
+      if ('nsfw' in updates) {
+        displayModels.value[index].nsfw = updates.nsfw
+      }
+      if ('groups' in updates) {
+        displayModels.value[index].groups = updates.groups
+      }
+    }
+
+    // Persist if it's a file-based model
+    if (id.startsWith('display-model-')) {
+      await localforage.setItem(id, displayModel)
+      broadcastModelsSync(Date.now())
+    }
+  }
+
   async function removeDisplayModel(id: string) {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
     await localforage.removeItem(id)
@@ -724,6 +772,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     addDisplayModelWithTextures,
     getDisplayModelTextures,
     renameDisplayModel,
+    updateDisplayModelMeta,
     removeDisplayModel,
     resetDisplayModels,
   }

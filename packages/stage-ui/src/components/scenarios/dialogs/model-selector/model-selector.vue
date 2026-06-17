@@ -10,8 +10,8 @@ import { useCustomVrmAnimationsStore } from '@proj-airi/stage-ui-three'
 import { Button } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
-import { computed, ref } from 'vue'
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger, PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 import Live2DReportModal from './Live2DReportModal.vue'
@@ -32,11 +32,35 @@ const { displayModelsFromIndexedDBLoading, displayModels } = storeToRefs(display
 const viewMode = ref<'grid' | 'compact'>('compact')
 const searchQuery = ref('')
 const formatFilter = ref<'all' | 'live2d' | 'vrm' | 'spine' | 'mmd'>('all')
-const sortBy = ref<'name' | 'date'>('date')
+const sortBy = ref<'name' | 'date' | 'type'>('date')
+
+// Expandable search state
+const isSearchExpanded = ref(false)
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+// NSFW filter state
+const nsfwFilter = ref<'sfw' | 'nsfw' | 'all'>('sfw')
+
+// Groups filter state
+const selectedGroups = ref<string[]>([])
+
+// Groups dialog/modal state
+const showGroupsDialog = ref(false)
+const modelToGroup = ref<DisplayModel | null>(null)
+const tempGroupsValue = ref<string[]>([])
+const newGroupName = ref('')
 
 const showRenameDialog = ref(false)
 const modelToRename = ref<DisplayModel | null>(null)
 const tempRenameValue = ref('')
+
+watch(isSearchExpanded, (expanded) => {
+  if (expanded) {
+    setTimeout(() => {
+      searchInputRef.value?.focus()
+    }, 50)
+  }
+})
 
 const highlightDisplayModelCard = ref<string | undefined>(selectedModel.value?.id)
 const showReportModal = ref(false)
@@ -89,17 +113,81 @@ const filteredModels = computed(() => {
     })
   }
 
+  // NSFW Filter
+  if (nsfwFilter.value === 'sfw') {
+    result = result.filter(m => m.nsfw !== true)
+  }
+  else if (nsfwFilter.value === 'nsfw') {
+    result = result.filter(m => m.nsfw === true)
+  }
+
+  // Groups Filter
+  if (selectedGroups.value.length > 0) {
+    result = result.filter((m) => {
+      if (!m.groups || !Array.isArray(m.groups))
+        return false
+      return m.groups.some(g => selectedGroups.value.includes(g))
+    })
+  }
+
   // Sort
   result.sort((a, b) => {
     if (sortBy.value === 'name')
       return a.name.localeCompare(b.name)
     if (sortBy.value === 'date')
       return b.importedAt - a.importedAt
+    if (sortBy.value === 'type') {
+      const typeA = mapFormatRenderer[a.format] || ''
+      const typeB = mapFormatRenderer[b.format] || ''
+      return typeA.localeCompare(typeB)
+    }
     return 0
   })
 
   return result
 })
+
+const allExistingGroups = computed(() => {
+  const groups = new Set<string>()
+  displayModels.value.forEach((m) => {
+    if (m.groups && Array.isArray(m.groups)) {
+      m.groups.forEach((g) => {
+        if (g && g.trim()) {
+          groups.add(g.trim())
+        }
+      })
+    }
+  })
+  return Array.from(groups).sort()
+})
+
+function openGroupsDialog(model: DisplayModel) {
+  modelToGroup.value = model
+  tempGroupsValue.value = model.groups ? [...model.groups] : []
+  newGroupName.value = ''
+  showGroupsDialog.value = true
+}
+
+function confirmGroups() {
+  if (modelToGroup.value) {
+    const finalGroups = [...tempGroupsValue.value]
+    const name = newGroupName.value.trim()
+    if (name && !finalGroups.includes(name)) {
+      finalGroups.push(name)
+    }
+    displayModelStore.updateDisplayModelMeta(modelToGroup.value.id, {
+      groups: finalGroups,
+    })
+    newGroupName.value = ''
+    showGroupsDialog.value = false
+  }
+}
+
+function toggleModelNsfw(model: DisplayModel) {
+  displayModelStore.updateDisplayModelMeta(model.id, {
+    nsfw: !model.nsfw,
+  })
+}
 
 function handleRemoveModel(model: DisplayModel) {
   displayModelStore.removeDisplayModel(model.id)
@@ -313,6 +401,53 @@ function handleFixError(err: string) {
           </DialogContent>
         </DialogPortal>
       </DialogRoot>
+
+      <!-- Manage Groups Dialog -->
+      <DialogRoot v-model:open="showGroupsDialog">
+        <DialogPortal>
+          <DialogOverlay class="fixed inset-0 z-[10001] bg-black/50 backdrop-blur-sm" />
+          <DialogContent class="fixed left-1/2 top-1/2 z-[10001] max-w-md w-[90dvw] translate-x-[-50%] translate-y-[-50%] rounded-xl bg-white p-6 text-neutral-900 shadow-xl dark:bg-neutral-900 dark:text-neutral-100">
+            <DialogTitle class="text-lg font-bold">
+              Manage Groups
+            </DialogTitle>
+            <div class="mt-4 flex flex-col gap-4">
+              <!-- List of existing groups with checkboxes -->
+              <div v-if="allExistingGroups.length > 0" class="max-h-48 flex flex-col gap-2 overflow-y-auto">
+                <label v-for="group in allExistingGroups" :key="group" class="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    v-model="tempGroupsValue"
+                    type="checkbox"
+                    :value="group"
+                    class="border-neutral-300 rounded text-primary-500 focus:ring-primary-500"
+                  >
+                  <span>{{ group }}</span>
+                </label>
+              </div>
+              <div v-else class="text-xs text-neutral-400">
+                No existing groups. Add a new one below!
+              </div>
+
+              <!-- Add new group input -->
+              <input
+                v-model="newGroupName"
+                type="text"
+                class="w-full border border-neutral-200 rounded-lg bg-neutral-100 px-3 py-1.5 text-sm outline-none dark:border-neutral-800 dark:bg-neutral-800"
+                placeholder="New Group Name"
+                @keyup.enter="confirmGroups"
+              >
+
+              <div class="mt-2 flex justify-end gap-2">
+                <Button variant="secondary" @click="showGroupsDialog = false">
+                  Cancel
+                </Button>
+                <Button @click="confirmGroups">
+                  Save
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </DialogRoot>
     </div>
 
     <div class="flex items-center justify-between">
@@ -456,20 +591,41 @@ function handleFixError(err: string) {
     <template v-if="currentTab === 'library'">
       <!-- Search & Filter Bar -->
       <div class="flex flex-wrap items-center gap-2">
-        <div class="relative min-w-40 flex-1">
-          <div class="i-solar:magnifer-linear absolute left-3 top-1/2 translate-y-[-50%] opacity-50" />
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search models..."
-            class="w-full border border-transparent rounded-lg bg-neutral-100 py-1.5 pl-9 pr-3 outline-none transition-all focus:border-primary-400 dark:bg-neutral-800"
+        <!-- Expandable Search Input -->
+        <div class="relative flex items-center" :class="isSearchExpanded || searchQuery ? 'flex-1 min-w-40' : ''">
+          <button
+            v-if="!isSearchExpanded && !searchQuery"
+            class="h-[32px] w-[32px] flex items-center justify-center border border-transparent rounded-lg bg-neutral-100 text-neutral-500 transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-400 dark:hover:bg-neutral-700"
+            title="Search Models"
+            @click="isSearchExpanded = true"
           >
+            <div class="i-solar:magnifer-linear text-sm" />
+          </button>
+          <div v-else class="relative w-full flex items-center">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
+              <div class="i-solar:magnifer-linear text-xs text-neutral-500 dark:text-neutral-400" />
+            </div>
+            <input
+              ref="searchInputRef"
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search models..."
+              class="h-[32px] w-full border border-transparent rounded-lg bg-neutral-100 py-1 pl-8 pr-7 text-xs outline-none transition-all focus:border-primary-400 dark:bg-neutral-800"
+              @blur="searchQuery === '' ? isSearchExpanded = false : null"
+            >
+            <button
+              class="absolute right-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              @click="searchQuery = ''; isSearchExpanded = false"
+            >
+              <div class="i-solar:close-square-bold-duotone text-xs" />
+            </button>
+          </div>
         </div>
 
         <!-- Format Filter -->
         <select
           v-model="formatFilter"
-          class="cursor-pointer border border-transparent rounded-lg bg-neutral-100 px-3 py-1.5 text-sm font-medium outline-none transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+          class="h-[32px] cursor-pointer border border-transparent rounded-lg bg-neutral-100 px-3 py-1 text-xs font-semibold outline-none transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
         >
           <option value="all">
             All Formats
@@ -488,18 +644,172 @@ function handleFixError(err: string) {
           </option>
         </select>
 
-        <!-- Sort -->
-        <select
-          v-model="sortBy"
-          class="cursor-pointer border border-transparent rounded-lg bg-neutral-100 px-3 py-1.5 text-sm font-medium outline-none transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-        >
-          <option value="name">
-            Name (A-Z)
-          </option>
-          <option value="date">
-            Last Added
-          </option>
-        </select>
+        <!-- Groups Popover -->
+        <PopoverRoot>
+          <PopoverTrigger as-child>
+            <button
+              :class="[
+                'h-[32px] flex items-center justify-center gap-1.5 rounded-lg border border-transparent px-3 py-1 text-xs font-semibold outline-none transition-all',
+                selectedGroups.length > 0
+                  ? 'bg-primary-500/10 text-primary-500 border-primary-500/20 dark:bg-primary-500/20 dark:text-primary-400'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              ]"
+            >
+              <div class="i-solar:folder-bold-duotone" />
+              <span>Groups</span>
+              <span v-if="selectedGroups.length > 0" class="rounded-full bg-primary-500 px-1 py-0.2 text-[9px] text-white font-bold">
+                {{ selectedGroups.length }}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverPortal>
+            <PopoverContent
+              side="bottom"
+              :side-offset="6"
+              align="start"
+              class="animate-in fade-in zoom-in z-10000 w-64 border border-neutral-200/50 rounded-xl bg-white/95 p-3 shadow-xl backdrop-blur-xl duration-150 dark:border-neutral-700/50 dark:bg-neutral-900/95"
+            >
+              <div class="mb-2 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                Filter by Groups
+              </div>
+              <div v-if="allExistingGroups.length === 0" class="py-2 text-center text-xs text-neutral-400">
+                No groups found.
+              </div>
+              <div v-else class="max-h-32 flex flex-wrap gap-1.5 overflow-y-auto pr-1">
+                <button
+                  v-for="group in allExistingGroups"
+                  :key="group"
+                  :class="[
+                    'px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all border',
+                    selectedGroups.includes(group)
+                      ? 'bg-primary-500 text-white border-primary-500'
+                      : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700',
+                  ]"
+                  @click="selectedGroups.includes(group) ? selectedGroups = selectedGroups.filter(g => g !== group) : selectedGroups.push(group)"
+                >
+                  {{ group }}
+                </button>
+              </div>
+              <div class="mt-2.5 flex justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
+                <button
+                  class="text-[10px] text-neutral-400 font-bold hover:text-neutral-600 dark:hover:text-neutral-200"
+                  :disabled="selectedGroups.length === 0"
+                  :class="selectedGroups.length === 0 ? 'opacity-40 cursor-not-allowed' : ''"
+                  @click="selectedGroups = []"
+                >
+                  Reset
+                </button>
+              </div>
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
+
+        <!-- Sort Popover -->
+        <PopoverRoot>
+          <PopoverTrigger as-child>
+            <button
+              class="h-[32px] flex items-center justify-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-1 text-xs text-neutral-600 font-semibold outline-none transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            >
+              <div class="i-solar:sort-vertical-line-duotone" />
+              <span>
+                Sort: {{ sortBy === 'name' ? 'Name' : sortBy === 'type' ? 'Type' : 'Last Added' }}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverPortal>
+            <PopoverContent
+              side="bottom"
+              :side-offset="6"
+              align="end"
+              class="animate-in fade-in zoom-in z-10000 w-44 border border-neutral-200/50 rounded-xl bg-white/95 p-1 shadow-xl backdrop-blur-xl duration-150 dark:border-neutral-700/50 dark:bg-neutral-900/95"
+            >
+              <button
+                :class="[
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold rounded-lg transition-colors',
+                  sortBy === 'date' ? 'bg-primary-500/10 text-primary-500 dark:bg-primary-500/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300',
+                ]"
+                @click="sortBy = 'date'"
+              >
+                Last Added
+              </button>
+              <button
+                :class="[
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold rounded-lg transition-colors',
+                  sortBy === 'name' ? 'bg-primary-500/10 text-primary-500 dark:bg-primary-500/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300',
+                ]"
+                @click="sortBy = 'name'"
+              >
+                Name (A-Z)
+              </button>
+              <button
+                :class="[
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold rounded-lg transition-colors',
+                  sortBy === 'type' ? 'bg-primary-500/10 text-primary-500 dark:bg-primary-500/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300',
+                ]"
+                @click="sortBy = 'type'"
+              >
+                Type (Format)
+              </button>
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
+
+        <!-- NSFW Filter Popover -->
+        <PopoverRoot>
+          <PopoverTrigger as-child>
+            <button
+              :class="[
+                'h-[32px] flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold outline-none transition-all active:scale-95',
+                nsfwFilter === 'sfw'
+                  ? 'bg-neutral-100 border-transparent text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                  : nsfwFilter === 'nsfw'
+                    ? 'bg-red-500 text-white border-red-500 hover:bg-red-600 shadow-md shadow-red-500/10'
+                    : 'bg-primary-500/10 text-primary-500 border-primary-500/20 dark:bg-primary-500/20 dark:text-primary-400',
+              ]"
+            >
+              <div :class="nsfwFilter === 'nsfw' ? 'i-solar:eye-bold' : nsfwFilter === 'sfw' ? 'i-solar:eye-closed-bold-duotone' : 'i-solar:eye-bold'" />
+              <span>
+                {{ nsfwFilter === 'sfw' ? 'SFW Only' : nsfwFilter === 'nsfw' ? 'NSFW Only' : 'Show All' }}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverPortal>
+            <PopoverContent
+              side="bottom"
+              :side-offset="6"
+              align="end"
+              class="animate-in fade-in zoom-in z-10000 w-36 border border-neutral-200/50 rounded-xl bg-white/95 p-1 shadow-xl backdrop-blur-xl duration-150 dark:border-neutral-700/50 dark:bg-neutral-900/95"
+            >
+              <button
+                :class="[
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold rounded-lg transition-colors',
+                  nsfwFilter === 'sfw' ? 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100 font-bold' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400',
+                ]"
+                @click="nsfwFilter = 'sfw'"
+              >
+                SFW Only
+              </button>
+              <button
+                :class="[
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold rounded-lg transition-colors',
+                  nsfwFilter === 'nsfw' ? 'bg-red-500/10 text-red-500 font-bold' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400',
+                ]"
+                @click="nsfwFilter = 'nsfw'"
+              >
+                NSFW Only
+              </button>
+              <button
+                :class="[
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold rounded-lg transition-colors',
+                  nsfwFilter === 'all' ? 'bg-primary-500/10 text-primary-500 dark:bg-primary-500/20 font-bold' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400',
+                ]"
+                @click="nsfwFilter = 'all'"
+              >
+                Show All
+              </button>
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
       </div>
 
       <div v-if="displayModelsFromIndexedDBLoading">
@@ -560,6 +870,24 @@ function handleFixError(err: string) {
                       </div>
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base leading-none outline-none data-[highlighted]:bg-white/10 sm:text-sm dark:data-[highlighted]:bg-black/10"
+                      @click="openGroupsDialog(model)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <div class="i-solar:folder-bold" />
+                        <div>Groups</div>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base leading-none outline-none data-[highlighted]:bg-white/10 sm:text-sm dark:data-[highlighted]:bg-black/10"
+                      @click="toggleModelNsfw(model)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <div :class="model.nsfw ? 'i-solar:eye-closed-bold' : 'i-solar:eye-bold'" />
+                        <div>{{ model.nsfw ? 'Mark as SFW' : 'Mark as NSFW' }}</div>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       class="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-base text-red-400 font-semibold leading-none outline-none data-[highlighted]:bg-red-500/20 sm:text-sm"
                       @click="handleRemoveModel(model)"
                     >
@@ -615,6 +943,12 @@ function handleFixError(err: string) {
               :class="[viewMode === 'grid' ? 'justify-between p-2' : 'p-1.5']"
             >
               <div class="w-full">
+                <div class="mb-1 flex flex-wrap items-center gap-1">
+                  <!-- NSFW Badge -->
+                  <span v-if="model.nsfw" class="rounded bg-red-500/10 px-1 py-0.2 text-[8px] text-red-500 font-bold tracking-wider uppercase">NSFW</span>
+                  <!-- Group Badges -->
+                  <span v-for="g in model.groups" :key="g" class="select-none rounded bg-primary-500/10 px-1.5 py-0.2 text-[8px] text-primary-500 font-semibold">{{ g }}</span>
+                </div>
                 <div
                   class="font-bold transition-colors"
                   :class="[

@@ -798,6 +798,8 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             importedAt: entry.importedAt || Date.now(),
             hasPreview,
             hasTextures,
+            nsfw: entry.nsfw,
+            groups: entry.groups,
           }
           manifestModified = true
 
@@ -855,6 +857,8 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             name: remoteModel.name,
             previewImage,
             importedAt: remoteModel.importedAt,
+            nsfw: remoteModel.nsfw,
+            groups: remoteModel.groups,
           }
 
           await localforage.setItem(id, entry)
