@@ -148,6 +148,8 @@ export const useVisionStore = defineStore('vision', () => {
               type: 'image',
               data: base64,
               mimeType: 'image/png',
+              fileName: 'screenshot.png',
+              size: 0,
             },
           ],
         })

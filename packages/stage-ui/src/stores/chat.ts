@@ -36,7 +36,7 @@ export interface SendOptions {
   model?: string
   chatProvider?: string | ChatProvider
   providerConfig?: Record<string, unknown>
-  attachments?: { type: 'image', data: string, mimeType: string }[]
+  attachments?: { type: 'image', data: string, mimeType: string, fileName?: string, size?: number, url?: string }[]
   tools?: StreamOptions['tools']
   input?: WebSocketEventInputs
   /**

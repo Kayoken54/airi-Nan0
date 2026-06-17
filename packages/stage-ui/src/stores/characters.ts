@@ -94,7 +94,7 @@ export const useCharacterStore = defineStore('characters', () => {
         if (!res.ok) {
           throw new Error('Failed to fetch characters')
         }
-        const data = (await res.json()) as any
+        const data = (await res.json()) as any[]
 
         characters.value.clear()
         const parsedData: Character[] = []
