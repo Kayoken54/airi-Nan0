@@ -102,16 +102,17 @@ The full concept-to-file-path index lives in [`docs/rosetta-stone.md`](./docs/ro
 ## i18n
 
 - Add/modify translations in `packages/i18n`; avoid scattering i18n across apps/packages.
-- **Large YAML Management**: For large files (e.g., `en.yaml` with 3500+ lines), use `scripts/yaml-manager.js` to avoid memory issues and ensure structural integrity.
+- **Translation File Mapping**:
+  - Key prefix `settings.` (e.g., `settings.pages.providers.provider.blip-local.title`) maps to `packages/i18n/src/locales/<locale>/settings.yaml` (strip the leading `settings.` in the file path).
+  - Key prefix `stage.` maps to `stage.yaml`.
+  - All other keys map to `base.yaml`.
+- **Large YAML Management**: For modifying translation files, use `scripts/yaml-manager.js` to avoid memory/overwrite issues and preserve file comments. Refer to [`docs/settings-yaml.md`](./docs/settings-yaml.md) for full context.
+  - Run the manager with: `npx tsx scripts/yaml-manager.js <command> <file> [args]`
   - **Commands**:
-    - `node scripts/yaml-manager.js analyze <file>`: Show compact tree structure with line numbers.
-    - `node scripts/yaml-manager.js audit <file>`: Check for duplicate keys.
-    - `node scripts/yaml-manager.js search <file> <string>`: Find line numbers for a specific string.
-    - `node scripts/yaml-manager.js find-key <file> <key>`: Locate specific YAML keys.
-    - `node scripts/yaml-manager.js update <file> <path.to.key> <value>`: Safely update or insert a value.
-    - `node scripts/yaml-manager.js sync <src> <dest>`: Find keys in source missing from destination.
-    - `node scripts/yaml-manager.js clean <file>`: Strip trailing garbage/fix corruption.
-    - `node scripts/yaml-manager.js fix-syntax <file>`: Quote scalars containing colons.
+    - `npx tsx scripts/yaml-manager.js analyze <file>`: Show compact tree structure with line numbers.
+    - `npx tsx scripts/yaml-manager.js audit <file>`: Check for duplicate keys.
+    - `npx tsx scripts/yaml-manager.js update <file> <path.to.key> "<value>"`: Safely insert/update a value.
+    - `npx tsx scripts/yaml-manager.js sync <src> <dest>`: Find keys in source missing from destination.
 
 ## CSS/UNO
 

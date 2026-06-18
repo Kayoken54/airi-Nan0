@@ -2,16 +2,28 @@
 
 This document describes the structure of the `settings.yaml` files used for i18n in AIRI and how to manage them reliably using the provided tooling.
 
+## Mapping Keys to Files
+
+AIRI's translation files are located in `packages/i18n/src/locales/<locale>/`. When you see a missing key pattern, map it to the corresponding file:
+- **`settings.` prefix** (e.g. `settings.pages.providers...`): Maps to `settings.yaml` (with the leading `settings.` prefix omitted inside the file).
+- **`stage.` prefix**: Maps to `stage.yaml`.
+- **General/other prefixes**: Map to `base.yaml`.
+
 ## YAML Structure
 
-The localization keys follow a hierarchical structure:
+Inside `settings.yaml`, the localization keys follow a hierarchical structure:
 - `pages`: Root for page-specific translations.
-    - `modules`: Specific functional modules (e.g., `mcp-server`, `providers`).
+    - `modules`: Specific functional modules (e.g., `mcp-server`).
         - `mcp-server`:
             - `title`: Display name of the section.
             - `description`: Subtitle/help text.
             - `actions`: Button labels and primary interactions.
             - `dashboard`: Content for the live dashboard view.
+    - `providers`: Structure for AI/modalities providers.
+        - `provider`:
+            - `<provider-id>` (e.g., `blip-local`):
+                - `title`: Display name of the provider.
+                - `description`: Detailed description or sub-label for the provider.
 
 ## Management Tool: `yaml-manager.js`
 

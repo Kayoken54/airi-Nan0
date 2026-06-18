@@ -1229,6 +1229,9 @@ pages:
       s3:
         settings:
           title: S3-Compatible Cloud Storage Configuration
+      blip-local:
+        title: BLIP / WD (Local)
+        description: Local on-device vision models running client-side via WebGPU.
     title: Providers
   connection:
     description: Configure server connection and external download tokens (e.g.
