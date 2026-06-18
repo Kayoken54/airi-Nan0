@@ -43,6 +43,7 @@ const nsfwFilter = ref<'sfw' | 'nsfw' | 'all'>('sfw')
 
 // Groups filter state
 const selectedGroups = ref<string[]>([])
+const filterNotSet = ref(false)
 
 // Groups dialog/modal state
 const showGroupsDialog = ref(false)
@@ -122,7 +123,10 @@ const filteredModels = computed(() => {
   }
 
   // Groups Filter
-  if (selectedGroups.value.length > 0) {
+  if (filterNotSet.value) {
+    result = result.filter(m => !m.groups || !Array.isArray(m.groups) || m.groups.length === 0)
+  }
+  else if (selectedGroups.value.length > 0) {
     result = result.filter((m) => {
       if (!m.groups || !Array.isArray(m.groups))
         return false
@@ -159,6 +163,25 @@ const allExistingGroups = computed(() => {
     }
   })
   return Array.from(groups).sort()
+})
+
+const groupCounts = computed(() => {
+  const counts: Record<string, number> = {}
+  displayModels.value.forEach((m) => {
+    if (m.groups && Array.isArray(m.groups)) {
+      m.groups.forEach((g) => {
+        const trimmed = g.trim()
+        if (trimmed) {
+          counts[trimmed] = (counts[trimmed] || 0) + 1
+        }
+      })
+    }
+  })
+  return counts
+})
+
+const ungroupedCount = computed(() => {
+  return displayModels.value.filter(m => !m.groups || !Array.isArray(m.groups) || m.groups.length === 0).length
 })
 
 function openGroupsDialog(model: DisplayModel) {
@@ -650,7 +673,7 @@ function handleFixError(err: string) {
             <button
               :class="[
                 'h-[32px] flex items-center justify-center gap-1.5 rounded-lg border border-transparent px-3 py-1 text-xs font-semibold outline-none transition-all',
-                selectedGroups.length > 0
+                selectedGroups.length > 0 || filterNotSet
                   ? 'bg-primary-500/10 text-primary-500 border-primary-500/20 dark:bg-primary-500/20 dark:text-primary-400'
                   : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700',
               ]"
@@ -659,6 +682,9 @@ function handleFixError(err: string) {
               <span>Groups</span>
               <span v-if="selectedGroups.length > 0" class="rounded-full bg-primary-500 px-1 py-0.2 text-[9px] text-white font-bold">
                 {{ selectedGroups.length }}
+              </span>
+              <span v-else-if="filterNotSet" class="rounded-full bg-primary-500 px-1 py-0.2 text-[9px] text-white font-bold">
+                1
               </span>
             </button>
           </PopoverTrigger>
@@ -685,17 +711,24 @@ function handleFixError(err: string) {
                       ? 'bg-primary-500 text-white border-primary-500'
                       : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700',
                   ]"
-                  @click="selectedGroups.includes(group) ? selectedGroups = selectedGroups.filter(g => g !== group) : selectedGroups.push(group)"
+                  @click="selectedGroups.includes(group) ? selectedGroups = selectedGroups.filter(g => g !== group) : (selectedGroups.push(group), filterNotSet = false)"
                 >
-                  {{ group }}
+                  {{ group }} ({{ groupCounts[group] || 0 }})
                 </button>
               </div>
-              <div class="mt-2.5 flex justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
+              <div class="mt-2.5 flex items-center justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
+                <button
+                  class="text-[10px] font-bold transition-all"
+                  :class="filterNotSet ? 'text-primary-500 hover:text-primary-600' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200'"
+                  @click="() => { filterNotSet = !filterNotSet; selectedGroups = [] }"
+                >
+                  Not Set ({{ ungroupedCount }})
+                </button>
                 <button
                   class="text-[10px] text-neutral-400 font-bold hover:text-neutral-600 dark:hover:text-neutral-200"
-                  :disabled="selectedGroups.length === 0"
-                  :class="selectedGroups.length === 0 ? 'opacity-40 cursor-not-allowed' : ''"
-                  @click="selectedGroups = []"
+                  :disabled="selectedGroups.length === 0 && !filterNotSet"
+                  :class="selectedGroups.length === 0 && !filterNotSet ? 'opacity-40 cursor-not-allowed' : ''"
+                  @click="selectedGroups = []; filterNotSet = false"
                 >
                   Reset
                 </button>

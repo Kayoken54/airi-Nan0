@@ -41,11 +41,6 @@ async function onSelectiveSync(checkedIds: string[]) {
   await syncStore.triggerSync()
 }
 
-async function handleSyncAll() {
-  selectiveSyncEnabled.value = false
-  await syncStore.triggerSync()
-}
-
 function getConflictCharacterName(conflict: any): string {
   const charId = conflict.sessionDetails?.local?.characterId || conflict.sessionDetails?.remote?.characterId
   if (!charId)
@@ -92,6 +87,15 @@ async function handleRestoreFromBackup() {
   if (confirmed) {
     await syncStore.forceRestoreFromRemote()
   }
+}
+
+function isMergeable(key: string): boolean {
+  return (
+    key.startsWith('local:chat/sessions/')
+    || key === 'local:localstorage/settings/live2d/available-motions'
+    || ['local:memory/short-term/local', 'local:memory/text-journal/local', 'local:memory/echo-chips/local', 'local:airi-cards'].includes(key)
+    || key.startsWith('local:chat/index/')
+  )
 }
 </script>
 
@@ -180,6 +184,30 @@ async function handleRestoreFromBackup() {
         </select>
       </div>
 
+      <!-- Selective Sync Toggle -->
+      <div class="flex items-center justify-between border-b border-neutral-200 py-3 dark:border-neutral-800">
+        <div>
+          <div class="text-neutral-700 font-medium dark:text-neutral-300">
+            Selective Sync
+          </div>
+          <div class="text-xs text-neutral-400 dark:text-neutral-500">
+            Only sync selected characters, chat histories, and display models.
+          </div>
+        </div>
+        <button
+          class="relative h-6 w-11 inline-flex shrink-0 cursor-pointer border-2 border-transparent rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
+          :class="selectiveSyncEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+          role="switch"
+          :aria-checked="selectiveSyncEnabled"
+          @click="selectiveSyncEnabled = !selectiveSyncEnabled"
+        >
+          <span
+            pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out
+            :class="selectiveSyncEnabled ? 'translate-x-5' : 'translate-x-0'"
+          />
+        </button>
+      </div>
+
       <!-- Active Provider Info -->
       <div class="flex items-center justify-between py-2">
         <div>
@@ -233,9 +261,9 @@ async function handleRestoreFromBackup() {
           <button
             class="rounded-xl bg-primary-500 px-5 py-2.5 text-sm text-white font-semibold transition-colors duration-200 hover:bg-primary-600 focus:outline-none"
             :disabled="isSyncing"
-            @click="handleSyncAll"
+            @click="syncStore.triggerSync()"
           >
-            {{ isSyncing ? 'Syncing...' : 'Sync All' }}
+            {{ isSyncing ? 'Syncing...' : (selectiveSyncEnabled ? 'Sync Selected' : 'Sync Full') }}
           </button>
         </div>
       </div>
@@ -344,11 +372,17 @@ async function handleRestoreFromBackup() {
               Keep Remote
             </button>
             <button
-              v-if="conflict.key.startsWith('local:chat/sessions/')"
+              v-if="isMergeable(conflict.key)"
               class="rounded-xl bg-primary-500 px-3 py-1.5 text-xs text-white font-semibold transition hover:bg-primary-600"
               @click="syncStore.resolveConflict(conflict.key, 'merge')"
             >
-              Merge Message History
+              {{
+                conflict.key.startsWith('local:chat/sessions/')
+                  ? 'Merge Message History'
+                  : conflict.key === 'local:localstorage/settings/live2d/available-motions'
+                    ? 'Merge Motion Lists'
+                    : 'Merge Data'
+              }}
             </button>
           </div>
         </div>

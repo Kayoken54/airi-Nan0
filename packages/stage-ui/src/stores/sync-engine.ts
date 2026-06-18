@@ -622,6 +622,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
   async function reconcileModels(): Promise<void> {
     console.log('[SyncEngine] Reconciling models...')
+    let hasLocalMetadataChanges = false
     try {
       const client = getActiveClient()
       // 1. Get list of deleted model IDs from sync metadata
@@ -636,13 +637,19 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       }
 
       // 2. Read remote manifest
-      let manifest: { models: Record<string, { id: string, format: string, name: string, importedAt: number, previewImage?: string, hasTextures: boolean, hasPreview?: boolean }> } = { models: {} }
+      let manifest: {
+        models: Record<string, { id: string, format: string, name: string, importedAt: number, previewImage?: string, hasTextures: boolean, hasPreview?: boolean, nsfw?: boolean, groups?: string[] }>
+        deleted?: string[]
+      } = { models: {}, deleted: [] }
       let manifestExists = false
       let remoteManifestMtime = 0
       try {
         const readRes = await client.readFile('assets/models/manifest.json')
         if (readRes.success && readRes.content) {
           manifest = JSON.parse(readRes.content)
+          if (!manifest.deleted) {
+            manifest.deleted = []
+          }
           manifestExists = true
         }
 
@@ -680,6 +687,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 3. Process deletions (both remote and local)
       for (const id of deletedModelIds) {
+        if (!manifest.deleted) {
+          manifest.deleted = []
+        }
+        if (!manifest.deleted.includes(id)) {
+          manifest.deleted.push(id)
+          manifestModified = true
+        }
         if (manifest.models[id]) {
           console.log(`[SyncEngine] Deleting remote model assets for: ${id}`)
           await client.deleteFile(`assets/models/${id}.bin`)
@@ -708,6 +722,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 5. Upload local-only models (not in remote manifest and not in local deleted list)
       for (const [id, entry] of localModels.entries()) {
+        if (manifest.deleted && manifest.deleted.includes(id)) {
+          console.log(`[SyncEngine] Model ${id} (${entry.name}) is marked as deleted remotely. Deleting locally.`)
+          await localforage.removeItem(id)
+          await localforage.removeItem(`${id}-textures`)
+          await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+          continue
+        }
+
         if (selectiveSyncEnabled.value) {
           const modelNodeId = `model-${id}`
           if (!selectiveCheckedIds.value.includes(modelNodeId)) {
@@ -808,6 +830,74 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         }
       }
 
+      // 5.5 Reconcile metadata for models existing in both local and remote
+      for (const [id, localEntry] of localModels.entries()) {
+        const remoteEntry = manifest.models[id]
+        if (remoteEntry) {
+          let localModified = false
+
+          // 1. Merge groups
+          const localGroups = localEntry.groups || []
+          const remoteGroups = remoteEntry.groups || []
+          const hasGroupDiff = JSON.stringify(localGroups) !== JSON.stringify(remoteGroups)
+
+          if (hasGroupDiff) {
+            if (conflictStrategy.value === 'local-wins' || (localGroups.length > 0 && remoteGroups.length === 0)) {
+              remoteEntry.groups = localGroups
+              manifestModified = true
+            }
+            else if (conflictStrategy.value === 'remote-wins' || (remoteGroups.length > 0 && localGroups.length === 0)) {
+              localEntry.groups = remoteGroups
+              localModified = true
+            }
+            else {
+              const mergedGroups = Array.from(new Set([...localGroups, ...remoteGroups]))
+              remoteEntry.groups = mergedGroups
+              localEntry.groups = mergedGroups
+              manifestModified = true
+              localModified = true
+            }
+          }
+
+          // 2. Merge nsfw
+          if (localEntry.nsfw !== remoteEntry.nsfw) {
+            if (conflictStrategy.value === 'local-wins' || (localEntry.nsfw !== undefined && remoteEntry.nsfw === undefined)) {
+              remoteEntry.nsfw = localEntry.nsfw
+              manifestModified = true
+            }
+            else if (conflictStrategy.value === 'remote-wins' || (remoteEntry.nsfw !== undefined && localEntry.nsfw === undefined)) {
+              localEntry.nsfw = remoteEntry.nsfw
+              localModified = true
+            }
+            else {
+              const mergedNsfw = localEntry.nsfw || remoteEntry.nsfw
+              remoteEntry.nsfw = mergedNsfw
+              localEntry.nsfw = mergedNsfw
+              manifestModified = true
+              localModified = true
+            }
+          }
+
+          // 3. Merge name
+          if (localEntry.name !== remoteEntry.name && remoteEntry.name) {
+            if (conflictStrategy.value === 'local-wins') {
+              remoteEntry.name = localEntry.name
+              manifestModified = true
+            }
+            else {
+              localEntry.name = remoteEntry.name
+              localModified = true
+            }
+          }
+
+          if (localModified) {
+            console.log(`[SyncEngine] Updating local display model metadata for: ${id}`)
+            await localforage.setItem(id, localEntry)
+            hasLocalMetadataChanges = true
+          }
+        }
+      }
+
       // 6. Download remote-only models (in remote manifest but missing locally)
       let hasDownloads = false
       for (const [id, remoteModel] of Object.entries(manifest.models)) {
@@ -895,7 +985,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         await client.writeFile('assets/models/manifest.json', JSON.stringify(manifest, null, 2))
       }
 
-      if (hasDownloads) {
+      if (hasDownloads || hasLocalMetadataChanges) {
         try {
           const { useDisplayModelsStore } = await import('./display-models')
           const modelStore = useDisplayModelsStore()
@@ -1047,6 +1137,87 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     }
     catch (e) {
       console.error('[SyncEngine] Failed to merge chat indices:', e)
+      return localVal || remoteVal
+    }
+  }
+
+  // Merges two available-motions arrays stored in localStorage bridge objects.
+  function mergeAvailableMotions(localVal: any, remoteVal: any): any {
+    if (!localVal)
+      return remoteVal
+    if (!remoteVal)
+      return localVal
+
+    try {
+      const localRaw = typeof localVal === 'string' ? localVal : (localVal.value || '[]')
+      const remoteRaw = typeof remoteVal === 'string' ? remoteVal : (remoteVal.value || '[]')
+
+      let localArr: any[] = []
+      let remoteArr: any[] = []
+
+      try {
+        localArr = JSON.parse(localRaw)
+      }
+      catch (e) {
+        console.error('[SyncEngine] Failed to parse local available-motions:', e)
+      }
+
+      try {
+        remoteArr = JSON.parse(remoteRaw)
+      }
+      catch (e) {
+        console.error('[SyncEngine] Failed to parse remote available-motions:', e)
+      }
+
+      if (!Array.isArray(localArr))
+        localArr = []
+      if (!Array.isArray(remoteArr))
+        remoteArr = []
+
+      const mergedMap = new Map<string, any>()
+
+      const getMotionKey = (item: any) => {
+        if (!item)
+          return ''
+        return `${item.motionName || ''}:${item.motionIndex ?? ''}:${item.fileName || ''}`
+      }
+
+      for (const item of localArr) {
+        const key = getMotionKey(item)
+        if (key) {
+          mergedMap.set(key, item)
+        }
+      }
+
+      for (const item of remoteArr) {
+        const key = getMotionKey(item)
+        if (key) {
+          const existing = mergedMap.get(key)
+          if (existing) {
+            mergedMap.set(key, {
+              ...existing,
+              ...item,
+              sound: item.sound || existing.sound,
+              text: item.text || existing.text,
+              language: item.language || existing.language,
+            })
+          }
+          else {
+            mergedMap.set(key, item)
+          }
+        }
+      }
+
+      const mergedList = Array.from(mergedMap.values())
+      const mergedValueStr = JSON.stringify(mergedList)
+
+      return {
+        value: mergedValueStr,
+        originalKey: localVal.originalKey || remoteVal.originalKey || 'settings/live2d/available-motions',
+      }
+    }
+    catch (e) {
+      console.error('[SyncEngine] Failed to merge available motions:', e)
       return localVal || remoteVal
     }
   }
@@ -1246,6 +1417,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
               mergedData = mergedMsgs
             }
           }
+          else if (localKey === 'local:localstorage/settings/live2d/available-motions') {
+            mergedData = mergeAvailableMotions(localData, remoteData)
+          }
           else {
             if (Array.isArray(localData) && Array.isArray(remoteData)) {
               mergedData = mergeArraysById(localData, remoteData)
@@ -1360,6 +1534,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           'local:memory/text-journal/local',
           'local:memory/echo-chips/local',
           'local:airi-cards',
+          'local:localstorage/settings/live2d/available-motions',
         ].includes(localKey) || localKey.startsWith('local:chat/index/')
 
         if (isMergeableKey) {
@@ -1383,6 +1558,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           }
           else if (localKey.startsWith('local:chat/index/')) {
             mergedVal = mergeChatIndices(localVal, remoteVal)
+          }
+          else if (localKey === 'local:localstorage/settings/live2d/available-motions') {
+            mergedVal = mergeAvailableMotions(localVal, remoteVal)
           }
           else {
             let localArr = localVal || []
@@ -1668,6 +1846,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             'local:memory/text-journal/local',
             'local:memory/echo-chips/local',
             'local:airi-cards',
+            'local:localstorage/settings/live2d/available-motions',
           ].includes(item.key) || item.key.startsWith('local:chat/index/')
 
           if (isMergeableKey) {
@@ -1688,6 +1867,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             }
             else if (item.key.startsWith('local:chat/index/')) {
               mergedVal = mergeChatIndices(localVal, remoteVal)
+            }
+            else if (item.key === 'local:localstorage/settings/live2d/available-motions') {
+              mergedVal = mergeAvailableMotions(localVal, remoteVal)
             }
             else {
               let localArr = localVal || []
