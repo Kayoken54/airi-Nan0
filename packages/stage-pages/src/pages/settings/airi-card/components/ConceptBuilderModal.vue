@@ -18,6 +18,8 @@ import {
 } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
 
+import ImageTagExtractorModal from './ImageTagExtractorModal.vue'
+
 interface ConceptData {
   description: string
   prompt: string
@@ -92,6 +94,35 @@ const activeTab = ref('identity')
 const id = ref('')
 const description = ref('')
 const prompt = ref('')
+
+// Image Tag Extractor State
+const showTagExtractorModal = ref(false)
+const extractorModelId = computed(() => {
+  if (selectedModelId.value && selectedModelId.value !== 'inherit') {
+    return selectedModelId.value
+  }
+  // Inherit active card's display model ID
+  return airiCardStore.activeCard?.extensions?.airi?.modules?.displayModelId || ''
+})
+
+const hasManifestationModel = computed(() => {
+  return !!extractorModelId.value
+})
+
+function handleTagExtractorApply(tags: string) {
+  if (prompt.value) {
+    const trimmed = prompt.value.trim()
+    if (trimmed && !trimmed.endsWith(',')) {
+      prompt.value = `${trimmed}, ${tags}`
+    }
+    else {
+      prompt.value = `${trimmed} ${tags}`
+    }
+  }
+  else {
+    prompt.value = tags
+  }
+}
 
 // Concept Type
 const isBase = ref(false)
@@ -364,14 +395,35 @@ function handleSave() {
               :rows="3"
             />
 
-            <FieldInput
-              v-model="prompt"
-              label="Prompt Snippet"
-              placeholder=", (iridescent silver tape:1.4), high contrast"
-              description="Keywords or modifiers to inject into the final image prompt."
-              :single-line="false"
-              :rows="3"
-            />
+            <div class="max-w-full">
+              <label class="flex flex-col gap-4">
+                <div>
+                  <div class="flex items-center gap-1 text-sm font-medium">
+                    Prompt Snippet
+                  </div>
+                  <div class="text-xs text-neutral-500 dark:text-neutral-400">
+                    Keywords or modifiers to inject into the final image prompt.
+                  </div>
+                </div>
+                <div class="relative w-full">
+                  <textarea
+                    v-model="prompt"
+                    rows="3"
+                    placeholder=", (iridescent silver tape:1.4), high contrast"
+                    class="focus:primary-300 dark:focus:primary-400/50 text-disabled:neutral-400 dark:text-disabled:neutral-600 cursor-disabled:not-allowed w-full border-2 border-neutral-100 rounded-lg border-solid bg-neutral-50 py-1.5 pl-2 pr-9 text-sm shadow-sm outline-none transition-all duration-200 ease-in-out dark:border-neutral-900 dark:bg-neutral-950 focus:bg-neutral-50 dark:focus:bg-neutral-900"
+                  />
+                  <button
+                    v-if="hasManifestationModel"
+                    type="button"
+                    class="absolute right-2 top-2 h-8 w-8 flex items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-primary-500 dark:hover:bg-neutral-800 dark:hover:text-primary-400"
+                    title="Extract tags from model preview (WD14)"
+                    @click.prevent="showTagExtractorModal = true"
+                  >
+                    <span i-solar:tag-bold-duotone class="text-lg" />
+                  </button>
+                </div>
+              </label>
+            </div>
 
             <!-- Base vs Layer toggle -->
             <div class="flex items-center justify-between border border-neutral-200 rounded-xl bg-neutral-50/50 p-4 dark:border-neutral-700 dark:bg-black/20">
@@ -681,4 +733,11 @@ function handleSave() {
       </DialogContent>
     </DialogPortal>
   </DialogRoot>
+
+  <!-- Image Tag Extractor Modal -->
+  <ImageTagExtractorModal
+    v-model="showTagExtractorModal"
+    :model-id="extractorModelId"
+    @apply="handleTagExtractorApply"
+  />
 </template>

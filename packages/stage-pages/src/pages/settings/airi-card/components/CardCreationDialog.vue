@@ -34,6 +34,7 @@ import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import FieldAiGeneratorModal from './FieldAiGeneratorModal.vue'
+import ImageTagExtractorModal from './ImageTagExtractorModal.vue'
 import CardCreationTabActing from './tabs/CardCreationTabActing.vue'
 import CardCreationTabArtistry from './tabs/CardCreationTabArtistry.vue'
 import CardCreationTabBehavior from './tabs/CardCreationTabBehavior.vue'
@@ -1005,6 +1006,29 @@ const generatorFieldId = ref('')
 const generatorFieldLabel = ref('')
 const generatorFieldValue = ref('')
 
+// Image Tag Extractor Modal State
+const showTagExtractorModal = ref(false)
+const extractorModelId = computed(() => selectedDisplayModelId.value || defaultDisplayModelId.value)
+
+function handleTagExtractorApply(tags: string) {
+  if (selectedArtistryPromptPrefix.value) {
+    const trimmed = selectedArtistryPromptPrefix.value.trim()
+    if (trimmed && !trimmed.endsWith(',')) {
+      selectedArtistryPromptPrefix.value = `${trimmed}, ${tags}`
+    }
+    else {
+      selectedArtistryPromptPrefix.value = `${trimmed} ${tags}`
+    }
+  }
+  else {
+    selectedArtistryPromptPrefix.value = tags
+  }
+}
+
+function openTagExtractor() {
+  showTagExtractorModal.value = true
+}
+
 const visualAssets = computed(() => {
   if (!isEditMode.value || !props.cardId)
     return {}
@@ -1267,6 +1291,7 @@ function handleGeneratorSave(newValue: string) {
             :artistry-provider-options="artistryProviderOptions"
             :default-artistry-provider-placeholder="getDefaultPlaceholder(defaultArtistryProvider)"
             @sparkle-click="openSparkleGenerator"
+            @extract-tags-click="openTagExtractor"
           />
           <CardCreationTabProactivity
             v-else-if="activeTab === 'proactivity'"
@@ -1318,5 +1343,12 @@ function handleGeneratorSave(newValue: string) {
     :card-context="generatorCardContext"
     :acting-context="generatorActingContext"
     @save="handleGeneratorSave"
+  />
+
+  <!-- Image Tag Extractor Modal -->
+  <ImageTagExtractorModal
+    v-model="showTagExtractorModal"
+    :model-id="extractorModelId"
+    @apply="handleTagExtractorApply"
   />
 </template>

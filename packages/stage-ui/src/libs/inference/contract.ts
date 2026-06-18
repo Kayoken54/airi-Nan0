@@ -298,6 +298,7 @@ export const webRwkvUnloadEvent = defineInvokeEventa<void, undefined>('inference
 export interface BlipLoadRequest {
   device: InferenceDevice
   model?: string
+  hfToken?: string
 }
 
 export interface BlipProcessRequest {
