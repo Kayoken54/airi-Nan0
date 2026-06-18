@@ -1,3 +1,5 @@
+export { createLocalVisionAdapter } from './adapters/blip'
+export type { LocalVisionAdapter } from './adapters/blip'
 export {
   clearModelCache,
   formatBytes,
@@ -13,6 +15,7 @@ export {
   TIMEOUTS,
   WEB_RWKV_MODELS,
 } from './constants'
+export { DEFAULT_LOCAL_VISION_MODEL, LOCAL_VISION_MODELS } from './constants'
 export {
   getGPUCoordinator,
   getGpuExecutor,

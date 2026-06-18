@@ -14,6 +14,8 @@ export const MODEL_IDS = {
   KOKORO: 'onnx-community/Kokoro-82M-v1.0-ONNX',
   WHISPER: 'onnx-community/whisper-large-v3-turbo',
   BG_REMOVAL: 'Xenova/modnet',
+  BLIP: 'onnx-community/blip-image-captioning-base',
+  WD14: 'SmilingWolf/wd-v1-4-swinv2-tagger-v2',
 } as const
 
 /** Short model identifiers used in adapter state tracking and logging */
@@ -22,7 +24,23 @@ export const MODEL_NAMES = {
   WHISPER: 'whisper-large-v3-turbo',
   BG_REMOVAL: 'modnet',
   WEB_RWKV: 'web-rwkv',
+  BLIP: 'blip',
+  WD14: 'wd14',
 } as const
+
+/**
+ * Local vision models offered by the provider.
+ */
+export const LOCAL_VISION_MODELS = [
+  { id: 'SmilingWolf/wd-swinv2-tagger-v3', name: 'WD SwinV2 Tagger v3', description: 'Latest v3 anime tagger. High accuracy (~450 MB).' },
+  { id: 'SmilingWolf/wd-convnext-tagger-v3', name: 'WD ConvNeXt Tagger v3', description: 'Latest v3 CNN-based tagger. High speed (~250 MB).' },
+  { id: 'SmilingWolf/wd-v1-4-swinv2-tagger-v2', name: 'WD14 SwinV2 Tagger', description: 'Gold standard for anime/danbooru tagging. Lightweight (~300 MB).' },
+  { id: 'SmilingWolf/wd-v1-4-vit-tagger-v2', name: 'WD14 ViT Tagger', description: 'Alternative ViT-based danbooru tagger.' },
+  { id: 'onnx-community/blip-image-captioning-base', name: 'BLIP Base', description: 'Prose description model (~250 MB).' },
+  { id: 'onnx-community/blip2-opt-2.7b', name: 'BLIP-2 OPT-2.7B', description: 'High-quality prose description model (~2.7B parameters, heavy download).' },
+] as const
+
+export const DEFAULT_LOCAL_VISION_MODEL: typeof LOCAL_VISION_MODELS[number]['id'] = 'SmilingWolf/wd-swinv2-tagger-v3'
 
 /**
  * Whisper models the local transcription provider offers. The `id` is the
@@ -115,6 +133,11 @@ export const TIMEOUTS = {
    * wedge is caught within this gap.
    */
   WEB_RWKV_GENERATE_IDLE: 15_000,
+
+  /** Local vision model load timeout (absolute) */
+  LOCAL_VISION_LOAD: 300_000,
+  /** Local vision model process timeout (absolute) */
+  LOCAL_VISION_PROCESS: 90_000,
 } as const
 
 // ---------------------------------------------------------------------------

@@ -71,6 +71,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
+import { createLocalVisionAdapter, DEFAULT_LOCAL_VISION_MODEL, LOCAL_VISION_MODELS } from '../libs/inference'
 import { getKokoroAdapter } from '../libs/inference/adapters/kokoro'
 import { DEFAULT_WEB_RWKV_MODEL, DEFAULT_WHISPER_MODEL, WEB_RWKV_MODELS, WHISPER_MODELS } from '../libs/inference/constants'
 import { appLocalAudioTranscription } from '../libs/providers/providers/transcription/app-local-audio-transcription'
@@ -2942,6 +2943,53 @@ export const useProvidersStore = defineStore('providers', () => {
         },
       },
     },
+    'blip-local': {
+      id: 'blip-local',
+      category: 'vision',
+      tasks: ['vision', 'image-to-text'],
+      nameKey: 'settings.pages.providers.provider.blip-local.title',
+      name: 'BLIP (Local, WebGPU)',
+      descriptionKey: 'settings.pages.providers.provider.blip-local.description',
+      description: 'On-device vision tagging (WD14 Tagger / BLIP) running in browser via WebGPU.',
+      icon: 'i-solar:eye-scan-bold-duotone',
+      requiresCredentials: false,
+      isAvailableBy: () => isWebGPUSupported(),
+      defaultOptions: () => ({
+        model: DEFAULT_LOCAL_VISION_MODEL,
+      }),
+      createProvider: async (config) => {
+        const adapter = createLocalVisionAdapter()
+        return {
+          captionImage: (url: string, opts?: any) => adapter.captionImage(url, opts),
+          loadModel: (opts?: any) => adapter.load(config.model as string, undefined, opts),
+          state: computed(() => adapter.state),
+          deviceLossCount: computed(() => adapter.deviceLossCount),
+          terminate: () => adapter.terminate(),
+        } as any
+      },
+      capabilities: {
+        listModels: async () => {
+          return LOCAL_VISION_MODELS.map(m => ({
+            id: m.id,
+            name: m.name,
+            provider: 'blip-local',
+            description: m.description,
+            contextLength: 0,
+            deprecated: false,
+          }))
+        },
+      },
+      validators: {
+        chatPingCheckAvailable: false,
+        validateProviderConfig: (config) => {
+          const url = (config.model as string) || DEFAULT_LOCAL_VISION_MODEL
+          if (!url) {
+            return { errors: [new Error('No model configured')], reason: 'A model is required.', valid: false }
+          }
+          return { errors: [], reason: '', valid: true }
+        },
+      },
+    },
   }
 
   const providerMetadata = createProviderRegistry(t, providerDefinitions)
@@ -3057,7 +3105,7 @@ export const useProvidersStore = defineStore('providers', () => {
         // surface in the "persisted" provider lists (e.g. the consciousness page,
         // which only lists added chat providers) without a manual add step. These
         // have no API key to enter, so there is nothing for the user to configure.
-        if (validationResult.valid && ['browser-web-speech-api', 'player2', 'web-rwkv', 'whisper-local'].includes(providerId)) {
+        if (validationResult.valid && ['browser-web-speech-api', 'player2', 'web-rwkv', 'whisper-local', 'blip-local'].includes(providerId)) {
           markProviderAdded(providerId)
         }
       }

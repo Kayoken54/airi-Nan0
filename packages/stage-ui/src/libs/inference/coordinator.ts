@@ -74,4 +74,8 @@ export const MODEL_VRAM_ESTIMATES: Record<string, number> = {
   // web-rwkv (WebGPU RWKV) — varies widely by model; conservative estimate
   // covering small chat models (0.1B–0.4B). Larger models under-estimate.
   [MODEL_NAMES.WEB_RWKV]: 512 * 1024 * 1024, // ~512 MB
+
+  // Local vision models
+  [MODEL_NAMES.BLIP]: 400 * 1024 * 1024, // ~400 MB
+  [MODEL_NAMES.WD14]: 300 * 1024 * 1024, // ~300 MB
 }

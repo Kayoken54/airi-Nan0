@@ -294,3 +294,22 @@ export interface WebRwkvGenerateChunk {
 export const webRwkvLoadEvent = defineInvokeEventa<LoadStreamItem, WebRwkvLoadRequest>('inference:web-rwkv:load')
 export const webRwkvGenerateEvent = defineInvokeEventa<WebRwkvGenerateChunk, WebRwkvGenerateRequest>('inference:web-rwkv:generate')
 export const webRwkvUnloadEvent = defineInvokeEventa<void, undefined>('inference:web-rwkv:unload')
+
+export interface BlipLoadRequest {
+  device: InferenceDevice
+  model?: string
+}
+
+export interface BlipProcessRequest {
+  imageUrl: string
+  generalThreshold?: number
+  characterThreshold?: number
+}
+
+export interface BlipProcessResult {
+  text: string
+}
+
+export const blipLoadEvent = defineInvokeEventa<LoadStreamItem, BlipLoadRequest>('inference:blip:load')
+export const blipProcessEvent = defineInvokeEventa<BlipProcessResult, BlipProcessRequest>('inference:blip:process')
+export const blipUnloadEvent = defineInvokeEventa<void, undefined>('inference:blip:unload')

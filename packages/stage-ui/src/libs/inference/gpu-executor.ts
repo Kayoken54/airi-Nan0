@@ -261,4 +261,6 @@ export const GPU_PRIORITY = {
   LLM_LOAD: 40,
   BG_REMOVAL_PROCESS: 20,
   BG_REMOVAL_LOAD: 10,
+  BLIP_PROCESS: 20,
+  BLIP_LOAD: 10,
 } as const

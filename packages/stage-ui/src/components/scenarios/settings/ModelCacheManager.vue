@@ -14,6 +14,10 @@ const knownModels = [
   { id: 'onnx-community/Kokoro-82M-v1.0-ONNX', name: 'Kokoro TTS' },
   { id: 'onnx-community/whisper-large-v3-turbo', name: 'Whisper ASR' },
   { id: 'Xenova/modnet', name: 'Background Removal' },
+  { id: 'onnx-community/blip-image-captioning-base', name: 'BLIP Vision' },
+  { id: 'SmilingWolf/wd-v1-4-swinv2-tagger-v2', name: 'WD14 SwinV2 Tagger' },
+  { id: 'SmilingWolf/wd-v1-4-vit-tagger-v2', name: 'WD14 ViT Tagger' },
+  { id: 'onnx-community/blip2-opt-2.7b', name: 'BLIP-2 Vision' },
 ]
 
 const cachedModels = ref<{ id: string, name: string, cached: boolean }[]>([])
