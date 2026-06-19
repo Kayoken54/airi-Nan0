@@ -200,6 +200,7 @@ function resolveGazeOffset(): GazeOffset | undefined {
 const computedScale = computed(() => props.scale !== undefined ? props.scale : scale.value)
 const computedPositionX = computed(() => props.positionX !== undefined ? props.positionX / 100 : position.value.x)
 const computedPositionY = computed(() => props.positionY !== undefined ? props.positionY / 100 : position.value.y)
+const isOrbitControlsEnabled = computed(() => props.enableOrbitControls || props.interactionMode === 'orbit')
 
 function applyTransform() {
   if (!modelGroup)
@@ -356,7 +357,7 @@ function setupScene() {
 
   controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
-  controls.enabled = props.enableOrbitControls
+  controls.enabled = isOrbitControlsEnabled.value
 }
 
 /** Frames the camera so the whole model fits the viewport, and centers it. */
@@ -683,7 +684,7 @@ watch(() => props.modelSrc, (src) => {
     disposeModel()
 })
 
-watch(() => props.enableOrbitControls, (enabled) => {
+watch(isOrbitControlsEnabled, (enabled) => {
   if (controls)
     controls.enabled = enabled
 })

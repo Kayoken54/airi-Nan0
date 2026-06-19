@@ -4,7 +4,6 @@ import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { refManualReset, useEventListener } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { toast } from 'vue-sonner'
 
 import { DisplayModelFormat, useDisplayModelsStore } from '../display-models'
 
@@ -150,7 +149,6 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
       }
 
       if (model.format === DisplayModelFormat.PMXZip || model.format === DisplayModelFormat.PMD) {
-        const toastId = toast.loading('Loading and decoding MMD model textures...')
         try {
           const textureFiles = await displayModelsStore.getDisplayModelTextures(model.id)
           if (requestId !== stageModelUpdateSequence)
@@ -179,11 +177,9 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
           const nextUrl = `${URL.createObjectURL(model.file)}#${model.file.name}`
           replaceStageModelUrl(nextUrl)
           stageModelSelectedFile.value = model.file
-          toast.success('MMD model ready!', { id: toastId })
         }
         catch (e) {
           console.error('[StageModel] Failed to load MMD textures:', e)
-          toast.error('Failed to load MMD model textures!', { id: toastId })
           const nextUrl = URL.createObjectURL(model.file)
           replaceStageModelUrl(nextUrl)
           stageModelSelectedFile.value = model.file
