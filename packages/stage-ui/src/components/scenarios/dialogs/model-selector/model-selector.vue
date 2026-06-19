@@ -5,6 +5,7 @@ import type { DisplayModel } from '../../../../stores/display-models'
 
 import { vAutoAnimate } from '@formkit/auto-animate/vue'
 import { validateLive2DZip } from '@proj-airi/stage-ui-live2d'
+import { useMmd } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { extractMmdFromZip } from '@proj-airi/stage-ui-mmd/utils/mmd-zip-extractor'
 import { useCustomVrmAnimationsStore } from '@proj-airi/stage-ui-three'
 import { Button } from '@proj-airi/ui'
@@ -26,6 +27,7 @@ const selectedModel = defineModel<DisplayModel | undefined>({ type: Object, requ
 
 const displayModelStore = useDisplayModelsStore()
 const customVrmAnimationsStore = useCustomVrmAnimationsStore()
+const mmdStore = useMmd()
 const { displayModelsFromIndexedDBLoading, displayModels } = storeToRefs(displayModelStore)
 
 // Redesign State
@@ -335,6 +337,24 @@ async function handleAddMmdModel(file: FileList | null) {
   }
 }
 
+async function handleAddVmdMotion(file: FileList | null) {
+  if (file === null || file.length === 0)
+    return
+
+  const vmdFile = file[0]
+  if (!vmdFile.name.toLowerCase().endsWith('.vmd'))
+    return
+
+  try {
+    const desc = await mmdStore.addMotion(vmdFile)
+    toast.success(`Custom motion "${desc.name}" imported successfully!`)
+  }
+  catch (error) {
+    console.error('[Model Selector] Failed to add VMD motion:', error)
+    toast.error(error instanceof Error ? error.message : 'Failed to add VMD motion.')
+  }
+}
+
 async function handleAddVrmaAnimation(file: FileList | null) {
   if (file === null || file.length === 0)
     return
@@ -367,12 +387,14 @@ const vrmDialog = useFileDialog({ accept: '.vrm', multiple: true, reset: true })
 const vrmaDialog = useFileDialog({ accept: '.vrma', multiple: false, reset: true })
 const spineDialog = useFileDialog({ accept: '.zip', multiple: false, reset: true })
 const mmdDialog = useFileDialog({ accept: '.zip', multiple: false, reset: true })
+const vmdDialog = useFileDialog({ accept: '.vmd', multiple: false, reset: true })
 
 live2dDialog.onChange(handleAddLive2DModel)
 vrmDialog.onChange(handleAddVRMModel)
 vrmaDialog.onChange(handleAddVrmaAnimation)
 spineDialog.onChange(handleAddSpineModel)
 mmdDialog.onChange(handleAddMmdModel)
+vmdDialog.onChange(handleAddVmdMotion)
 
 function handleFixError(err: string) {
   // eslint-disable-next-line no-console
@@ -603,6 +625,18 @@ function handleFixError(err: string) {
                 @click="mmdDialog.open()"
               >
                 MMD (.zip)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                :class="[
+                  'data-[disabled]:text-mauve8 relative flex cursor-pointer select-none items-center rounded-md px-3 py-2 leading-none outline-none data-[disabled]:pointer-events-none',
+                  'text-base sm:text-sm',
+                  'data-[highlighted]:bg-primary-300/20 dark:data-[highlighted]:bg-primary-100/20',
+                  'data-[highlighted]:text-primary-400 dark:data-[highlighted]:text-primary-200',
+                ]"
+                transition="colors duration-200 ease-in-out"
+                @click="vmdDialog.open()"
+              >
+                VMD (.vmd)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenuPortal>

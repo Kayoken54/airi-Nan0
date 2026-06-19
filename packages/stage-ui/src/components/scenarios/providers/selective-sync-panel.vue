@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useMmd } from '@proj-airi/stage-ui-mmd'
+import { useCustomVrmAnimationsStore } from '@proj-airi/stage-ui-three'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 
@@ -28,6 +30,8 @@ const syncStore = useSyncEngineStore()
 const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const displayModelsStore = useDisplayModelsStore()
+const mmdStore = useMmd()
+const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 
 const {
   selectiveSyncEnabled,
@@ -38,6 +42,8 @@ const searchCharQuery = ref('')
 const remoteCards = ref<Map<string, any>>(new Map())
 const remoteModels = ref<any[]>([])
 const remoteBgs = ref<any[]>([])
+const remoteVmds = ref<any[]>([])
+const remoteVrmas = ref<any[]>([])
 const remoteFilesList = ref<any[]>([])
 const isLoadingRemote = ref(false)
 const remoteLoadError = ref('')
@@ -81,6 +87,12 @@ const syncTree = ref<TreeNode[]>([
     checked: false,
     children: [],
   },
+  {
+    id: 'animations',
+    label: 'Custom Motions & Animations (VMD / VRMA)',
+    checked: false,
+    children: [],
+  },
 ])
 
 async function fetchRemoteCatalogData() {
@@ -99,6 +111,8 @@ async function fetchRemoteCatalogData() {
       remoteModels.value = res.models || []
       remoteBgs.value = res.backgrounds || []
       remoteFilesList.value = res.remoteFiles || []
+      remoteVmds.value = (res as any).vmds || []
+      remoteVrmas.value = (res as any).vrmas || []
     }
     else {
       remoteLoadError.value = res?.error || 'Failed to retrieve remote catalog.'
@@ -320,11 +334,81 @@ function updateSyncTree() {
     modelsNode.checked = modelChildren.some(c => c.checked)
   }
 
+  // Merge VMDs
+  const allVmdsMap = new Map<string, any>()
+  for (const m of remoteVmds.value) {
+    const binPath = `assets/mmd/animations/${m.id}.bin`
+    const remoteFile = remoteFilesList.value.find(rf => rf.relPath === binPath)
+    allVmdsMap.set(m.id, {
+      id: m.id,
+      name: m.name,
+      sizeBytes: remoteFile?.size || 0,
+    })
+  }
+  for (const m of mmdStore.customMotions || []) {
+    const existing = allVmdsMap.get(m.id)
+    allVmdsMap.set(m.id, {
+      id: m.id,
+      name: m.name,
+      sizeBytes: existing?.sizeBytes || 0,
+    })
+  }
+
+  // Merge VRMAs
+  const allVrmasMap = new Map<string, any>()
+  for (const a of remoteVrmas.value) {
+    const binPath = `assets/vrma/animations/${a.id}.bin`
+    const remoteFile = remoteFilesList.value.find(rf => rf.relPath === binPath)
+    allVrmasMap.set(a.id, {
+      id: a.id,
+      name: a.name,
+      sizeBytes: remoteFile?.size || 0,
+    })
+  }
+  for (const a of Object.values(customVrmAnimationsStore.customAnimations || {})) {
+    const id = (a as any).key.replace('custom-vrma:', '')
+    const existing = allVrmasMap.get(id)
+    allVrmasMap.set(id, {
+      id,
+      name: (a as any).name,
+      sizeBytes: existing?.sizeBytes || (a as any).file?.size || 0,
+    })
+  }
+
+  const animationChildren: TreeNode[] = []
+  for (const m of allVmdsMap.values()) {
+    animationChildren.push({
+      id: `vmd-${m.id}`,
+      label: `VMD: ${m.name}`,
+      size: m.sizeBytes ? formatSize(m.sizeBytes) : undefined,
+      checked: checkedMap[`vmd-${m.id}`] || false,
+    })
+  }
+  for (const a of allVrmasMap.values()) {
+    animationChildren.push({
+      id: `vrma-${a.id}`,
+      label: `VRMA: ${a.name}`,
+      size: a.sizeBytes ? formatSize(a.sizeBytes) : undefined,
+      checked: checkedMap[`vrma-${a.id}`] || false,
+    })
+  }
+
+  const animationsNode: TreeNode = {
+    id: 'animations',
+    label: 'Custom Motions & Animations (VMD / VRMA)',
+    checked: checkedMap.animations || false,
+    children: animationChildren,
+  }
+  if (animationChildren.length > 0) {
+    animationsNode.checked = animationChildren.some(c => c.checked)
+  }
+
   syncTree.value = [
     metadataNode,
     chatsNode,
     backgroundsNode,
     modelsNode,
+    animationsNode,
   ]
 }
 
@@ -340,7 +424,13 @@ const allCardsMap = computed(() => {
 })
 
 watch(
-  [() => backgroundStore.entries, () => displayModelsStore.displayModels, () => cardStore.cards],
+  [
+    () => backgroundStore.entries,
+    () => displayModelsStore.displayModels,
+    () => cardStore.cards,
+    () => mmdStore.customMotions,
+    () => customVrmAnimationsStore.customAnimations,
+  ],
   () => {
     updateSyncTree()
   },

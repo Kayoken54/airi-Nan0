@@ -1,113 +1,85 @@
-import type { LoadingManager } from 'three'
+import type { AnimationClip, SkinnedMesh } from 'three'
 
-import { MMDLoader } from '@moeru/three-mmd'
-import { Loader, Texture, TextureLoader, LoadingManager as ThreeLoadingManager } from 'three'
-import { TGALoader } from 'three/addons/loaders/TGALoader.js'
+import { LoadingManager } from 'three'
+import { MMDLoader } from 'three-stdlib'
 
-/**
- * Create an MMDLoader with an optional custom LoadingManager.
- *
- * Use when:
- * - Loading PMX/PMD model files, optionally with a custom manager for texture URL remapping
- *
- * Returns:
- * - A new MMDLoader instance configured with the given manager
- */
-export function createMMDLoader(manager?: LoadingManager): MMDLoader {
-  return new MMDLoader([], manager)
-}
+/** Maps in-archive relative asset paths to blob URLs for ZIP-loaded models. */
+export type UrlModifier = (url: string) => string
 
-function resolveTextureEntry(url: string, textureMap: Map<string, string | ImageBitmap>): string | ImageBitmap | undefined {
-  const normalizedUrl = url.replace(/\\/g, '/').toLowerCase()
-
-  if (textureMap.has(normalizedUrl)) {
-    return textureMap.get(normalizedUrl)
-  }
-
-  const pathParts = normalizedUrl.split('/')
-  for (let i = 0; i < pathParts.length; i++) {
-    const candidate = pathParts.slice(i).join('/')
-    if (textureMap.has(candidate)) {
-      return textureMap.get(candidate)
-    }
-  }
-
-  const filename = pathParts[pathParts.length - 1]
-  if (filename && textureMap.has(filename)) {
-    return textureMap.get(filename)
-  }
-
-  return undefined
-}
-
-class CustomTextureLoader extends Loader {
-  private textureMap: Map<string, string | ImageBitmap>
-
-  constructor(manager: LoadingManager, textureMap: Map<string, string | ImageBitmap>) {
-    super(manager)
-    this.textureMap = textureMap
-  }
-
-  load(url: string, onLoad: (t: Texture) => void, onProgress?: any, onError?: any) {
-    const resolved = resolveTextureEntry(url, this.textureMap)
-
-    if (resolved instanceof ImageBitmap) {
-      const texture = new Texture()
-      // Resolve in microtask to prevent callback re-entrancy issues
-      Promise.resolve().then(() => {
-        texture.image = resolved
-        texture.needsUpdate = true
-        onLoad(texture)
-      })
-      return texture
-    }
-
-    // Fall back to original url if resolved is not a valid blob url string
-    const loadUrl = (typeof resolved === 'string' && resolved.startsWith('blob:')) ? resolved : url
-    const isTga = url.toLowerCase().endsWith('.tga')
-    const stdLoader = isTga
-      ? new TGALoader(this.manager)
-      : new TextureLoader(this.manager)
-
-    return stdLoader.load(loadUrl, onLoad, onProgress, onError)
-  }
+export interface MMDLoaderContext {
+  loader: MMDLoader
+  manager: LoadingManager
 }
 
 /**
- * Create a LoadingManager that remaps texture URLs to blob URLs or ImageBitmaps from a file map.
+ * Builds an {@link MMDLoader} backed by a dedicated {@link LoadingManager}.
  *
- * Use when:
- * - Loading an MMD model from a blob URL where textures are also stored as blobs or ImageBitmaps
+ * MMD models reference their textures (and toon ramps) by relative paths
+ * baked into the PMX/PMD binary. For ZIP imports those files live behind blob
+ * URLs, so we install a URL modifier on the manager: the loader asks for
+ * `tex/face.png`, the modifier rewrites it to the matching `blob:` URL. For
+ * plain URL/preset models the modifier passes paths through unchanged.
  *
- * Expects:
- * - A Map of relative filename/path (lowercase) -> blob URL or ImageBitmap
- *
- * Returns:
- * - A LoadingManager with URL modifier and custom handlers that resolves texture paths from the map
+ * A fresh manager per load keeps URL-rewrite tables isolated between models.
  */
-export function createTextureRemappingManager(textureMap?: Map<string, string | ImageBitmap>): LoadingManager {
-  const manager = new ThreeLoadingManager()
+export function createMMDLoaderContext(urlModifier?: UrlModifier): MMDLoaderContext {
+  const manager = new LoadingManager()
+  if (urlModifier) {
+    manager.setURLModifier((url) => {
+      // NOTICE:
+      // MMDLoader resolves textures by prepending the model URL's base, so for
+      // ZIP imports the texture requests arrive blob-prefixed
+      // (e.g. "blob:http://host/uuid/tex/face.png"). We must still run those
+      // through the resolver — an earlier `blob:` short-circuit here silently
+      // broke all ZIP textures. Only data: URIs (embedded toon textures) are
+      // passed through untouched. The resolver falls back to the original URL
+      // for the model file and any unmatched path, so this is safe.
+      if (url.startsWith('data:'))
+        return url
+      return urlModifier(url)
+    })
+  }
 
-  if (!textureMap)
-    return manager
+  return { loader: new MMDLoader(manager), manager }
+}
 
-  manager.setURLModifier((url: string) => {
-    if (url.startsWith('blob:') || url.startsWith('data:')) {
-      return url
-    }
-
-    const resolved = resolveTextureEntry(url, textureMap)
-    if (typeof resolved === 'string') {
-      return resolved
-    }
-
-    return url
+/** Loads a PMX/PMD model URL into a {@link SkinnedMesh}. */
+export function loadMMDMesh(
+  loader: MMDLoader,
+  url: string,
+  onProgress?: (event: ProgressEvent) => void,
+): Promise<SkinnedMesh> {
+  return new Promise((resolve, reject) => {
+    loader.load(url, resolve, onProgress, reject)
   })
+}
 
-  // Custom loader to intercept and return pre-decoded ImageBitmaps
-  const customLoader = new CustomTextureLoader(manager, textureMap)
-
-  manager.addHandler(/\.(png|jpg|jpeg|bmp|tga)$/i, customLoader)
-
-  return manager
+/**
+ * Loads a VMD motion file and binds it to `mesh`, producing an
+ * {@link AnimationClip} ready for the mesh's `AnimationMixer`.
+ *
+ * `loadAnimation` may hand back either a clip or (for camera motions) a mesh;
+ * AIRI only consumes model motions, so a non-clip result is rejected.
+ */
+export function loadMMDAnimationClip(
+  loader: MMDLoader,
+  url: string,
+  mesh: SkinnedMesh,
+  onProgress?: (event: ProgressEvent) => void,
+): Promise<AnimationClip> {
+  return new Promise((resolve, reject) => {
+    loader.loadAnimation(
+      url,
+      mesh,
+      (result) => {
+        // A bound model motion resolves to an AnimationClip (has `.tracks`).
+        if (result && 'tracks' in result)
+          resolve(result as AnimationClip)
+        else
+          reject(new Error('Loaded VMD did not produce a model animation clip'))
+      },
+      onProgress,
+      reject,
+    )
+  })
 }

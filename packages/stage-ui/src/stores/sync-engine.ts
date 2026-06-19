@@ -395,12 +395,40 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       }))
     }
 
+    // Read remote custom VMD motions manifest
+    let vmds: any[] = []
+    try {
+      const vmdsRes = await client.readFile('assets/mmd/manifest.json')
+      if (vmdsRes.success && vmdsRes.content) {
+        const manifest = JSON.parse(vmdsRes.content)
+        vmds = Object.values(manifest.motions || {})
+      }
+    }
+    catch (e) {
+      console.warn('[SyncEngine] Failed to read remote MMD motions manifest:', e)
+    }
+
+    // Read remote custom VRMA animations manifest
+    let vrmas: any[] = []
+    try {
+      const vrmasRes = await client.readFile('assets/vrma/manifest.json')
+      if (vrmasRes.success && vrmasRes.content) {
+        const manifest = JSON.parse(vrmasRes.content)
+        vrmas = Object.values(manifest.animations || {})
+      }
+    }
+    catch (e) {
+      console.warn('[SyncEngine] Failed to read remote VRMA animations manifest:', e)
+    }
+
     return {
       success: true,
       remoteFiles,
       cards,
       models,
       backgrounds,
+      vmds,
+      vrmas,
     }
   }
 
@@ -998,6 +1026,391 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     }
     catch (err) {
       console.error('[SyncEngine] Model reconciliation error:', err)
+    }
+  }
+
+  async function reconcileMmdMotions(): Promise<void> {
+    console.log('[SyncEngine] Reconciling MMD motions...')
+    try {
+      const client = getActiveClient()
+
+      // 1. Load deleted IDs from localStorage
+      const deletedMotionsStr = localStorage.getItem('settings/mmd/deleted-motions') || '[]'
+      const deletedMotionIds = new Set<string>(JSON.parse(deletedMotionsStr))
+
+      // 2. Read remote manifest
+      let manifest: {
+        motions: Record<string, { id: string, name: string, importedAt: number }>
+        deleted?: string[]
+      } = { motions: {}, deleted: [] }
+      let manifestExists = false
+      let remoteManifestMtime = 0
+      try {
+        const readRes = await client.readFile('assets/mmd/manifest.json')
+        if (readRes.success && readRes.content) {
+          manifest = JSON.parse(readRes.content)
+          if (!manifest.deleted) {
+            manifest.deleted = []
+          }
+          manifestExists = true
+        }
+
+        const listRes = await client.listFiles()
+        if (listRes.success && listRes.files) {
+          const manifestFile = listRes.files.find(f => f.relPath.replace(/\\/g, '/') === 'assets/mmd/manifest.json')
+          if (manifestFile) {
+            remoteManifestMtime = manifestFile.mtime
+          }
+        }
+      }
+      catch (e) {
+        console.warn('[SyncEngine] Failed to read remote MMD manifest, initializing new manifest.', e)
+      }
+
+      let manifestModified = false
+
+      // 3. Process deletions (both remote and local)
+      for (const id of deletedMotionIds) {
+        if (!manifest.deleted) {
+          manifest.deleted = []
+        }
+        if (!manifest.deleted.includes(id)) {
+          manifest.deleted.push(id)
+          manifestModified = true
+        }
+        if (manifest.motions[id]) {
+          console.log(`[SyncEngine] Deleting remote custom VMD motion: ${id}`)
+          await client.deleteFile(`assets/mmd/animations/${id}.bin`)
+          delete manifest.motions[id]
+          manifestModified = true
+        }
+        await localforage.removeItem(id)
+        await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+      }
+
+      // 4. Load local custom motions (keys starting with `mmd-motion-` and not deleted)
+      const localMotions = new Map<string, any>()
+      await localforage.iterate<any, void>((val, key) => {
+        if (key.startsWith('mmd-motion-') && !deletedMotionIds.has(key)) {
+          localMotions.set(key, val)
+        }
+      })
+
+      // 5. Upload local-only motions to remote
+      for (const [id, entry] of localMotions.entries()) {
+        if (manifest.deleted && manifest.deleted.includes(id)) {
+          console.log(`[SyncEngine] VMD motion ${id} (${entry.name}) is marked as deleted remotely. Deleting locally.`)
+          await localforage.removeItem(id)
+          await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+          continue
+        }
+
+        if (selectiveSyncEnabled.value) {
+          const nodeId = `vmd-${id}`
+          if (!selectiveCheckedIds.value.includes(nodeId)) {
+            console.log(`[SyncEngine] Skipping upload of VMD motion ${id} because it is not selected in selective sync.`)
+            continue
+          }
+        }
+
+        if (!manifest.motions[id]) {
+          const hasSyncHistory = await storage.getItemRaw<number>(`local:sync-metadata/timestamps/${id}`)
+          const isStaleManifest = remoteManifestMtime > 0 && hasSyncHistory && hasSyncHistory > remoteManifestMtime
+
+          if (hasSyncHistory && manifestExists && !isStaleManifest) {
+            console.log(`[SyncEngine] VMD motion ${id} (${entry.name}) has sync history but is missing from remote manifest. Deleting locally.`)
+            await localforage.removeItem(id)
+            await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+            continue
+          }
+
+          console.log(`[SyncEngine] Uploading VMD motion to remote: ${id} (${entry.name})`)
+          if (entry.file instanceof Blob || entry.file instanceof File) {
+            const base64 = await blobToBase64(entry.file)
+            const binRelPath = `assets/mmd/animations/${id}.bin`
+            const uploadRes = await client.writeFile(binRelPath, base64, 'base64')
+            if (!uploadRes.success) {
+              console.error(`[SyncEngine] Failed to upload VMD binary for ${id}:`, uploadRes.error)
+              continue
+            }
+          }
+          else {
+            console.warn(`[SyncEngine] Local VMD motion ${id} does not contain a valid File/Blob.`, entry)
+            continue
+          }
+
+          manifest.motions[id] = {
+            id,
+            name: entry.name,
+            importedAt: entry.importedAt || Date.now(),
+          }
+          manifestModified = true
+          await storage.setItemRaw(`local:sync-metadata/timestamps/${id}`, Date.now())
+        }
+      }
+
+      // 6. Download remote-only motions
+      let hasDownloads = false
+      for (const [id, remoteMotion] of Object.entries(manifest.motions)) {
+        if (deletedMotionIds.has(id))
+          continue
+
+        if (!localMotions.has(id)) {
+          if (selectiveSyncEnabled.value) {
+            const nodeId = `vmd-${id}`
+            if (!selectiveCheckedIds.value.includes(nodeId)) {
+              console.log(`[SyncEngine] Skipping download of VMD motion ${id} because it is not selected in selective sync.`)
+              continue
+            }
+          }
+
+          console.log(`[SyncEngine] Downloading VMD motion from remote: ${id} (${remoteMotion.name})`)
+          const readBinRes = await client.readFile(`assets/mmd/animations/${id}.bin`, 'base64')
+          if (!readBinRes.success || !readBinRes.content) {
+            console.error(`[SyncEngine] Failed to read remote VMD binary for ${id}:`, readBinRes.error)
+            if (readBinRes.error?.includes('ENOENT')) {
+              console.warn(`[SyncEngine] Remote VMD binary for ${id} is missing on storage. Removing from manifest.`)
+              delete manifest.motions[id]
+              manifestModified = true
+            }
+            continue
+          }
+
+          const mimeType = 'application/octet-stream'
+          const res = await fetch(`data:${mimeType};base64,${readBinRes.content}`)
+          const blob = await res.blob()
+          const fileObj = new File([blob], `${remoteMotion.name}.vmd`, { type: mimeType })
+
+          const entry = {
+            id,
+            name: remoteMotion.name,
+            file: fileObj,
+          }
+
+          await localforage.setItem(id, entry)
+          await storage.setItemRaw(`local:sync-metadata/timestamps/${id}`, Date.now())
+          hasDownloads = true
+        }
+      }
+
+      if (manifestModified) {
+        console.log('[SyncEngine] Writing updated MMD manifest to remote.')
+        await client.writeFile('assets/mmd/manifest.json', JSON.stringify(manifest, null, 2))
+      }
+
+      // If we downloaded any new motions, let's refresh the store custom motions array
+      if (hasDownloads) {
+        try {
+          const { useMmd } = await import('@proj-airi/stage-ui-mmd/stores/mmd')
+          const mmdStore = useMmd()
+          // Read localforage and rebuild customMotions list
+          const nextMotions: any[] = []
+          await localforage.iterate<any, void>((val, key) => {
+            if (key.startsWith('mmd-motion-')) {
+              nextMotions.push({ id: val.id, name: val.name })
+            }
+          })
+          mmdStore.customMotions = nextMotions
+        }
+        catch (e) {
+          console.error('[SyncEngine] Failed to refresh MMD store:', e)
+        }
+      }
+    }
+    catch (err) {
+      console.error('[SyncEngine] MMD motion reconciliation error:', err)
+    }
+  }
+
+  async function reconcileVrmaAnimations(): Promise<void> {
+    console.log('[SyncEngine] Reconciling VRMA animations...')
+    try {
+      const client = getActiveClient()
+
+      // 1. Load deleted IDs from localStorage
+      const deletedAnimsStr = localStorage.getItem('settings/vrma/deleted-animations') || '[]'
+      const deletedAnimIds = new Set<string>(JSON.parse(deletedAnimsStr))
+
+      // 2. Read remote manifest
+      let manifest: {
+        animations: Record<string, { id: string, name: string, originalFileName: string, importedAt: number }>
+        deleted?: string[]
+      } = { animations: {}, deleted: [] }
+      let manifestExists = false
+      let remoteManifestMtime = 0
+      try {
+        const readRes = await client.readFile('assets/vrma/manifest.json')
+        if (readRes.success && readRes.content) {
+          manifest = JSON.parse(readRes.content)
+          if (!manifest.deleted) {
+            manifest.deleted = []
+          }
+          manifestExists = true
+        }
+
+        const listRes = await client.listFiles()
+        if (listRes.success && listRes.files) {
+          const manifestFile = listRes.files.find(f => f.relPath.replace(/\\/g, '/') === 'assets/vrma/manifest.json')
+          if (manifestFile) {
+            remoteManifestMtime = manifestFile.mtime
+          }
+        }
+      }
+      catch (e) {
+        console.warn('[SyncEngine] Failed to read remote VRMA manifest, initializing new manifest.', e)
+      }
+
+      let manifestModified = false
+
+      // 3. Process deletions (both remote and local)
+      for (const id of deletedAnimIds) {
+        if (!manifest.deleted) {
+          manifest.deleted = []
+        }
+        if (!manifest.deleted.includes(id)) {
+          manifest.deleted.push(id)
+          manifestModified = true
+        }
+        if (manifest.animations[id]) {
+          console.log(`[SyncEngine] Deleting remote custom VRMA animation: ${id}`)
+          await client.deleteFile(`assets/vrma/animations/${id}.bin`)
+          delete manifest.animations[id]
+          manifestModified = true
+        }
+        await localforage.removeItem(`custom-vrma-animation-${id}`)
+        await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+      }
+
+      // 4. Load local custom VRMAs (keys starting with `custom-vrma-animation-` and not deleted)
+      const localAnims = new Map<string, any>()
+      await localforage.iterate<any, void>((val, key) => {
+        if (key.startsWith('custom-vrma-animation-')) {
+          const id = key.substring('custom-vrma-animation-'.length)
+          if (!deletedAnimIds.has(id)) {
+            localAnims.set(id, val)
+          }
+        }
+      })
+
+      // 5. Upload local-only animations to remote
+      for (const [id, entry] of localAnims.entries()) {
+        if (manifest.deleted && manifest.deleted.includes(id)) {
+          console.log(`[SyncEngine] VRMA animation ${id} (${entry.name}) is marked as deleted remotely. Deleting locally.`)
+          await localforage.removeItem(`custom-vrma-animation-${id}`)
+          await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+          continue
+        }
+
+        if (selectiveSyncEnabled.value) {
+          const nodeId = `vrma-${id}`
+          if (!selectiveCheckedIds.value.includes(nodeId)) {
+            console.log(`[SyncEngine] Skipping upload of VRMA animation ${id} because it is not selected in selective sync.`)
+            continue
+          }
+        }
+
+        if (!manifest.animations[id]) {
+          const hasSyncHistory = await storage.getItemRaw<number>(`local:sync-metadata/timestamps/${id}`)
+          const isStaleManifest = remoteManifestMtime > 0 && hasSyncHistory && hasSyncHistory > remoteManifestMtime
+
+          if (hasSyncHistory && manifestExists && !isStaleManifest) {
+            console.log(`[SyncEngine] VRMA animation ${id} (${entry.name}) has sync history but is missing from remote manifest. Deleting locally.`)
+            await localforage.removeItem(`custom-vrma-animation-${id}`)
+            await storage.removeItem(`local:sync-metadata/timestamps/${id}`)
+            continue
+          }
+
+          console.log(`[SyncEngine] Uploading VRMA animation to remote: ${id} (${entry.name})`)
+          if (entry.file instanceof Blob || entry.file instanceof File) {
+            const base64 = await blobToBase64(entry.file)
+            const binRelPath = `assets/vrma/animations/${id}.bin`
+            const uploadRes = await client.writeFile(binRelPath, base64, 'base64')
+            if (!uploadRes.success) {
+              console.error(`[SyncEngine] Failed to upload VRMA binary for ${id}:`, uploadRes.error)
+              continue
+            }
+          }
+          else {
+            console.warn(`[SyncEngine] Local VRMA animation ${id} does not contain a valid File/Blob.`, entry)
+            continue
+          }
+
+          manifest.animations[id] = {
+            id,
+            name: entry.name,
+            originalFileName: entry.originalFileName || `${entry.name}.vrma`,
+            importedAt: entry.importedAt || Date.now(),
+          }
+          manifestModified = true
+          await storage.setItemRaw(`local:sync-metadata/timestamps/${id}`, Date.now())
+        }
+      }
+
+      // 6. Download remote-only animations
+      let hasDownloads = false
+      for (const [id, remoteAnim] of Object.entries(manifest.animations)) {
+        if (deletedAnimIds.has(id))
+          continue
+
+        if (!localAnims.has(id)) {
+          if (selectiveSyncEnabled.value) {
+            const nodeId = `vrma-${id}`
+            if (!selectiveCheckedIds.value.includes(nodeId)) {
+              console.log(`[SyncEngine] Skipping download of VRMA animation ${id} because it is not selected in selective sync.`)
+              continue
+            }
+          }
+
+          console.log(`[SyncEngine] Downloading VRMA animation from remote: ${id} (${remoteAnim.name})`)
+          const readBinRes = await client.readFile(`assets/vrma/animations/${id}.bin`, 'base64')
+          if (!readBinRes.success || !readBinRes.content) {
+            console.error(`[SyncEngine] Failed to read remote VRMA binary for ${id}:`, readBinRes.error)
+            if (readBinRes.error?.includes('ENOENT')) {
+              console.warn(`[SyncEngine] Remote VRMA binary for ${id} is missing on storage. Removing from manifest.`)
+              delete manifest.animations[id]
+              manifestModified = true
+            }
+            continue
+          }
+
+          const mimeType = 'application/octet-stream'
+          const res = await fetch(`data:${mimeType};base64,${readBinRes.content}`)
+          const blob = await res.blob()
+          const fileObj = new File([blob], remoteAnim.originalFileName || `${remoteAnim.name}.vrma`, { type: mimeType })
+
+          const entry = {
+            file: fileObj,
+            importedAt: remoteAnim.importedAt,
+            name: remoteAnim.name,
+            originalFileName: remoteAnim.originalFileName,
+          }
+
+          await localforage.setItem(`custom-vrma-animation-${id}`, entry)
+          await storage.setItemRaw(`local:sync-metadata/timestamps/${id}`, Date.now())
+          hasDownloads = true
+        }
+      }
+
+      if (manifestModified) {
+        console.log('[SyncEngine] Writing updated VRMA manifest to remote.')
+        await client.writeFile('assets/vrma/manifest.json', JSON.stringify(manifest, null, 2))
+      }
+
+      // If downloaded new custom animations, reload custom animations in the store
+      if (hasDownloads) {
+        try {
+          const { useCustomVrmAnimationsStore } = await import('@proj-airi/stage-ui-three')
+          const store = useCustomVrmAnimationsStore()
+          store.customAnimationsLoaded = false
+          await store.loadCustomAnimations()
+        }
+        catch (e) {
+          console.error('[SyncEngine] Failed to reload VRMA animations store:', e)
+        }
+      }
+    }
+    catch (err) {
+      console.error('[SyncEngine] VRMA animation reconciliation error:', err)
     }
   }
 
@@ -1779,6 +2192,8 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       if (!opts?.skipBinaryAssets) {
         await reconcileBackgrounds()
         await reconcileModels()
+        await reconcileMmdMotions()
+        await reconcileVrmaAnimations()
       }
       else {
         console.log('[SyncEngine] Skipping binary asset reconciliation (startup mode).')
@@ -2255,6 +2670,8 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       // B. Reconcile binary backgrounds and models
       await reconcileBackgrounds()
       await reconcileModels()
+      await reconcileMmdMotions()
+      await reconcileVrmaAnimations()
 
       // C. Restore synced localStorage keys back to window.localStorage
       await restoreLocalStorageFromIndexedDb({ skipReload: opts?.skipReload })

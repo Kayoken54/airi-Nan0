@@ -25,12 +25,26 @@ const positioningStore = usePositioningStore()
 const settingsStore = useSettings()
 const { t } = useI18n()
 const { stageModelSelected } = storeToRefs(settingsStore)
-const { availableMorphs, morphMappings, hiddenMorphs, availableMotions, currentMotion, previewExpression, followSpeed } = storeToRefs(mmdStore)
+const {
+  availableMorphs,
+  morphMappings,
+  hiddenMorphs,
+  availableMotions,
+  currentMotion,
+  previewExpression,
+  followSpeed,
+  physicsEnabled,
+  ikEnabled,
+  grantEnabled,
+  physicsGravity,
+  gazeMode,
+  customMotions,
+} = storeToRefs(mmdStore)
 
 const mouseTrackingEnabled = computed({
-  get: () => mmdStore.trackingMode === 'mouse',
+  get: () => gazeMode.value === 'mouse',
   set: (val) => {
-    mmdStore.trackingMode = val ? 'mouse' : 'none'
+    gazeMode.value = val ? 'mouse' : 'none'
   },
 })
 
@@ -348,6 +362,56 @@ function handleMotionSelect(motion: string) {
               </button>
             </div>
           </div>
+
+          <!-- Custom motions from IndexedDB -->
+          <div
+            v-for="motion in customMotions"
+            :key="motion.id"
+            :class="[
+              'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
+              currentMotion === motion.name || isMotionSelected(motion.name) ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+            ]"
+          >
+            <!-- Left Side: Name -->
+            <div class="min-w-0 flex-1 cursor-pointer" @click="handleMotionSelect(motion.name)">
+              <div class="flex items-center gap-2">
+                <!-- Active Indicator -->
+                <div v-if="currentMotion === motion.name" class="h-2 w-2 rounded-full bg-primary-500" />
+
+                <div class="max-w-[230px] truncate text-sm text-neutral-900 font-medium dark:text-neutral-100">
+                  {{ motion.name }}
+                </div>
+              </div>
+              <div class="ml-4 max-w-[230px] truncate text-xs text-neutral-500 dark:text-neutral-400">
+                Custom VMD Motion
+              </div>
+            </div>
+
+            <!-- Right Side: Actions -->
+            <div class="flex items-center gap-1" @click.stop>
+              <!-- Loop / Cycle Toggle -->
+              <button
+                v-if="activeCard"
+                :class="[
+                  'rounded p-1 transition-colors',
+                  isMotionSelected(motion.name)
+                    ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
+                    : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
+                ]"
+                :title="isMotionSelected(motion.name) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
+                @click="toggleMotion(motion.name)"
+              >
+                <div class="i-solar:infinity-bold-duotone text-sm" />
+              </button>
+              <button
+                class="rounded p-1 text-red-500 transition-colors hover:bg-red-100 dark:hover:bg-red-950"
+                title="Remove Custom Motion"
+                @click="mmdStore.removeMotion(motion.id)"
+              >
+                <div class="i-solar:trash-bin-minimalistic-bold-duotone text-sm" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -396,6 +460,42 @@ function handleMotionSelect(motion: string) {
                 </div>
                 <div class="text-xs text-neutral-600 font-bold font-mono dark:text-neutral-400">
                   {{ followSpeed.toFixed(2) }}
+                </div>
+              </div>
+            </template>
+          </FieldRange>
+        </div>
+      </div>
+
+      <!-- Physics Solver Toggles -->
+      <div flex="~ col gap-4" class="mb-2 border-b border-neutral-100 pb-4 dark:border-neutral-800">
+        <div flex="~ items-center justify-between">
+          <span class="text-sm text-neutral-600 dark:text-neutral-400">Enable Physics</span>
+          <Checkbox v-model="physicsEnabled" />
+        </div>
+        <div flex="~ items-center justify-between">
+          <span class="text-sm text-neutral-600 dark:text-neutral-400">Enable IK Solvers</span>
+          <Checkbox v-model="ikEnabled" />
+        </div>
+        <div flex="~ items-center justify-between">
+          <span class="text-sm text-neutral-600 dark:text-neutral-400">Enable Append-Bone (Grant)</span>
+          <Checkbox v-model="grantEnabled" />
+        </div>
+        <div flex="~ col gap-2">
+          <FieldRange
+            v-model="physicsGravity"
+            :min="0"
+            :max="200"
+            :step="1"
+            label="Gravity Strength"
+          >
+            <template #label>
+              <div flex="~ items-center justify-between" class="w-full">
+                <div class="text-sm text-neutral-600 dark:text-neutral-400">
+                  Gravity Strength
+                </div>
+                <div class="text-xs text-neutral-600 font-bold font-mono dark:text-neutral-400">
+                  {{ physicsGravity }}
                 </div>
               </div>
             </template>

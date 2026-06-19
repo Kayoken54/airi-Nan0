@@ -1,182 +1,10 @@
-import type { MMD } from '@moeru/three-mmd'
+import type { MorphSlot } from '../../constants/morphs'
+import type { MorphController } from './morph'
 
 import { ref } from 'vue'
 
-/**
- * MMD morph target names for facial expressions.
- * Maps VRM-style expression names to common MMD morph target names (Japanese).
- */
-const EXPRESSION_MORPH_MAP: Record<string, string[]> = {
-  happy: ['笑い', 'にこり', 'にっこり'],
-  sad: ['悲しい', '困る'],
-  angry: ['怒り', '怒る'],
-  surprised: ['驚き', 'びっくり'],
-  neutral: [],
-  relaxed: ['にこり'],
-}
-
-// English fallback morph names
-const EXPRESSION_MORPH_MAP_EN: Record<string, string[]> = {
-  happy: ['smile', 'happy'],
-  sad: ['sad', 'sorrow'],
-  angry: ['angry'],
-  surprised: ['surprised', 'shock'],
-  neutral: [],
-  relaxed: ['smile'],
-}
-
-interface MorphTransition {
-  targetMorphs: Map<number, number>
-  progress: number
-  duration: number
-}
-
-/**
- * MMD expression controller using morph targets.
- *
- * Use when:
- * - Applying facial expressions to an MMD model via morph targets
- *
- * Expects:
- * - A loaded MMD model with morph target dictionary and influences array
- */
-export function useMMDEmote(mmd: MMD) {
-  const currentEmotion = ref<string | null>(null)
-  const transition = ref<MorphTransition | null>(null)
-  const activeMorphWeights = ref(new Map<number, number>())
-
-  function resolveMorphIndices(expressionName: string): Map<number, number> {
-    const dict = mmd.mesh.morphTargetDictionary
-    if (!dict)
-      return new Map()
-
-    const result = new Map<number, number>()
-
-    // If it's a direct morph target name in the model, use it!
-    if (dict[expressionName] != null) {
-      result.set(dict[expressionName], 1.0)
-      return result
-    }
-
-    // Try Japanese names first
-    const jpNames = EXPRESSION_MORPH_MAP[expressionName]
-    if (jpNames) {
-      for (const name of jpNames) {
-        if (dict[name] != null) {
-          result.set(dict[name], 0.7)
-          break
-        }
-      }
-    }
-
-    // Fallback to English names
-    if (result.size === 0) {
-      const enNames = EXPRESSION_MORPH_MAP_EN[expressionName]
-      if (enNames) {
-        for (const name of enNames) {
-          if (dict[name] != null) {
-            result.set(dict[name], 0.7)
-            break
-          }
-        }
-      }
-    }
-
-    return result
-  }
-
-  function setExpression(expressionName: string, intensity = 1.0, duration = 0.4) {
-    console.log('[useMMDEmote] setExpression requested:', expressionName, 'intensity:', intensity)
-    if (currentEmotion.value === expressionName)
-      return
-
-    currentEmotion.value = expressionName
-    const targetMorphs = resolveMorphIndices(expressionName)
-    console.log('[useMMDEmote] resolved targetMorphs:', targetMorphs)
-
-    // Apply directly for testing to see if it bypasses any issues!
-    if (mmd.mesh.morphTargetInfluences) {
-      for (const [index, weight] of targetMorphs) {
-        console.log('[useMMDEmote] Applying weight DIRECTLY to mesh:', index, 'weight:', weight)
-        mmd.mesh.morphTargetInfluences[index] = weight
-      }
-    }
-    else {
-      console.warn('[useMMDEmote] mesh.morphTargetInfluences is MISSING!')
-    }
-
-    transition.value = {
-      targetMorphs,
-      progress: 0,
-      duration,
-    }
-  }
-
-  function resetExpression(duration = 0.6) {
-    currentEmotion.value = null
-    transition.value = {
-      targetMorphs: new Map(),
-      progress: 0,
-      duration,
-    }
-  }
-
-  function update(delta: number) {
-    if (!mmd.mesh.morphTargetInfluences)
-      return
-
-    const t = transition.value
-    if (!t) {
-      // No transition active: continuously apply active morph weights to override animation mixer!
-      for (const [index, weight] of activeMorphWeights.value) {
-        if (mmd.mesh.morphTargetInfluences[index] != null) {
-          mmd.mesh.morphTargetInfluences[index] = weight
-        }
-      }
-      return
-    }
-
-    t.progress = Math.min(1, t.progress + delta / t.duration)
-    const easedProgress = easeInOutCubic(t.progress)
-
-    // Collect all morph indices that need updating: currently active + new targets
-    const allIndices = new Set([
-      ...activeMorphWeights.value.keys(),
-      ...t.targetMorphs.keys(),
-    ])
-
-    for (const index of allIndices) {
-      const currentWeight = activeMorphWeights.value.get(index) ?? 0
-      const targetWeight = t.targetMorphs.get(index) ?? 0
-      const blended = lerp(currentWeight, targetWeight, easedProgress)
-
-      if (mmd.mesh.morphTargetInfluences[index] != null) {
-        mmd.mesh.morphTargetInfluences[index] = blended
-      }
-
-      if (t.progress >= 1) {
-        if (targetWeight === 0) {
-          // Morph is not in the new expression — remove it from the active set
-          activeMorphWeights.value.delete(index)
-        }
-        else {
-          activeMorphWeights.value.set(index, targetWeight)
-        }
-      }
-    }
-
-    if (t.progress >= 1) {
-      transition.value = null
-    }
-  }
-
-  return {
-    currentEmotion,
-    setExpression,
-    resetExpression,
-    update,
-  }
-}
+import { Emotion } from '../../constants/emotions'
+import { EMOTION_MORPHS } from '../../constants/morphs'
 
 function lerp(start: number, end: number, t: number): number {
   return start + (end - start) * t
@@ -184,4 +12,109 @@ function lerp(start: number, end: number, t: number): number {
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
+}
+
+function clampIntensity(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+/** All emotion-related morph slots, so transitions can zero the untargeted ones. */
+const EXPRESSION_SLOTS: MorphSlot[] = ['smile', 'anger', 'sad', 'surprise', 'troubled', 'serious']
+
+/**
+ * Emotion-driven facial morphs for MMD models.
+ *
+ * Mirrors the VRM emote composable: each emotion declares target morph
+ * weights and a blend duration, and `update(delta)` cross-fades from the
+ * currently displayed weights to the target with an ease-in-out curve so
+ * emotion changes never snap.
+ *
+ * Lip-sync owns the vowel slots, so emotions only touch expression slots
+ * (smile/anger/...) plus, for a few emotions, a small fixed vowel accent that
+ * lip-sync overrides as soon as speech starts.
+ */
+export function useMMDEmote(morphs: MorphController) {
+  const currentEmotion = ref<Emotion | null>(null)
+  const isTransitioning = ref(false)
+  const transitionProgress = ref(0)
+  const startWeights = new Map<MorphSlot, number>()
+  const targetWeights = new Map<MorphSlot, number>()
+  let resetTimeout: ReturnType<typeof setTimeout> | undefined
+
+  function clearResetTimeout() {
+    if (resetTimeout) {
+      clearTimeout(resetTimeout)
+      resetTimeout = undefined
+    }
+  }
+
+  function setEmotion(emotion: Emotion, intensity = 1) {
+    clearResetTimeout()
+
+    const state = EMOTION_MORPHS[emotion]
+    if (!state) {
+      console.warn(`[mmd] emotion ${emotion} not found`)
+      return
+    }
+
+    currentEmotion.value = emotion
+    isTransitioning.value = true
+    transitionProgress.value = 0
+    startWeights.clear()
+    targetWeights.clear()
+
+    const normalized = clampIntensity(intensity)
+
+    // Capture where each expression slot currently sits so the cross-fade
+    // starts from the live value instead of snapping to zero first.
+    for (const slot of EXPRESSION_SLOTS) {
+      startWeights.set(slot, morphs.get(slot))
+      targetWeights.set(slot, 0)
+    }
+
+    for (const influence of state.influences) {
+      startWeights.set(influence.slot, morphs.get(influence.slot))
+      targetWeights.set(influence.slot, influence.value * normalized)
+    }
+  }
+
+  function setEmotionWithResetAfter(emotion: Emotion, ms: number, intensity = 1) {
+    clearResetTimeout()
+    setEmotion(emotion, intensity)
+    resetTimeout = setTimeout(() => {
+      setEmotion(Emotion.Neutral)
+      resetTimeout = undefined
+    }, ms)
+  }
+
+  function update(delta: number) {
+    if (!isTransitioning.value || !currentEmotion.value)
+      return
+
+    const blendDuration = EMOTION_MORPHS[currentEmotion.value].blendDuration || 0.3
+    transitionProgress.value += delta / blendDuration
+    if (transitionProgress.value >= 1) {
+      transitionProgress.value = 1
+      isTransitioning.value = false
+    }
+
+    const t = easeInOutCubic(transitionProgress.value)
+    for (const [slot, target] of targetWeights) {
+      const start = startWeights.get(slot) ?? 0
+      morphs.set(slot, lerp(start, target, t))
+    }
+  }
+
+  function dispose() {
+    clearResetTimeout()
+  }
+
+  return {
+    currentEmotion,
+    isTransitioning,
+    setEmotion,
+    setEmotionWithResetAfter,
+    update,
+    dispose,
+  }
 }

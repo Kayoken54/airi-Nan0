@@ -29,19 +29,22 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@moeru/three-mmd": "^0.1.0-beta.3",
+    "@moeru/std": "catalog:",
     "@proj-airi/stage-shared": "workspace:^",
     "@proj-airi/ui": "workspace:^",
-    "@tresjs/cientos": "^5.7.0",
-    "@tresjs/core": "^5.8.0",
-    "@vueuse/core": "^14.2.1",
+    "@vueuse/core": "catalog:",
+    "ammojs-typed": "catalog:",
+    "es-toolkit": "catalog:",
     "jszip": "catalog:",
-    "pinia": "^3.0.4",
-    "three": "^0.184.0",
-    "vue": "catalog:"
+    "localforage": "^1.10.0",
+    "pinia": "catalog:",
+    "three": "catalog:",
+    "three-stdlib": "catalog:",
+    "vue": "catalog:",
+    "wlipsync": "catalog:"
   },
   "devDependencies": {
-    "@types/three": "^0.184.0",
+    "@types/three": "catalog:",
     "vue-tsc": "^3.2.6"
   }
 }

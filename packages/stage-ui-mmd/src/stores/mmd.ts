@@ -1,14 +1,184 @@
+import type { Emotion } from '../constants/emotions'
+import type { MorphSlot } from '../constants/morphs'
+
+import localforage from 'localforage'
+
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+import { EMOTION_ACTION_NAME } from '../constants/actions'
+import { useMMDViewControl } from './view-control'
+
+export interface MMDMotionDescriptor {
+  id: string
+  name: string
+}
+
+interface PersistedMMDMotion {
+  id: string
+  name: string
+  file: File
+}
+
+export type MMDGazeMode = 'camera' | 'mouse' | 'none'
+
+export interface MMDOneShotAction {
+  name: string
+  loop: boolean
+  nonce: number
+}
+
+type BroadcastChannelEvents
+  = | { type: 'mmd-should-update-view' }
+    | { type: 'mmd-play-one-shot', request: MMDOneShotAction }
+
+const MOTION_STORAGE_PREFIX = 'mmd-motion-'
 
 export const useMmd = defineStore('mmd', () => {
+  const { post, data } = useBroadcastChannel<BroadcastChannelEvents, BroadcastChannelEvents>({
+    name: 'airi-stores-stage-ui-mmd',
+  })
+  const shouldUpdateViewHooks = ref(new Set<() => void>())
+  const oneShotAction = ref<MMDOneShotAction>()
+
+  const { position, rotationY, reset: resetViewControl } = useMMDViewControl()
+
+  const onShouldUpdateView = (hook: () => void) => {
+    shouldUpdateViewHooks.value.add(hook)
+    return () => {
+      shouldUpdateViewHooks.value.delete(hook)
+    }
+  }
+
+  function shouldUpdateView() {
+    post({ type: 'mmd-should-update-view' })
+    shouldUpdateViewHooks.value.forEach(hook => hook())
+  }
+
+  watch(data, (event) => {
+    if (event?.type === 'mmd-should-update-view')
+      shouldUpdateViewHooks.value.forEach(hook => hook())
+    else if (event?.type === 'mmd-play-one-shot')
+      oneShotAction.value = event.request
+  })
+
+  function playOneShotAction(name: string, loop = false) {
+    const request: MMDOneShotAction = { name, loop, nonce: (oneShotAction.value?.nonce ?? 0) + 1 }
+    oneShotAction.value = request
+    post({ type: 'mmd-play-one-shot', request })
+  }
+
+  // Physics, solver and gaze toggles
+  const physicsEnabled = useLocalStorageManualReset<boolean>('settings/mmd/physics-enabled', true)
+  const ikEnabled = useLocalStorageManualReset<boolean>('settings/mmd/ik-enabled', true)
+  const grantEnabled = useLocalStorageManualReset<boolean>('settings/mmd/grant-enabled', true)
+  const physicsGravity = useLocalStorageManualReset<number>('settings/mmd/physics-gravity', 98)
+  const gazeMode = useLocalStorageManualReset<MMDGazeMode>('settings/mmd/gaze-mode', 'mouse')
+
+  // Custom Motions IndexedDB Storage
+  const customMotions = useLocalStorageManualReset<MMDMotionDescriptor[]>('settings/mmd/custom-motions', () => [])
+
+  const deletedMotions = useLocalStorageManualReset<string[]>('settings/mmd/deleted-motions', () => [])
+
+  async function addMotion(file: File): Promise<MMDMotionDescriptor> {
+    const name = file.name.replace(/\.vmd$/i, '')
+    const existing = customMotions.value.find(motion => motion.name === name)
+    const id = existing?.id ?? `${MOTION_STORAGE_PREFIX}${crypto.randomUUID()}`
+
+    await localforage.setItem<PersistedMMDMotion>(id, { id, name, file })
+    if (!existing)
+      customMotions.value = [...customMotions.value, { id, name }]
+
+    // Clear from deleted motions if re-added
+    deletedMotions.value = deletedMotions.value.filter(d => d !== id)
+
+    return { id, name }
+  }
+
+  async function getMotionFile(id: string): Promise<File | undefined> {
+    const persisted = await localforage.getItem<PersistedMMDMotion>(id)
+    return persisted?.file
+  }
+
+  async function clearMotions(): Promise<void> {
+    const motions = customMotions.value
+    customMotions.value = []
+    for (const motion of motions) {
+      await localforage.removeItem(motion.id)
+      if (!deletedMotions.value.includes(motion.id)) {
+        deletedMotions.value = [...deletedMotions.value, motion.id]
+      }
+    }
+  }
+
+  async function removeMotion(id: string): Promise<void> {
+    const motion = customMotions.value.find(m => m.id === id)
+    customMotions.value = customMotions.value.filter(m => m.id !== id)
+    if (motion && currentMotion.value === motion.name)
+      currentMotion.value = ''
+    await localforage.removeItem(id)
+    if (!deletedMotions.value.includes(id)) {
+      deletedMotions.value = [...deletedMotions.value, id]
+    }
+  }
+
   const availableMorphs = useLocalStorageManualReset<string[]>('settings/mmd/available-morphs', () => [])
   const morphMappings = useLocalStorageManualReset<Record<string, string>>('settings/mmd/morph-mappings', {})
   const hiddenMorphs = useLocalStorageManualReset<string[]>('settings/mmd/hidden-morphs', () => [])
 
   const currentMotion = ref<string>('swaying_arms_and_hips.vmd')
+  const idleMotionName = computed({
+    get: () => currentMotion.value,
+    set: (val) => { currentMotion.value = val },
+  })
+
   const previewExpression = ref<string | null>(null)
+  const isModelLoaded = ref(false)
+
+  const morphOverrides = useLocalStorageManualReset<Partial<Record<MorphSlot, string>>>('settings/mmd/morph-overrides', () => ({}))
+  const emotionActionMap = useLocalStorageManualReset<Record<Emotion, string>>(
+    'settings/mmd/emotion-action-map',
+    () => ({ ...EMOTION_ACTION_NAME }),
+  )
+  const availableMaterials = useLocalStorageManualReset<{ name: string, label: string, index: number }[]>(
+    'settings/mmd/available-materials',
+    () => [],
+  )
+  const materialOpacity = useLocalStorageManualReset<Record<string, number>>('settings/mmd/material-opacity', () => ({}))
+
+  const albedoGlow = useLocalStorageManualReset<number>('settings/mmd/albedo-glow', 0.45)
+  const renderScale = useLocalStorageManualReset<number>('settings/mmd/render-scale', 1)
+
+  // Camera and Light aliases/computed proxies for nyueki UI compatibility:
+  const cameraFov = computed({
+    get: () => cameraFOV.value,
+    set: (v) => { cameraFOV.value = v },
+  })
+
+  const ambientColor = computed({
+    get: () => ambientLightColor.value,
+    set: (v) => { ambientLightColor.value = v },
+  })
+  const ambientIntensity = computed({
+    get: () => ambientLightIntensity.value,
+    set: (v) => { ambientLightIntensity.value = v },
+  })
+
+  const directionalColor = computed({
+    get: () => directionalLightColor.value,
+    set: (v) => { directionalLightColor.value = v },
+  })
+  const directionalIntensity = computed({
+    get: () => directionalLightIntensity.value,
+    set: (v) => { directionalLightIntensity.value = v },
+  })
+  const directionalPosition = computed({
+    get: () => directionalLightPosition.value,
+    set: (v) => { directionalLightPosition.value = v },
+  })
+
   const availableMotions = ref<string[]>([
     'brushoff_nice_and_tidy.vmd',
     'crossed_arms_look_around_confident.vmd',
@@ -84,6 +254,25 @@ export const useMmd = defineStore('mmd', () => {
     ambientLightIntensity.reset()
     envSelect.reset()
     skyBoxIntensity.reset()
+
+    physicsEnabled.reset()
+    ikEnabled.reset()
+    grantEnabled.reset()
+    physicsGravity.reset()
+    gazeMode.reset()
+    morphOverrides.reset()
+    emotionActionMap.reset()
+    availableMaterials.reset()
+    materialOpacity.reset()
+    albedoGlow.reset()
+    renderScale.reset()
+    resetViewControl('x')
+    resetViewControl('y')
+    resetViewControl('scale')
+    resetViewControl('rotationY')
+    void clearMotions()
+    oneShotAction.value = undefined
+    shouldUpdateView()
   }
 
   return {
@@ -92,8 +281,44 @@ export const useMmd = defineStore('mmd', () => {
     hiddenMorphs,
     availableMotions,
     currentMotion,
+    idleMotionName,
     previewExpression,
     resetState,
+
+    physicsEnabled,
+    ikEnabled,
+    grantEnabled,
+    physicsGravity,
+    gazeMode,
+    customMotions,
+    deletedMotions,
+    addMotion,
+    getMotionFile,
+    clearMotions,
+    removeMotion,
+
+    isModelLoaded,
+    oneShotAction,
+    playOneShotAction,
+    onShouldUpdateView,
+    shouldUpdateView,
+
+    position,
+    rotationY,
+
+    morphOverrides,
+    emotionActionMap,
+    availableMaterials,
+    materialOpacity,
+    albedoGlow,
+    renderScale,
+
+    cameraFov,
+    ambientColor,
+    ambientIntensity,
+    directionalColor,
+    directionalIntensity,
+    directionalPosition,
 
     // Placement, Camera & Lighting configurations
     scale,
@@ -122,3 +347,5 @@ export const useMmd = defineStore('mmd', () => {
     skyBoxIntensity,
   }
 })
+
+export { useMmd as useMMD }
