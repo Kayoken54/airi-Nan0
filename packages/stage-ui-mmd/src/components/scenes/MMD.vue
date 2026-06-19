@@ -140,6 +140,7 @@ let localBlobUrls: string[] = []
 // Idle cycle state — mirrors VRM's cycle pattern.
 let cycleAdvancePending = false
 let activePreviewMorph: string | undefined
+let activeFinishedListener: ((e: any) => void) | undefined
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup. It
 // is fed the live audio source and applied to whichever morphs are mounted.
@@ -483,6 +484,7 @@ function disposeModel() {
   gaze = undefined
   resolved = undefined
   activePreviewMorph = undefined
+  activeFinishedListener = undefined
   mmdStore.isModelLoaded = false
 }
 
@@ -510,6 +512,12 @@ function applyIdleCycle(): void {
   if (!animation)
     return
 
+  const mixer = animation.getMixer()
+  if (mixer && activeFinishedListener) {
+    mixer.removeEventListener('finished', activeFinishedListener)
+    activeFinishedListener = undefined
+  }
+
   const cycle = parseMmdCycleAnimations().filter(name => registeredMotions.has(name))
 
   if (cycle.length === 0) {
@@ -525,13 +533,12 @@ function applyIdleCycle(): void {
     return
   }
 
-  // Multiple selections: play one LoopOnce, advance randomly on finish.
-  // We use playCycleAction (no auto-revert) so our cycle listener isn't
-  // fighting the manager's built-in revertToIdleOnFinish handler.
-  const mixer = animation.getMixer()
   if (!mixer)
     return
 
+  // Multiple selections: play one LoopOnce, advance randomly on finish.
+  // We use playCycleAction (no auto-revert) so our cycle listener isn't
+  // fighting the manager's built-in revertToIdleOnFinish handler.
   function playNext(avoidName?: string): void {
     if (!animation || !mixer)
       return
@@ -553,6 +560,9 @@ function applyIdleCycle(): void {
         if (e.action.getClip().name !== nextName)
           return
         mixer!.removeEventListener('finished', onFinished)
+        if (activeFinishedListener === onFinished) {
+          activeFinishedListener = undefined
+        }
         if (!cycleAdvancePending) {
           cycleAdvancePending = true
           setTimeout(() => {
@@ -561,6 +571,7 @@ function applyIdleCycle(): void {
           }, 0)
         }
       }
+      activeFinishedListener = onFinished
       mixer.addEventListener('finished', onFinished)
     }
   }

@@ -106,6 +106,7 @@ export function createMMDAnimationManager(mesh: SkinnedMesh, options: MMDAnimati
 
   /** Registers a VMD-derived clip under a name for later playback. */
   function registerClip(name: string, clip: AnimationClip): void {
+    clip.name = name
     registry.set(name, clip)
   }
 
