@@ -1,0 +1,368 @@
+Alright—this is a **very rich signal dump**, and I’m going to give you a *proper engineering-grade read*, not a surface-level summary.
+
+---
+
+# 🧠 TL;DR (Executive Read)
+
+> **Run 16 did NOT beat Run 15 overall, but it validated the architecture.**
+
+* You **successfully preserved C4 (single-hop)** → ~60% (stable)
+* You **did NOT unlock C1/C3 yet**
+* You **partially recovered C2 but it’s still unstable**
+* The system is **behaving correctly structurally**, but:
+
+  * **Router is under-triggering Detective**
+  * **Bridge is too weak**
+  * **Normalization is brittle (JSON failure + inconsistency)**
+
+👉 This is now a **control problem**, not an architecture problem
+
+---
+
+# 📊 Hard Numbers (What Actually Happened)
+
+From your results:
+
+### Overall
+
+* **Run 16: 39.22% F1**
+* basically **flat vs Run 15 (~38.9%)**
+
+👉 No regression → good
+👉 No breakthrough → expected
+
+---
+
+## Category Breakdown
+
+### 🟢 C4 (Single-hop): **60.66%**
+
+* ✅ **Excellent**
+* This confirms:
+
+  > Literal Spine is working EXACTLY as intended
+
+---
+
+### 🟡 C3 (Open-domain): **8.95%**
+
+* Slight improvement vs weaker runs
+* Still far from Run 14A (~13.5%)
+
+👉 Translation:
+
+> Detective Mode exists… but is **not activating enough**
+
+---
+
+### 🔴 C1 (Multi-hop): **11.10%**
+
+* This is **the weakest part of the system**
+
+👉 Translation:
+
+> Bridge Mode is **functionally underpowered**
+
+---
+
+### 🔴 C2 (Temporal): **15.03%**
+
+* Still unstable / inconsistent
+
+👉 Translation:
+
+> Temporal path is not properly isolated or prioritized
+
+---
+
+# 🔍 Deep Behavioral Analysis (From Question Logs)
+
+This is where the real insight is.
+
+---
+
+## 🔴 1. Open-Domain = Mostly DEAD ON ARRIVAL
+
+Look at early logs:
+
+```
+Q1 [open-domain] F1=0.00
+Q7 [open-domain] F1=0.00
+Q8 [open-domain] F1=0.00
+Q13 [open-domain] F1=0.00
+Q17 [open-domain] F1=0.00
+Q18 [open-domain] F1=0.00
+Q20 [open-domain] F1=0.00
+```
+
+👉 That is **not a reasoning failure**
+
+That is:
+
+> ❌ **Router never opened Detective**
+
+---
+
+### 🧠 Key Conclusion:
+
+> **C3 failure = routing failure, not reasoning failure**
+
+---
+
+## 🟡 2. When Detective DOES fire → It WORKS
+
+Examples:
+
+```
+Q31 [open-domain] F1=0.33
+Q34 [open-domain] F1=0.29
+Q37 [open-domain] F1=0.31
+```
+
+👉 That is *good performance*
+
+---
+
+### 🧠 Interpretation:
+
+> The inference engine is **already strong enough**
+
+The problem is:
+
+> **it is rarely activated**
+
+---
+
+## 🔴 3. Bridge Mode is Weak / Inconsistent
+
+Multi-hop:
+
+```
+Q6 F1=0.48 ✅
+Q27 F1=0.24
+Q28 F1=0.11
+Q35 F1=0.00 ❌
+Q52 F1=0.00 ❌
+```
+
+👉 Very inconsistent
+
+---
+
+### 🧠 Interpretation:
+
+Bridge Mode is:
+
+* not retrieving enough context
+* not linking effectively
+* likely still too literal
+
+---
+
+## 🟡 4. Temporal = Mixed Signals
+
+You have:
+
+```
+Q66 F1=1.00 ✅
+Q67 F1=0.57
+Q42 F1=0.67
+```
+
+BUT ALSO:
+
+```
+Q30 F1=0.00
+Q33 F1=0.00
+Q49 F1=0.00
+```
+
+👉 This is not a data problem
+
+This is:
+
+> **temporal prioritization inconsistency**
+
+---
+
+## 🔴 5. Normalization Layer is Fragile
+
+You hit:
+
+```
+[LLM ERROR] Unexpected end of JSON input
+```
+
+👉 That’s critical
+
+---
+
+### 🧠 Interpretation:
+
+> Detective Mode is not production-stable yet
+
+This affects:
+
+* C3
+* reset feature
+* chips
+
+---
+
+# 🧬 Root Cause Summary
+
+## Problem 1 — Router is Too Conservative
+
+> It defaults to Literal too often
+
+This kills:
+
+* C3 entirely
+* some C1
+
+---
+
+## Problem 2 — Bridge Mode is Underspecified
+
+> It doesn’t actually “bridge”
+
+It just:
+
+* retrieves slightly more
+* but doesn’t enforce linking
+
+---
+
+## Problem 3 — Temporal is Not Protected Enough
+
+> Competing signals interfere
+
+---
+
+## Problem 4 — Normalization is Not Hardened
+
+> Structured output fails under pressure
+
+---
+
+# 🧠 What This Means for Run 17
+
+This is the important part:
+
+> ❗ DO NOT TOUCH THE ARCHITECTURE
+
+You were right:
+
+> Run 16 = structural peak
+
+---
+
+# 🛠️ What You SHOULD Change
+
+## 🔧 1. Aggressively Expand Detective Trigger
+
+Right now it's too strict.
+
+Change:
+
+```ts
+if (category === C3)
+```
+
+TO:
+
+```ts
+if (
+  category === C3 ||
+  contains(["likely", "suggest", "why", "kind of", "would", "feel"])
+)
+```
+
+👉 You need **more false positives**, not fewer
+
+---
+
+## 🔧 2. Add "Soft Detective Mode"
+
+Instead of:
+
+* Literal OR Detective
+
+Add:
+
+```ts
+Literal + light normalization
+```
+
+---
+
+## 🔧 3. Strengthen Bridge Mode
+
+Bridge must:
+
+* explicitly link entities
+* enforce multi-hop reasoning
+
+Not just:
+
+* retrieve more
+
+---
+
+## 🔧 4. Lock Temporal Path Harder
+
+Add:
+
+```ts
+if (category === temporal):
+    disable normalization
+    force chronological sort
+```
+
+---
+
+## 🔧 5. Fix JSON Reliability (CRITICAL)
+
+For normalization:
+
+* enforce max tokens
+* add fallback parser
+* allow partial recovery
+
+---
+
+# 🎯 What Success Looks Like (Run 17 Targets)
+
+If you implement correctly:
+
+| Category | Target     |
+| -------- | ---------- |
+| C4       | 60% (keep) |
+| C2       | 35–45%     |
+| C1       | 18–22%     |
+| C3       | 12–18%     |
+
+👉 That gets you into **mid-40s overall**
+
+---
+
+# 🏁 Final Verdict
+
+> **Run 16 proves the system works — but is under-activated**
+
+* Literal: ✅ solved
+* Inference: ✅ capable
+* Routing: ❌ bottleneck
+* Bridge: ❌ underdeveloped
+
+---
+
+# 💬 One-line truth
+
+> You didn’t build a weak system—you built a strong system that’s being **too cautious to use itself**
+
+---
+
+If you want next:
+
+👉 I can help you design **Router v2 (signal table + thresholds + scoring)** so Run 17 becomes deterministic instead of heuristic guesswork.
