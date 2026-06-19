@@ -181,6 +181,7 @@ export const useMmd = defineStore('mmd', () => {
 
   const availableMotions = ref<string[]>([
     'brushoff_nice_and_tidy.vmd',
+    'circulation.vmd',
     'crossed_arms_look_around_confident.vmd',
     'fixing_hair_or_wig.vmd',
     'getting_item_out_of_bra.vmd',

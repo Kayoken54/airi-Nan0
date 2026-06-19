@@ -172,6 +172,35 @@ export function createMMDAnimationManager(mesh: SkinnedMesh, options: MMDAnimati
   }
 
   /**
+   * Plays a registered motion as LoopOnce without installing the default
+   * revert-to-idle handler. Use this for the idle cycle so the caller can
+   * install its own "advance to next" finished listener without conflict.
+   *
+   * Returns `false` when the name is not registered.
+   */
+  function playCycleAction(name: string, crossfade = DEFAULT_CROSSFADE): boolean {
+    const m = getMixer()
+    const clip = registry.get(name)
+    if (!m || !clip) {
+      console.warn(`[mmd] playCycleAction skipped: "${name}" is ${clip ? 'present' : 'not registered'}, mixer ${m ? 'ready' : 'missing'}`)
+      return false
+    }
+
+    const action = m.clipAction(clip)
+    action.reset()
+    action.setLoop(LoopOnce, 1)
+    action.clampWhenFinished = true
+    action.setEffectiveWeight(1)
+    action.fadeIn(crossfade).play()
+
+    if (currentAction && currentAction !== action)
+      currentAction.fadeOut(crossfade)
+    currentAction = action
+
+    return true
+  }
+
+  /**
    * Makes a registered motion the persistent looping base (the idle the
    * character returns to). Cross-fades from whatever is currently playing.
    *
@@ -247,8 +276,10 @@ export function createMMDAnimationManager(mesh: SkinnedMesh, options: MMDAnimati
     init,
     registerClip,
     availableClips,
+    getMixer,
     playIdle,
     playAction,
+    playCycleAction,
     setIdleMotion,
     setPhysicsEnabled,
     setGravity,

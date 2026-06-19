@@ -67,6 +67,8 @@ const props = withDefaults(defineProps<{
   positionY?: number
   interactionMode?: string
   draggable?: boolean
+  /** Card-level idle animation cycle list (from extensions.airi.acting.idleAnimations). */
+  idleAnimations?: string[]
 }>(), {
   paused: false,
   enableOrbitControls: false,
@@ -129,13 +131,13 @@ let mesh: SkinnedMesh | undefined
 let morphs: MorphController | undefined
 let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
-// Dedicated loader for VMD motions (no textures, so no URL modifier needed),
-// plus the set of motion names already registered with the current model.
-let animationLoader: ReturnType<typeof createMMDLoaderContext> | undefined
+// Set of motion names already registered with the current model.
 const registeredMotions = new Set<string>()
 const clock = new Clock()
 let rafHandle = 0
 let localBlobUrls: string[] = []
+// Idle cycle state — mirrors VRM's cycle pattern.
+let cycleAdvancePending = false
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup. It
 // is fed the live audio source and applied to whichever morphs are mounted.
@@ -454,7 +456,6 @@ function disposeModel() {
   }
   localBlobUrls = []
   registeredMotions.clear()
-  animationLoader = undefined
   modelGroup = undefined
   mesh = undefined
   morphs = undefined
@@ -465,20 +466,106 @@ function disposeModel() {
 }
 
 /**
+ * Returns the MMD-relevant names from the card's `idleAnimations` prop,
+ * stripping foreign prefixes (live2d:, spine:) that don't apply here.
+ */
+function parseMmdCycleAnimations(): string[] {
+  if (!props.idleAnimations || props.idleAnimations.length === 0)
+    return []
+  return props.idleAnimations.filter(
+    key => !key.startsWith('live2d:') && !key.startsWith('spine:'),
+  )
+}
+
+/**
+ * Applies the card-level idle cycle to the animation manager.
+ *
+ * - 0 animations  → falls back to the store `idleMotionName` (single loop)
+ * - 1 animation   → plays it on LoopRepeat (infinite loop)
+ * - 2+ animations → plays each LoopOnce, then randomly picks the next,
+ *                   avoiding the one that just finished when possible.
+ */
+function applyIdleCycle(): void {
+  if (!animation)
+    return
+
+  const cycle = parseMmdCycleAnimations().filter(name => registeredMotions.has(name))
+
+  if (cycle.length === 0) {
+    // No card-level cycle — honour the store's single idle motion.
+    if (idleMotionName.value && registeredMotions.has(idleMotionName.value))
+      animation.setIdleMotion(idleMotionName.value)
+    return
+  }
+
+  if (cycle.length === 1) {
+    // Single selection: loop it forever, same as before.
+    animation.setIdleMotion(cycle[0])
+    return
+  }
+
+  // Multiple selections: play one LoopOnce, advance randomly on finish.
+  // We use playCycleAction (no auto-revert) so our cycle listener isn't
+  // fighting the manager's built-in revertToIdleOnFinish handler.
+  const mixer = animation.getMixer()
+  if (!mixer)
+    return
+
+  function playNext(avoidName?: string): void {
+    if (!animation || !mixer)
+      return
+    const current = parseMmdCycleAnimations().filter(name => registeredMotions.has(name))
+    if (current.length === 0)
+      return
+
+    const choices = avoidName && current.length > 1
+      ? current.filter(n => n !== avoidName)
+      : current
+    const nextName = choices[Math.floor(Math.random() * choices.length)]
+
+    // Play as LoopOnce — our finished listener will advance to the next clip.
+    animation.playCycleAction(nextName, 0.6)
+
+    // Register our own finished listener to advance the cycle.
+    if (!cycleAdvancePending) {
+      const onFinished = (e: { action: { getClip: () => { name: string } } }) => {
+        if (e.action.getClip().name !== nextName)
+          return
+        mixer!.removeEventListener('finished', onFinished)
+        if (!cycleAdvancePending) {
+          cycleAdvancePending = true
+          setTimeout(() => {
+            cycleAdvancePending = false
+            playNext(nextName)
+          }, 0)
+        }
+      }
+      mixer.addEventListener('finished', onFinished)
+    }
+  }
+
+  playNext()
+}
+
+/**
  * Loads and registers any imported VMD motions not yet bound to the current
- * model, then (re)applies the selected idle motion. Safe to call repeatedly;
+ * model, then (re)applies the idle cycle. Safe to call repeatedly;
  * already-registered motions are skipped.
  */
 async function syncMotions() {
   if (!animation || !mesh)
     return
 
+  // Always use a fresh loader context per sync so a previously failed/stale
+  // LoadingManager cannot poison subsequent loads.
+  const loaderCtx = createMMDLoaderContext()
+
   for (const descriptor of allMotions.value) {
     if (registeredMotions.has(descriptor.name))
       continue
+    let url = ''
+    let isBlob = false
     try {
-      let url = ''
-      let isBlob = false
       if (descriptor.id.startsWith('mmd-motion-')) {
         const file = await mmdStore.getMotionFile(descriptor.id)
         if (!file) {
@@ -492,32 +579,28 @@ async function syncMotions() {
         url = `/assets/mmd/animations/${descriptor.name}`
       }
 
-      try {
-        animationLoader ??= createMMDLoaderContext()
-        const clip = await loadMMDAnimationClip(animationLoader.loader, url, mesh)
-        animation.registerClip(descriptor.name, clip)
-        registeredMotions.add(descriptor.name)
-        if (clip.tracks.length === 0) {
-          console.warn(
-            `[mmd] motion "${descriptor.name}" loaded but has 0 tracks matching this model. `
-            + 'The VMD\'s bone/morph names likely do not match the model (different rig/naming).',
-          )
-        }
-      }
-      finally {
-        if (isBlob) {
-          URL.revokeObjectURL(url)
-        }
+      const clip = await loadMMDAnimationClip(loaderCtx.loader, url, mesh)
+      animation.registerClip(descriptor.name, clip)
+      registeredMotions.add(descriptor.name)
+      if (clip.tracks.length === 0) {
+        console.warn(
+          `[mmd] motion "${descriptor.name}" loaded but has 0 tracks matching this model. `
+          + 'The VMD\'s bone/morph names likely do not match the model (different rig/naming).',
+        )
       }
     }
     catch (err) {
       console.error('[mmd] failed to load motion', descriptor.name, errorMessageFrom(err))
-      emit('error', err)
+      // Do NOT emit 'error' for individual motion failures — one bad VMD should
+      // never abort the whole load or surface as a model error to the parent.
+    }
+    finally {
+      if (isBlob && url)
+        URL.revokeObjectURL(url)
     }
   }
 
-  if (idleMotionName.value && registeredMotions.has(idleMotionName.value))
-    animation.setIdleMotion(idleMotionName.value)
+  applyIdleCycle()
 }
 
 async function loadModel(src: string) {
@@ -717,11 +800,17 @@ watch(allMotions, () => {
   void syncMotions()
 }, { deep: true })
 
-// Idle-motion selection from the settings panel.
-watch(idleMotionName, (name) => {
-  if (name && registeredMotions.has(name))
-    animation?.setIdleMotion(name)
+// Idle-motion selection from the settings panel (store fallback when no card cycle).
+watch(idleMotionName, () => {
+  applyIdleCycle()
 })
+
+// Card-level idle cycle changes (Acting tab selections).
+watch(() => props.idleAnimations, () => {
+  // Reset cycle state so the new selection starts fresh.
+  cycleAdvancePending = false
+  applyIdleCycle()
+}, { deep: true })
 
 // Scene settings — lighting.
 watch([ambientColor, ambientIntensity], () => {

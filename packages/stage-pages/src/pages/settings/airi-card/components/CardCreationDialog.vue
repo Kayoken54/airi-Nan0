@@ -80,7 +80,7 @@ const { activeProvider: defaultArtistryProvider } = storeToRefs(artistryStore)
 const { availableExpressions } = storeToRefs(modelStore)
 const { animationOptions } = storeToRefs(customVrmAnimationsStore)
 const { availableExpressions: live2dExpressions } = storeToRefs(live2dStore)
-const { availableMorphs: mmdMorphs, availableMotions: mmdMotions } = storeToRefs(mmdStore)
+const { availableMorphs: mmdMorphs, availableMotions: mmdMotions, customMotions: mmdCustomMotions } = storeToRefs(mmdStore)
 const { availableAnimations: spineAnimations } = storeToRefs(spineStore)
 
 // Determine if we're in edit mode
@@ -435,7 +435,9 @@ const actingIdleAnimationOptions = computed(() => {
     return spineAnimations.value.map(a => ({ label: a.name, value: a.name }))
   }
   if (isMmd.value) {
-    return mmdMotions.value.map(m => ({ label: m, value: m }))
+    const builtIn = mmdMotions.value.map(m => ({ label: m, value: m }))
+    const custom = mmdCustomMotions.value.map(m => ({ label: m.name, value: m.name }))
+    return [...builtIn, ...custom].sort((a, b) => a.label.localeCompare(b.label))
   }
   return animationOptions.value
 })
