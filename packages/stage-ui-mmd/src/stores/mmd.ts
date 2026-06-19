@@ -33,6 +33,8 @@ export interface MMDOneShotAction {
 type BroadcastChannelEvents
   = | { type: 'mmd-should-update-view' }
     | { type: 'mmd-play-one-shot', request: MMDOneShotAction }
+    | { type: 'mmd-preview-expression', value: string | null }
+    | { type: 'mmd-current-motion', value: string }
 
 const MOTION_STORAGE_PREFIX = 'mmd-motion-'
 
@@ -57,11 +59,32 @@ export const useMmd = defineStore('mmd', () => {
     shouldUpdateViewHooks.value.forEach(hook => hook())
   }
 
+  const currentMotion = ref<string>('swaying_arms_and_hips.vmd')
+  const previewExpression = ref<string | null>(null)
+
+  watch(previewExpression, (val) => {
+    post({ type: 'mmd-preview-expression', value: val })
+  })
+
+  watch(currentMotion, (val) => {
+    post({ type: 'mmd-current-motion', value: val })
+  })
+
   watch(data, (event) => {
-    if (event?.type === 'mmd-should-update-view')
+    if (event?.type === 'mmd-should-update-view') {
       shouldUpdateViewHooks.value.forEach(hook => hook())
-    else if (event?.type === 'mmd-play-one-shot')
+    }
+    else if (event?.type === 'mmd-play-one-shot') {
       oneShotAction.value = event.request
+    }
+    else if (event?.type === 'mmd-preview-expression') {
+      if (previewExpression.value !== event.value)
+        previewExpression.value = event.value
+    }
+    else if (event?.type === 'mmd-current-motion') {
+      if (currentMotion.value !== event.value)
+        currentMotion.value = event.value
+    }
   })
 
   function playOneShotAction(name: string, loop = false) {
@@ -128,13 +151,11 @@ export const useMmd = defineStore('mmd', () => {
   const morphMappings = useLocalStorageManualReset<Record<string, string>>('settings/mmd/morph-mappings', {})
   const hiddenMorphs = useLocalStorageManualReset<string[]>('settings/mmd/hidden-morphs', () => [])
 
-  const currentMotion = ref<string>('swaying_arms_and_hips.vmd')
   const idleMotionName = computed({
     get: () => currentMotion.value,
     set: (val) => { currentMotion.value = val },
   })
 
-  const previewExpression = ref<string | null>(null)
   const isModelLoaded = ref(false)
 
   const morphOverrides = useLocalStorageManualReset<Partial<Record<MorphSlot, string>>>('settings/mmd/morph-overrides', () => ({}))

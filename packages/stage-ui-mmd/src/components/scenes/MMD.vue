@@ -69,6 +69,7 @@ const props = withDefaults(defineProps<{
   draggable?: boolean
   /** Card-level idle animation cycle list (from extensions.airi.acting.idleAnimations). */
   idleAnimations?: string[]
+  previewExpression?: string
 }>(), {
   paused: false,
   enableOrbitControls: false,
@@ -138,6 +139,7 @@ let rafHandle = 0
 let localBlobUrls: string[] = []
 // Idle cycle state — mirrors VRM's cycle pattern.
 let cycleAdvancePending = false
+let activePreviewMorph: string | undefined
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup. It
 // is fed the live audio source and applied to whichever morphs are mounted.
@@ -223,7 +225,7 @@ function handleWheel(event: WheelEvent) {
     return
 
   const delta = event.deltaY * -0.0005
-  const newScale = Math.min(Math.max((props.scale || 1) + delta, 0.1), 3)
+  const newScale = Math.min(Math.max((props.scale || 1) + delta, 0.1), 15)
   emit('scaleChange', newScale)
 }
 
@@ -421,6 +423,24 @@ function renderLoop() {
     }
     // Gaze rotates eye/head bones, also after the helper.
     gaze?.update(resolveGazeOffset(), delta)
+
+    // Apply raw morph preview (settings panel)
+    if (mesh?.morphTargetDictionary && mesh.morphTargetInfluences) {
+      if (activePreviewMorph && activePreviewMorph !== props.previewExpression) {
+        const idx = mesh.morphTargetDictionary[activePreviewMorph]
+        if (idx !== undefined) {
+          mesh.morphTargetInfluences[idx] = 0
+        }
+        activePreviewMorph = undefined
+      }
+      if (props.previewExpression) {
+        const idx = mesh.morphTargetDictionary[props.previewExpression]
+        if (idx !== undefined) {
+          mesh.morphTargetInfluences[idx] = 1
+          activePreviewMorph = props.previewExpression
+        }
+      }
+    }
   }
 
   controls?.update()
@@ -462,6 +482,7 @@ function disposeModel() {
   emote = undefined
   gaze = undefined
   resolved = undefined
+  activePreviewMorph = undefined
   mmdStore.isModelLoaded = false
 }
 

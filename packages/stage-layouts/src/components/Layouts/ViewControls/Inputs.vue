@@ -242,7 +242,7 @@ defineExpose({
           </div>
         </div>
         <div v-else-if="activeMode === 'scale'" relative class="[&_.round-range-tooltip]:hover:opacity-100">
-          <RoundRange v-model="viewControlsValueScale" :min="0" :max="3" :step="0.0001" :disabled="vrmControlsDisabled" write-vertical-left h="50%" data-direction="vertical" />
+          <RoundRange v-model="viewControlsValueScale" :min="0" :max="15" :step="0.0001" :disabled="vrmControlsDisabled" write-vertical-left h="50%" data-direction="vertical" />
           <div class="round-range-tooltip" top="50%" translate-y="[-50%]" absolute left-10 font-mono op-0 transition="all duration-200 ease-in-out">
             {{ viewControlsValueScale.toFixed(2) }}
           </div>

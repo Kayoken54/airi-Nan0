@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Live2DScene, useLive2d } from '@proj-airi/stage-ui-live2d'
-import { MMDScene } from '@proj-airi/stage-ui-mmd'
+import { MMDScene, useMmd } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { ThreeScene, useModelStore } from '@proj-airi/stage-ui-three'
 import { useBroadcastChannel } from '@vueuse/core'
@@ -77,6 +77,9 @@ const {
 } = storeToRefs(settingsStore)
 
 const vrmStore = useModelStore()
+
+const mmdStore = useMmd()
+const { previewExpression } = storeToRefs(mmdStore)
 
 const { post: postStageModelReady } = useBroadcastChannel<string, string>({ name: 'airi-stage-model-ready' })
 watch(componentState, (state) => {
@@ -472,6 +475,7 @@ defineExpose({
       :idle-animations="activeCard?.extensions?.airi?.acting?.idleAnimations"
       :draggable="stageViewControlsEnabled"
       :cursor-position="focusAt"
+      :preview-expression="previewExpression || undefined"
       @error="console.error"
       @scale-change="(val) => emits('scaleChange', val)"
       @offset-change="(val) => emits('offsetChange', val)"
