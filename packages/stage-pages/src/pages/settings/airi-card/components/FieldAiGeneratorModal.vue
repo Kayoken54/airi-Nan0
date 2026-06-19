@@ -176,6 +176,7 @@ const guidanceConfig: Record<string, FieldGuidance> = {
     templates: [
       { id: 'default', label: 'Style & Look & Outfit', prompt: 'Generates general style tags (medium, lighting, aesthetic) + facial/body description + default attire and clothing accessories, represented as weighted comma-separated tags.' },
       { id: 'style_look_base', label: 'Style & Look (Base Character DNA)', prompt: 'Generates style tags + facial/body description (e.g., hair color/length, eye color, height) as weighted tags. Intentionally excludes clothing and outfits to allow modular outfit swaps.' },
+      { id: 'look_outfit_raw', label: 'Look & Outfit (No Style)', prompt: 'Generates character physical features + default attire and clothing accessories as weighted tags. Intentionally excludes general style, medium, or lighting keywords to remain engine-neutral.' },
       { id: 'pure_style', label: 'Pure Style', prompt: 'Generates only media/aesthetic style tokens (e.g., cell-shaded anime style, 8k resolution, soft studio lighting) without describing the character itself.' },
     ],
   },
