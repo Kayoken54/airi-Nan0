@@ -448,6 +448,38 @@ if (typeof window !== 'undefined') {
     intent.end()
     currentChatIntent = null
   }
+
+  ;(window as any).simulateStreamingAssistant = async (content: string, delayMs = 100) => {
+    console.info('[DEBUG] Simulating streaming assistant response:', content, 'with delay:', delayMs)
+
+    const intent = ensureSpeechIntent()
+    if (!intent)
+      return
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+    // Split content into markers and text segments
+    const parts = content.split(/(<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>))/gi)
+    for (const part of parts) {
+      if (!part)
+        continue
+      if (part.startsWith('<|')) {
+        intent.writeSpecial(part)
+      }
+      else {
+        // Stream text chunk by chunk to simulate token streaming
+        const chunks = part.match(/[^ ]+ ?/g) || [part]
+        for (const chunk of chunks) {
+          intent.writeLiteral(chunk)
+          await sleep(delayMs)
+        }
+      }
+      await sleep(delayMs)
+    }
+    intent.writeFlush()
+    intent.end()
+    currentChatIntent = null
+  }
 }
 
 async function playFunction(item: Parameters<Parameters<typeof createPlaybackManager<AudioBuffer>>[0]['play']>[0], signal: AbortSignal): Promise<void> {
