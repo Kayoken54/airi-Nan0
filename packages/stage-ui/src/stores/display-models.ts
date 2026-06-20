@@ -121,11 +121,20 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       displayModelsFromIndexedDBLoading.value = false
   }
 
+  const displayModelCache = new Map<string, { model: DisplayModelFile, addedTime: number }>()
+
   async function getDisplayModel(id: string) {
     if (displayModelsFromIndexedDBLoading.value) {
       console.warn('[PipelineTTS:Models] getDisplayModel called while loading is TRUE, waiting...', { id })
     }
     await until(displayModelsFromIndexedDBLoading).toBe(false)
+
+    // Check in-memory cache
+    if (displayModelCache.has(id)) {
+      console.log('[PipelineTTS:Models] In-memory cache hit for:', id)
+      displayModelCache.get(id)!.addedTime = Date.now() // Update access time
+      return displayModelCache.get(id)!.model
+    }
 
     console.log('[PipelineTTS:Models] Accessing localforage for:', id)
     const modelFromFile = await localforage.getItem<DisplayModelFile>(id).catch((err) => {
@@ -133,6 +142,22 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       return null
     })
     if (modelFromFile) {
+      // LRU cache eviction if size exceeds 3
+      if (displayModelCache.size >= 3) {
+        let oldestId: string | null = null
+        let oldestTime = Infinity
+        for (const [key, value] of displayModelCache.entries()) {
+          if (value.addedTime < oldestTime) {
+            oldestTime = value.addedTime
+            oldestId = key
+          }
+        }
+        if (oldestId) {
+          console.log('[PipelineTTS:Models] Evicting oldest display model cache entry:', oldestId)
+          displayModelCache.delete(oldestId)
+        }
+      }
+      displayModelCache.set(id, { model: modelFromFile, addedTime: Date.now() })
       return modelFromFile
     }
 
