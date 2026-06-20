@@ -2479,27 +2479,38 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       const restored = await restoreLocalStorageFromIndexedDbSafe()
       if (restored.length > 0) {
         console.log(`[SyncEngine] Boot restore: recovered ${restored.length} localStorage keys from IndexedDB:`, restored)
-        // Dispatch storage events so reactive refs (useLocalStorage / useLocalStorageManualReset)
-        // that are already initialized pick up the newly-written values.
-        for (const key of restored) {
-          window.dispatchEvent(new StorageEvent('storage', {
-            key,
-            newValue: localStorage.getItem(key),
-            storageArea: localStorage,
-          }))
+        for (const k of restored) {
+          window.dispatchEvent(new StorageEvent('storage', { key: k, newValue: localStorage.getItem(k), storageArea: localStorage }))
         }
       }
-
-      // Re-read syncEnabled directly from localStorage (the Pinia reactive ref may still
-      // reflect the stale default=false value until Vue flushes the watcher queue).
-      const syncEnabledRaw = localStorage.getItem('settings/sync/enabled')
-      const syncIsOn = syncEnabledRaw === 'true'
-
-      if (syncIsOn) {
+      if (localStorage.getItem('settings/sync/enabled') === 'true') {
         if (isMainWindow()) {
+          const lastTime = Number(localStorage.getItem('settings/sync/last-time') || '0')
+          const intervalMin = typeof syncInterval.value === 'number' && syncInterval.value > 0 ? syncInterval.value : 30
+          const msSinceLastSync = Date.now() - lastTime
+          const intervalMs = intervalMin * 60 * 1000
+
+          if (msSinceLastSync < intervalMs) {
+            await logDebug(`[SyncEngine] Skipping startup reconcile: last sync was ${Math.round(msSinceLastSync / 1000)}s ago, interval is ${intervalMin}m.`)
+            return
+          }
+
+          if (isSyncing.value || (typeof window !== 'undefined' && (window as any).__airiIsSyncing)) {
+            await logDebug('initializeFromLocalBackup: Sync is already in progress, skipping background reconcile.')
+            return
+          }
+
           await logDebug('initializeFromLocalBackup: sync is enabled, kicking off background reconcile from disk...')
           // Run non-blocking so we don't block the rest of the App.vue startup pipeline.
           void (async () => {
+            if (isSyncing.value || (typeof window !== 'undefined' && (window as any).__airiIsSyncing)) {
+              await logDebug('initializeFromLocalBackup IIFE: Sync is already in progress, skipping background reconcile.')
+              return
+            }
+            isSyncing.value = true
+            if (typeof window !== 'undefined') {
+              (window as any).__airiIsSyncing = true
+            }
             try {
               // CRITICAL: dump current localStorage to IDB FIRST so every key gets a fresh
               // timestamp (= now). This prevents the subsequent reconcile from treating
@@ -2519,6 +2530,12 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
               console.error('[SyncEngine] initializeFromLocalBackup background reconcile failed:', e)
               await logDebug(`initializeFromLocalBackup background reconcile error: ${e}`)
             }
+            finally {
+              isSyncing.value = false
+              if (typeof window !== 'undefined') {
+                (window as any).__airiIsSyncing = false
+              }
+            }
           })()
         }
         else {
@@ -2533,11 +2550,26 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     await logDebug('initializeFromLocalBackup completed.')
   }
 
-  // Manual Trigger Sync
-  async function triggerSync() {
-    if (isSyncing.value)
+  // Trigger Sync
+  async function triggerSync(force = true) {
+    if (isSyncing.value || (typeof window !== 'undefined' && (window as any).__airiIsSyncing))
       return
+
+    if (!force) {
+      const lastTime = Number(localStorage.getItem('settings/sync/last-time') || '0')
+      const intervalMin = typeof syncInterval.value === 'number' && syncInterval.value > 0 ? syncInterval.value : 30
+      const msSinceLastSync = Date.now() - lastTime
+      const intervalMs = intervalMin * 60 * 1000
+      if (msSinceLastSync < intervalMs) {
+        void logDebug(`[SyncEngine] Skipping auto-sync: last sync was ${Math.round(msSinceLastSync / 1000)}s ago, interval is ${intervalMin}m.`)
+        return
+      }
+    }
+
     isSyncing.value = true
+    if (typeof window !== 'undefined') {
+      (window as any).__airiIsSyncing = true
+    }
     syncError.value = ''
 
     try {
@@ -2577,6 +2609,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     }
     finally {
       isSyncing.value = false
+      if (typeof window !== 'undefined') {
+        (window as any).__airiIsSyncing = false
+      }
     }
   }
 
@@ -2727,13 +2762,13 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       }
       g.__airiSyncTimer = setInterval(() => {
         void logDebug('[SyncEngine] Auto sync timer interval triggered')
-        void triggerSync()
+        void triggerSync(false)
       }, ms)
       syncTimer = g.__airiSyncTimer
     }
     else {
       syncTimer = setInterval(() => {
-        void triggerSync()
+        void triggerSync(false)
       }, ms)
     }
   }
