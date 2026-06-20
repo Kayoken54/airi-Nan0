@@ -5,7 +5,7 @@ import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { ThreeScene, useModelStore } from '@proj-airi/stage-ui-three'
 import { useBroadcastChannel } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
 
 import DatingSimOverlay from './DatingSimOverlay.vue'
 
@@ -90,8 +90,9 @@ watch(componentState, (state) => {
   }
 }, { immediate: true })
 
-watch(() => activeCard.value?.extensions?.airi?.active_concepts, (newConcepts) => {
+watch(() => activeCard.value?.extensions?.airi?.active_concepts, async (newConcepts) => {
   console.info('[RendererStage] Active concepts changed:', newConcepts)
+  await nextTick()
   if (componentState.value === 'mounted') {
     console.info('[RendererStage] Model is already mounted for concept change, posting ready signal immediately')
     postStageModelReady('ready')
