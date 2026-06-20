@@ -338,7 +338,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       const topConceptId = next?.[next.length - 1]
       console.log(`[AiriCard] Concept Stack changed. Top concept: "${topConceptId}". Syncing manifestation overrides...`, { stack: next })
       console.log('[AiriCard Store] Concept Stack Watcher triggering syncCardState')
-      void syncCardState(activeCard.value, true)
+      const forceSync = !isModelSyncPrevented.value
+      void syncCardState(activeCard.value, forceSync)
     }
   }, { deep: true })
 
