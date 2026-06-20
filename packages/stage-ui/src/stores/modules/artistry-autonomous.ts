@@ -939,6 +939,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
     }
 
     if (folded.modelId) {
+      console.log(`[Artistry] Manual sync manifestation activated: modelId "${folded.modelId}"`)
       artistLog(`Manual Sync: Applying displayModelId "${folded.modelId}"`)
       moduleUpdates.displayModelId = folded.modelId
     }
@@ -991,6 +992,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
     }
 
     if (folded.modelId) {
+      console.log(`[Artistry] Actor token manifestation activated: modelId "${folded.modelId}"`)
       artistLog(`ActivateConcept: Applying manifestation modelId "${folded.modelId}"`)
       moduleUpdates.displayModelId = folded.modelId
     }
