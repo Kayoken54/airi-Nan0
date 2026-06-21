@@ -409,7 +409,8 @@ export const useTextJournalStore = defineStore('text-journal', () => {
     })
     const providersStore = useProvidersStore()
     const llmStore = useLLM()
-    const { activeCard, activeCardId } = storeToRefs(useAiriCardStore())
+    const cardStore = useAiriCardStore()
+    const { activeCard, activeCardId } = storeToRefs(cardStore)
 
     if (!activeCard.value || !activeCardId.value) {
       console.error('[JournalMoment] No active character found.')
@@ -422,21 +423,91 @@ export const useTextJournalStore = defineStore('text-journal', () => {
       throw new Error(`Provider not found: ${input.providerId}`)
     }
 
-    const historyText = input.messages.map((m) => {
-      const role = m.role === 'user' ? 'User' : activeCard.value?.name ?? 'Assistant'
-      const content = typeof m.content === 'string' ? m.content : ''
-      return `${role}: ${content}`
-    }).join('\n')
+    // Resolve system prompt and context snapshot
+    const chatContext = (await import('./chat/context-store')).useChatContextStore()
+    const proactivityStore = (await import('./proactivity')).useProactivityStore()
+    const { buildSystemPrompt } = await import('./modules/airi-card')
 
-    const prompt = `You are ${activeCard.value.name}. Write a journal entry about the following conversation history.\n\n${input.instructions ? `Additional Instructions: ${input.instructions}\n\n` : ''}History:\n${historyText}\n\nReturn a JSON object with 'title' and 'content' for your journal entry. Write it in the first person as ${activeCard.value.name}.`
+    const baseSystemPrompt = buildSystemPrompt(activeCard.value)
 
-    console.log('[JournalMoment] Calling LLM generateObject...')
+    // Environmental/Grounding context
+    const contextsSnapshot = chatContext.getContextsSnapshot()
+    const groundingEnabled = activeCard.value?.extensions?.airi?.groundingEnabled
+    const sensorPayload = groundingEnabled ? proactivityStore.sensorPayload : ''
+
+    let contextContent = ''
+    if (Object.keys(contextsSnapshot).length > 0) {
+      contextContent += 'These are the contextual information retrieved or on-demand updated from other modules:\n'
+        + `${Object.entries(contextsSnapshot).map(([key, value]) => `Module ${key}: ${JSON.stringify(value)}`).join('\n')}\n`
+    }
+
+    if (sensorPayload) {
+      contextContent += `${contextContent ? '\n---\n' : ''
+      }[ENVIRONMENTAL AWARENESS]\n`
+      + `The following telemetry describes your current environmental context. `
+      + `Use it to stay grounded in the user's reality and inform your response. `
+      + `You may reference specific values (like time or active applications) if relevant `
+      + `to the conversation, but avoid a dry, technical recitation of the data.\n`
+      + `---\n`
+      + `${sensorPayload}\n`
+    }
+
+    // Build the system messages list
+    const systemMessages: any[] = []
+    if (baseSystemPrompt) {
+      systemMessages.push({ role: 'system', content: baseSystemPrompt })
+    }
+    if (contextContent.trim()) {
+      systemMessages.push({ role: 'system', content: contextContent.trim() })
+    }
+
+    // Format chat history turns accurately preserving raw tokens (RawContent)
+    const formattedHistory = input.messages.map((m) => {
+      let content = m.role === 'assistant' ? (m.rawContent || m.content) : m.content
+      if (Array.isArray(content)) {
+        content = content.map((part: any) => {
+          if (typeof part === 'string')
+            return part
+          if (part && typeof part === 'object') {
+            if ('text' in part)
+              return String(part.text ?? '')
+            if ('input' in part)
+              return String(part.input ?? '')
+            if ('output' in part)
+              return String(part.output ?? '')
+          }
+          return ''
+        }).join('')
+      }
+      return {
+        role: m.role,
+        content: String(content || ''),
+      }
+    })
+
+    const instructionSuffix = `You are a cognitive memory system. Write a journal entry about the preceding conversation history in the first person as ${activeCard.value.name}. Reflect on the highlights, jokes, and relationship dynamics.
+${input.instructions ? `\nAdditional Instructions: ${input.instructions}\n` : ''}
+Return a JSON object with 'title' and 'content' for your journal entry. Ensure you strictly output in this JSON schema format:
+{
+  "title": "A short, narrative title for the journal entry",
+  "content": "The actual journal entry content written in Jueva's natural voice."
+}`
+
+    const inputMessages = [
+      ...systemMessages,
+      ...formattedHistory,
+      { role: 'user', content: instructionSuffix },
+    ]
+
+    console.log('[JournalMoment] Calling LLM generateObject with cache-aligned context...', {
+      messagesCount: inputMessages.length,
+    })
     try {
       const res = await llmStore.generateObject<{ title: string, content: string }>(
         input.modelId,
         chatProvider,
         {
-          messages: [{ role: 'user', content: prompt }],
+          messages: inputMessages,
           schema: v.object({
             title: v.string(),
             content: v.string(),
