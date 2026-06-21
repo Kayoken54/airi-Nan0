@@ -56,7 +56,8 @@ flowchart TD
 
     subgraph Local Tier [Local WebGPU Runtime - $0 Cost]
         C --> D[Retrieve top matching frames]
-        D --> E[RWKV-7 ONNX Engine]
+        E1[Character Identity DNA & Current Vibe] --> E[RWKV-7 ONNX Engine]
+        D --> E
         E -->|Evaluate Frame Importance| F{Cognitive Gate: Interest > Threshold?}
     end
 
@@ -82,7 +83,37 @@ flowchart TD
 
 ---
 
-## 4. UI Touchpoints: Proactivity Tab Integration
+## 4. Subjective Importance: Resolving the "Attention vs. Relevance" Gap
+
+A pure vector search matches by **semantic similarity (relevance)**. But in human psychology, attention is driven by **subjective importance (salience)**.
+
+### The Conceptual Dilemma (Example)
+Consider two events:
+* **Event A**: The user opens a browser tab and searches *"how to grow tomatoes."*
+  * *Vector Relevance*: High semantic similarity if the user and character were just discussing gardening.
+  * *Subjective Importance*: Low. It's a mundane action.
+* **Event B**: The user accidentally deletes a project directory in their terminal (running `rm -rf /`).
+  * *Vector Relevance*: Low semantic similarity to a conversation about gardening.
+  * *Subjective Importance*: Maximum panic.
+
+A naive semantic filter selects Event A because it "matches" the chat history, completely ignoring Event B because it is semantically unrelated to previous turns.
+
+### The Attention Gating Architecture
+To solve this, the Local WebGPU Guard does not rely on raw vector similarity alone. It parses inputs through a two-tiered attention pipeline:
+
+1. **Bottom-Up Attention (Sensory Novelty & Deltas)**:
+   * The local system calculates visual and telemetry deltas (e.g., CPU load spike, rapid frame changes, terminal window opening).
+   * A sudden visual delta flags the frame with a raw **novelty score** (e.g., an active terminal window running a destructive command scores high).
+2. **Top-Down Attention (Identity DNA & Emotional Modulation)**:
+   * The character's core **Identity DNA** (their card persona) and current **Vibe State** (e.g., anxious, chaotic, bored) are fed into the local RWKV-7 model as light prompt variables.
+   * *Example*: If the character has a "chaotic gremlin" persona, the local gate combines the sensory novelty of the deleted directory with her persona rules, resulting in an Interest Score of `100/100` (Trigger Cloud Promotion).
+   * *Example*: If the character is in a "bored" vibe, the gate increases the sensitivity threshold to environmental changes, causing her to react to things she would normally ignore.
+
+By combining sensory novelty with identity DNA, the local guard transforms from a generic "event filter" into a **subjective cognitive gate**. The gate only fires when the character has a *personal reason* to care.
+
+---
+
+## 5. UI Touchpoints: Proactivity Tab Integration
 
 To support this behavior without breaking standard chat workflows, the AIRI Card Editor's **Proactivity Tab** (`CardCreationTabProactivity.vue`) will receive a new layout section:
 
@@ -90,17 +121,18 @@ To support this behavior without breaking standard chat workflows, the AIRI Card
 * **[Checkbox] Enable Local Attention Guard**
   * *Subtext*: *Uses the local WebGPU RWKV-7 engine to continuously grade environmental telemetry. Prevents cloud API usage on silent turns.*
 * **Guard Sensibility Threshold (Slider)**
-  * *Controls the activation threshold (1-100) required to trigger a cloud inference pass.*
+  * *Controls the activation threshold (1-100) required to trigger a cloud inference pass. Lower values make the character more reactive to minor environmental changes.*
 * **Visual Memory Budget (Number Input)**
   * *Allocates the maximum token headroom (e.g., 2000 tokens) reserved for vector-retrieved screenshots.*
 
 ---
 
-## 5. Summary of Architectural Paradigms
+## 6. Summary of Architectural Paradigms
 
 | Dimension | Reactive Chatbot (Standard) | Raw Proactive Loop (Naive) | Attention Ecology (This Proposal) |
 | :--- | :--- | :--- | :--- |
-| **Trigger Source** | Explicit User Message | Clock timer / interval | Environmental telemetry + internal interest gating |
+| **Trigger Source** | Explicit User Message | Clock timer / interval | Environmental telemetry + subjective interest gating |
 | **API Token Cost** | Low (Only on user input) | Extremely High (Constant polling) | Low (Filtered by local gatekeeper) |
 | **Visual Retention** | None | Short (chronological 80s FIFO) | Infinite (semantic vector recall from database) |
 | **Entity Feeling** | Passive Assistant | Spammy/Repetitive Bot | Autonomous digital organism with focused attention |
+| **Cognitive Gating** | None | Raw Temporal (Ticks) | Subjective Salience (Identity DNA + Sensory Deltas) |
