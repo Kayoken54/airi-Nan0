@@ -73,8 +73,6 @@ We will modify [vision.vue](file:///Users/richardpinedo/Projects.nosync/airi/air
 2.  **Add Configuration Warnings:**
     *   To assist the user without restricting their choices, the UI will display a warning if they pair a non-semantic concept tagger (like `wd14-tagger`) with the **Direct Response** strategy:
         > ⚠️ **Notice:** Non-semantic response expected to be received with this configuration setup (e.g., the model will output raw tags directly to the chat).
-    *   If they pair a high-end vision model (like `kimi-k2.5` or `gpt-4o-mini`) with the **Forward to LLM** strategy, the UI will indicate this premium configuration:
-        > ✨ **Premium Mode:** Using high-end vision analysis to generate descriptive prose for your primary text-only model.
 
 ---
 
