@@ -1,59 +1,63 @@
 # Proposal: "Forward to LLM" VLM Captioning & Tagging Pipeline
 
-This proposal outlines the design, UI integration, and backend implementation for the **Forward to LLM** strategy under `Settings > Modules > Vision`. It details how images are intercepted, processed client-side via local VLMs (BLIP, FastVLM, WD14 Tagger), and translated into rich textual contexts before being forwarded to text-only character models.
+This proposal outlines the design, UI integration, and backend implementation for the **Forward to LLM** strategy under `Settings > Modules > Vision`. It specifies a unified, provider-agnostic architecture that treats all vision models uniformly (whether local or remote), letting the user combine any vision model with any conversation routing strategy.
 
 ---
 
 ## 1. Architectural Concept: sight Decoupled from Voice
 
-Currently, image processing in AIRI defaults to **Direct Response (Stand-in)** mode. If a user uploads an image, the conversation brain swaps to a commercial Vision LLM (e.g. Gemini 1.5 Flash). This often compromises the character's fine-tuned personality or native formatting styles.
-
-By implementing the **Forward to LLM** strategy, we decouple the visual sensory system from the conversational voice:
-1.  **Ingress Interception:** When a message with an image attachment is queued, the system intercepts it.
-2.  **Local Visual Parsing:** The image is fed into a fast, local, on-device VLM (WebGPU/ONNX).
-3.  **Context Injection:** The image is converted to a text block (e.g., prose scene description or Danbooru tags) and injected directly into the prompt stream as a system/user metadata overlay.
-4.  **Text Routing:** The final message (now text-only) is sent to the character's primary, fine-tuned text-only model, preserving their authentic voice.
+Under the unified vision architecture, **any configured Vision Model** acts as a text generator driven by visual inputs. The system provides two routing strategies for this text:
 
 ```
-[User Image + Message]
-          │
-          ▼
-┌──────────────────┐
-│ IPC Interception │
-└─────────┬────────┘
-          │
-          ├─► Route Image to Local VLM ──► (FastVLM, BLIP-1/2, or WD14)
-          │                                          │
-          ▼                                          ▼
-┌──────────────────┐                       ┌───────────────────┐
-│ Inject Text tags ◄───────────────────────┤ Prose / Tag Lists │
-└─────────┬────────┘                       └───────────────────┘
-          │
-          ▼
-┌──────────────────┐
-│   Primary LLM    │ ──► Generates authentic in-character response
-└──────────────────┘
+                  [User Image + Message]
+                            │
+                            ▼
+                  ┌──────────────────┐
+                  │ IPC Interception │
+                  └─────────┬────────┘
+                            │
+            ┌───────────────┴───────────────┐
+            ▼                               ▼
+  [Direct Response Mode]          [Forward to LLM Mode]
+  (Selected VLM replies           (Selected VLM acts as a
+   directly to the user)           descriptor/captioner)
+            │                               │
+            │                               ▼
+            │                     ┌───────────────────┐
+            │                     │ VLM Output Text   │
+            │                     │ (Tags / Prose)    │
+            │                     └─────────┬─────────┘
+            │                               ▼
+            │                     ┌───────────────────┐
+            │                     │ Inject into Chat  │
+            │                     │ Message Prompt    │
+            │                     └─────────┬─────────┘
+            │                               ▼
+            ▼                     ┌───────────────────┐
+      [Display Chat] ◄────────────┤ Primary Text LLM  │
+                                  │ (Character Voice) │
+                                  └───────────────────┘
 ```
+
+1.  **Direct Response (Stand-in):** The selected Vision Model directly generates the chat reply on that turn, acting as a stand-in for the active character.
+2.  **Forward to LLM (Descriptor):** The selected Vision Model is used to analyze the image and generate a text description. This text (whether it is detailed semantic prose from a model like Kimi 2.5 or comma-separated tags from WD14) is injected as context into the primary chat stream. The character's primary text-only LLM (e.g. DeepSeek) then generates the response in its authentic voice.
 
 ---
 
-## 2. Store & Configuration Expansion
+## 2. Store & Configuration Expansion (`vision.ts`)
 
-We will update the vision store (`packages/stage-ui/src/stores/modules/vision.ts`) to persist the strategy selection and the specific local VLM pipeline type.
+We will update the vision store (`packages/stage-ui/src/stores/modules/vision.ts`) to persist the routing strategy. No separate "local" or "remote" stores are introduced; the store remains provider-agnostic.
 
 ### Config State Fields
 ```typescript
 export type VisionStrategy = 'direct' | 'forward'
-export type LocalVlmPipeline = 'fastvlm' | 'blip-base' | 'blip-large' | 'wd14-tagger'
 
 export const useVisionStore = defineStore('vision', () => {
   const strategy = useLocalStorageManualReset<VisionStrategy>('settings/vision/strategy', 'direct')
-  const localVlmPipeline = useLocalStorageManualReset<LocalVlmPipeline>('settings/vision/local-pipeline-type', 'blip-base')
 
   return {
     strategy,
-    localVlmPipeline,
-    // ... rest of the existing stubs
+    // ... existing activeProvider and activeModel references
   }
 })
 ```
@@ -62,36 +66,21 @@ export const useVisionStore = defineStore('vision', () => {
 
 ## 3. Settings UI Integration (`vision.vue`)
 
-We will modify [vision.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/modules/vision.vue#L321-L352) to bind the strategy selection directly to the store and expose pipeline configurations.
+We will modify [vision.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/modules/vision.vue#L321-L352) to support the new strategy option and display helpful configuration warnings.
 
 ### UI Modifications
 1.  **Enable Radio Options:** Remove the `:disabled="true"` and `[PLANNED]` badges from the "Forward to LLM" card.
-2.  **Add Pipeline Selector:** When `strategy === 'forward'` is active, conditionally display a sub-panel to configure the local model routing type:
-
-```
-┌────────────────────────────────────────────────────────┐
-│  Image Description Strategy                            │
-│                                                        │
-│  ( ) Direct Response                                   │
-│      Allow the vision model to reply to the image.     │
-│                                                        │
-│  (o) Forward to LLM                                    │
-│      Forward the description of the image to your      │
-│      consciousness model.                              │
-│                                                        │
-│  ─── Local VLM Descriptor Pipeline ─────────────────── │
-│  Local VLM Model Type:                                 │
-│  ( ) FastVLM (0.5B) - Rapid, lightweight descriptions   │
-│  (o) WD14 Tagger    - Danbooru concept tags (Anime art)│
-│  ( ) BLIP-1 (Base)  - Moderate English prose           │
-└────────────────────────────────────────────────────────┘
-```
+2.  **Add Configuration Warnings:**
+    *   To assist the user without restricting their choices, the UI will display a warning if they pair a non-semantic concept tagger (like `wd14-tagger`) with the **Direct Response** strategy:
+        > ⚠️ **Notice:** Non-semantic response expected to be received with this configuration setup (e.g., the model will output raw tags directly to the chat).
+    *   If they pair a high-end vision model (like `kimi-k2.5` or `gpt-4o-mini`) with the **Forward to LLM** strategy, the UI will indicate this premium configuration:
+        > ✨ **Premium Mode:** Using high-end vision analysis to generate descriptive prose for your primary text-only model.
 
 ---
 
 ## 4. Pipeline Execution & Prompt Ingress
 
-When the user clicks "Send" with an image attached:
+When the user sends a message with an image attachment:
 
 ### Step 1: Pre-processing Interception
 Inside the chat/message orchestration layer:
@@ -102,40 +91,27 @@ async function processUserMessage(payload: ChatMessagePayload) {
   const visionStore = useVisionStore()
 
   if (payload.imageAttachment && visionStore.strategy === 'forward') {
-    // 1. Resolve local descriptor
-    const descriptionText = await runLocalVlmDescriptor(
+    // 1. Invoke the configured active Vision Model (local or remote) to analyze the image
+    const visionOutput = await runActiveVisionModelAnalysis(
       payload.imageAttachment,
-      visionStore.localVlmPipeline
+      visionStore.activeProvider,
+      visionStore.activeModel
     )
 
-    // 2. Format injection context based on the pipeline type
-    let formattedText = ''
-    if (visionStore.localVlmPipeline === 'wd14-tagger') {
-      formattedText = `[IMAGE TAGS: ${descriptionText}]`
-    }
-    else {
-      formattedText = `[IMAGE DESCRIPTION: ${descriptionText}]`
-    }
+    // 2. Format the analysis text block
+    const formattedText = `[IMAGE ANALYSIS: ${visionOutput}]`
 
-    // 3. Merge into text body and drop image attachment before API dispatch
+    // 3. Inject it into the prompt stream and drop the raw image bytes for the main text-only LLM
     payload.content = `${formattedText}\n\n${payload.content}`
     payload.attachments = payload.attachments.filter(a => a.type !== 'image')
   }
 }
 ```
 
-### Step 2: Injecting the Visual Context
-The compiled message arrives at the primary LLM containing the textual representation of the image:
+### Step 2: Prompt Injection Example
+The compiled message sent to the primary LLM contains the textual representation of the image generated by the vision model:
 > **User Prompt:**
-> `[IMAGE TAGS: 1girl, solo, holding cat, smiling, winter coat, snow background]`
-> Look who I ran into today!
+> `[IMAGE ANALYSIS: A black cat sitting on a grey keyboard, staring intently at the camera.]`
+> Get off my desk!
 
-The text-only LLM immediately understands the visual layout of the scene (a girl wearing a winter coat in the snow holding a cat) and can react naturally, remaining completely in-character.
-
----
-
-## 5. References & Model Hand-offs
-
-For details on local WebGPU scheduling, GPU-executor priorities, and SwinV2/WD14 normalization steps, refer to:
-*   [design-vision-system-support.md](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/docs/design-vision-system-support.md#L35-L62): Model comparisons (BLIP vs. WD14) and preprocessing rules.
-*   [proposal-destiny2-plugin.md](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/docs/proposal-destiny2-plugin.md#L84-L92): Details on FastVLM client-side screenshot cropping execution.
+The primary text-only LLM (e.g. DeepSeek) reads the description and responds in the character's authentic voice, reacting naturally to the situation.
