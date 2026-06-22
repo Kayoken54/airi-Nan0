@@ -30,24 +30,26 @@ Settings > Modules > Destiny2
 ┌────────────────────────────────────────────────────────┐
 │  [X] Enable Destiny 2 Integration                      │
 │                                                        │
-│  Bungie Name: [ Richy#3333               ]             │
-│  Platform:    ( ) Steam  ( ) PSN  ( ) Xbox             │
+│  Bungie Name: [ dasilva333               ]             │
 │                                                        │
-│  [ Test API Connection ]                               │
-│  Status: Connected to Bungie API.                      │
-│  Character Found: Warlock - 2010 Power                 │
+│  [ Search Accounts ]                                   │
+│  Results:                                              │
+│  (X) dasilva333#5064                                   │
+│      -> [PSN] ID: 4611686018465072462 (Active)         │
+│      -> [Steam] ID: 4611686018488684637                │
 │                                                        │
 │  ─── Advanced Controls ─────────────────────────────── │
 │  [X] Comment on Post-Game Carnage Reports (PGCR)       │
-│  [X] Comment when entering match making / loading maps │
+│  [X] Comment when entering matchmaking / loading maps  │
 │  [ ] Show encouragement on death streaks               │
 └────────────────────────────────────────────────────────┘
 ```
 
-### The "Test API Connection" Flow
-1. User enters their **Bungie Name** (e.g., `Richy#3333`).
-2. AIRI calls `Destiny2.SearchDestinyPlayerByBungieName` to obtain the `membershipType` and `membershipId`.
-3. If successful, it queries `Destiny2.GetProfile` to fetch basic character details (class, power level) and prints them in the status indicator to verify credentials.
+### The "Search Accounts" Flow
+1. User enters their plain **Bungie Name** (e.g., `dasilva333`) without needing to know their hashtag code.
+2. AIRI calls `User.SearchByGlobalNamePost` (endpoint `/User/Search/GlobalName/0/`) to retrieve matched accounts globally.
+3. The UI presents the matching user accounts and resolves all underlying platform-specific membership entries (PSN, Steam, Xbox).
+4. The user selects the active target account, and the plugin stores the matching `membershipId` and `membershipType` for background checks.
 
 ---
 
@@ -78,7 +80,7 @@ stateDiagram-v2
 
 #### 2. Detecting Match End & Fetching PGCR
 * **Trigger:** When `currentActivityHash` transitions back to Orbit/Tower (`0`), immediately trigger a one-shot fetch for the Post Game Carnage Report.
-* **Endpoint 1:** `GET /Destiny2/{membershipType}/Account/{destinyMembershipId}/Character/{characterId}/Stats/Activities/?count=1` to grab the latest completed match's `instanceId`.
+* **Endpoint 1:** `GET /Destiny2/{membershipType}/Account/{destinyMembershipId}/Character/{characterId}/Stats/Activities/?count=1` to grab the latest completed match's `instanceId`. (Note: Must use a valid `characterId` from `components=200`, as `0` is not supported as a wildcard for activity history lists).
 * **Endpoint 2:** `GET /Destiny2/Stats/PostGameCarnageReport/{instanceId}/` to download performance details.
 
 ---
@@ -99,7 +101,7 @@ When a game-state transition is detected, the event-driven module intercepts the
 * **AIRI's Prompt Context Directive:**
   *"Your companion has just entered a competitive match. Acknowledge the map/mode or express anticipation based on their loadout."*
 
-### Example Event: `MATCH_COMPLETED` (PGCR Analysis)
+### Example Event: `MATCH_COMPLETED` (Normal Match)
 * **Injected Context:**
   ```yaml
   Game: 'Destiny 2'
@@ -117,3 +119,25 @@ When a game-state transition is detected, the event-driven module intercepts the
   ```
 * **AIRI's Prompt Context Directive:**
   *"Your companion just finished their match. Comment on their performance, victory/defeat, K/D ratio, and any standout accomplishments like topping the leaderboard."*
+
+### Example Event: `MATCH_COMPLETED` (Mercy Rule / Joined in Progress)
+* **Injected Context:**
+  ```yaml
+  Game: 'Destiny 2'
+  Event: 'MATCH_COMPLETED'
+  ActivityType: 'Crucible Control'
+  Map: 'Burnout'
+  Outcome: 'Defeat'
+  Duration: '6m 46s'
+  TerminationReason: 'Mercy Rule'
+  Performance:
+    TotalTimePlayed: '2m 33s'
+    JoinedInProgress: true
+    Kills: 0
+    Deaths: 1
+    Assists: 0
+    KD: 0.00
+    DefeatedByMercy: true
+  ```
+* **AIRI's Prompt Context Directive:**
+  *"Your companion joined a match in progress just before it got mercied, resulting in a swift defeat. Acknowledge that the circumstances were out of their control and offer playful or tactical comments about the situation."*
