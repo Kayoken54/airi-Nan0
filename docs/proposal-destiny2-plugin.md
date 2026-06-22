@@ -41,8 +41,9 @@ Settings > Modules > Destiny2
 │  ─── Advanced Controls ─────────────────────────────── │
 │  [X] Comment on Post-Game Carnage Reports (PGCR)       │
 │  [X] Comment when entering matchmaking / loading maps  │
+│  [X] Enable Local WebGPU HUD Tracking (FastVLM)        │
 │  [ ] Show encouragement on death streaks               │
-└────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────┘
 ```
 
 ### The "Search Accounts" Flow
@@ -53,17 +54,19 @@ Settings > Modules > Destiny2
 
 ---
 
-## 3. The Polling Lifecycle (Dynamic Timers)
+## 3. The Polling Lifecycle (Dynamic Timers & Local VLM)
 
-Instead of polling at a constant, static interval, the polling loop behaves like a state machine to reduce rate limits when idle but capture transitions instantly.
+Instead of polling at a constant, static interval, the polling loop behaves like a state machine to reduce rate limits when idle, but transitions to active visual parsing once a match begins.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Orbit_Tower : Polling (Slow - 15s)
+    [*] --> Orbit_Tower : API Polling (Slow - 15s)
     Orbit_Tower --> Active_Match : currentActivityHash changes to Match
 
     state Active_Match {
-        [*] --> InProgress : Polling (Slow - 30s)
+        [*] --> InProgress : API Polling (30s)
+        InProgress --> HUD_Parsing : Local Screen Capture (Every 5s)
+        HUD_Parsing --> InProgress : VLM Event Logged / Analyzed
         InProgress --> Match_Ended : currentActivityHash transitions to 0/Orbit
     }
 
@@ -78,7 +81,16 @@ stateDiagram-v2
 * **Frequency:** 15s in Orbit/Tower, 30s once inside a match.
 * **Transition:** When `currentActivityHash` changes from `0` (or orbit activity hash) to a PvP/PvE map hash, trigger the `MATCH_STARTED` event.
 
-#### 2. Detecting Match End & Fetching PGCR
+#### 2. Local VLM HUD Parsing (In-Match)
+Once inside an active match:
+* **Model:** `onnx-community/FastVLM-0.5B-ONNX` running locally client-side via WebGPU.
+* **Frequency:** Every 5 seconds, capture the player's screenshot.
+* **Dynamic Crops:**
+  * **Top-Center HUD Crop:** Extracted coordinates `{ left: 700, top: 0, width: 520, height: 180 }` (isolates scores, time, objective).
+  * **Bottom-Left HUD Crop:** Extracted coordinates `{ left: 50, top: 800, width: 400, height: 250 }` (isolates super percentage tracker, active weapons).
+* **Latency:** ~2.5s on CPU, <300ms via browser WebGPU.
+
+#### 3. Detecting Match End & Fetching PGCR
 * **Trigger:** When `currentActivityHash` transitions back to Orbit/Tower (`0`), immediately trigger a one-shot fetch for the Post Game Carnage Report.
 * **Endpoint 1:** `GET /Destiny2/{membershipType}/Account/{destinyMembershipId}/Character/{characterId}/Stats/Activities/?count=1` to grab the latest completed match's `instanceId`. (Note: Must use a valid `characterId` from `components=200`, as `0` is not supported as a wildcard for activity history lists).
 * **Endpoint 2:** `GET /Destiny2/Stats/PostGameCarnageReport/{instanceId}/` to download performance details.
@@ -100,6 +112,26 @@ When a game-state transition is detected, the event-driven module intercepts the
   ```
 * **AIRI's Prompt Context Directive:**
   *"Your companion has just entered a competitive match. Acknowledge the map/mode or express anticipation based on their loadout."*
+
+### Example Event: `IN_MATCH_HUD_UPDATE` (Local VLM Event Triggers)
+Rather than forcing commentary on a static interval, in-match dialogue is triggered by key delta-threshold events captured by the local VLM loop:
+1. **The Lead Change:** Blue score overtakes Red score (comeback / lead loss commentary).
+2. **Time Warnings:** Time remaining reaches `1:00` or `0:30` (final pushes).
+3. **Super Availability:** Yellow bar fills up indicating Super is active (tactical recommendation).
+
+* **Injected Context:**
+  ```yaml
+  Game: 'Destiny 2'
+  Event: 'IN_MATCH_HUD_UPDATE'
+  DeltaAlert: 'LEAD_CHANGE' # Or "TIME_WARNING_30S", "SUPER_CHARGED"
+  Scores:
+    BlueTeam: 5 # Previously 3
+    RedTeam: 4 # Previously 5
+  TimeLeft: '1:21'
+  SuperAvailable: true
+  ```
+* **AIRI's Prompt Context Directive:**
+  *"Your companion's team just took the lead in a close game, and their Super is charged. Offer high-energy encouragement and remind them to secure the win."*
 
 ### Example Event: `MATCH_COMPLETED` (Normal Match)
 * **Injected Context:**
