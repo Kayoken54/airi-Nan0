@@ -1076,9 +1076,14 @@ function jumpToMessage(messageId: string) {
 
       <!-- Header / Control bar -->
       <div class="z-10 flex select-none items-center justify-between">
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <span class="i-solar:cpu-bolt-bold-duotone animate-pulse text-amber-500" />
           <span class="text-[10px] text-amber-300 font-bold tracking-widest uppercase">Pre-Flight Grounding Active</span>
+
+          <!-- Quick Status Badges -->
+          <span v-if="activeCard?.extensions?.airi?.groundingEnabled" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Sensors Active</span>
+          <span v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Grounded Memories ({{ groundedMemories.length }})</span>
+          <span v-if="activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Recent Topics ({{ activeCard.extensions.airi.recentTopics.length }})</span>
         </div>
         <div class="flex items-center gap-1.5">
           <button
@@ -1114,12 +1119,8 @@ function jumpToMessage(messageId: string) {
       </div>
 
       <!-- Grounded Memories Section -->
-      <div v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0" class="z-10 mt-2 flex flex-col gap-1.5 border-t border-amber-500/10 pt-2">
-        <div class="flex select-none items-center gap-1.5 text-[9px] text-amber-400 font-bold tracking-wider uppercase">
-          <span class="i-solar:database-bold-duotone text-xs" />
-          <span>Grounded Memories ({{ groundedMemories.length }})</span>
-        </div>
-        <div v-show="isMemoriesPreviewExpanded" class="max-h-36 animate-fade-in animate-duration-200 overflow-y-auto scrollbar-thin space-y-1.5">
+      <div v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0" v-show="isMemoriesPreviewExpanded" class="z-10 mt-2 animate-fade-in animate-duration-200 border-t border-amber-500/10 pt-2">
+        <div class="max-h-36 overflow-y-auto scrollbar-thin space-y-1.5">
           <div
             v-for="entry in groundedMemories"
             :key="entry.id"
@@ -1138,12 +1139,8 @@ function jumpToMessage(messageId: string) {
       </div>
 
       <!-- Recent Topics Section -->
-      <div v-if="activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length" class="z-10 mt-2 flex flex-col gap-1.5 border-t border-amber-500/10 pt-2">
-        <div class="flex select-none items-center gap-1.5 text-[9px] text-amber-400 font-bold tracking-wider uppercase">
-          <span class="i-solar:hashtag-bold-duotone text-xs" />
-          <span>Recent Topics ({{ activeCard.extensions.airi.recentTopics.length }})</span>
-        </div>
-        <div v-show="isTopicsPreviewExpanded" class="max-h-24 flex flex-wrap animate-fade-in animate-duration-200 gap-1.5 overflow-y-auto p-1 scrollbar-thin">
+      <div v-if="activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length" v-show="isTopicsPreviewExpanded" class="z-10 mt-2 animate-fade-in animate-duration-200 border-t border-amber-500/10 pt-2">
+        <div class="max-h-24 flex flex-wrap gap-1.5 overflow-y-auto p-1 scrollbar-thin">
           <div
             v-for="item in activeCard.extensions.airi.recentTopics"
             :key="item.topic"
