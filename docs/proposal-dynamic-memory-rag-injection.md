@@ -69,6 +69,14 @@ To support different character use cases (e.g. roleplay vs. real-time assistants
 
 Users can choose their preferred decay strategy in the **Proactivity** tab configuration for each character card.
 
+#### Topic Sourcing & Prioritization
+To compile a highly representative and computationally lightweight topic map, the extraction pipeline sources and prioritizes data from within the active timeline/universe scopes:
+1. **Echo Chips (Highest Priority — Triple Weight)**: Emotional and flavor anchor chips generated dynamically by the LLM during conversation turns. Because these are already synthesized by the model as 2-5 word keyphrase bursts (e.g. *"beach picnic"*, *"salmon theft"*), they represent high-fidelity topics and bypass raw text parsing.
+2. **Raw Chat Turns (Primary Conversational Focus)**: The last $N$ dialogue turns (messages) in the current active session are parsed to extract immediate, top-of-mind themes.
+3. **STMM Summary Blocks (Secondary Narrative Context)**: Daily summaries of the current timeline are parsed to ensure topics from preceding sessions that have fallen out of the sliding turn window remain active.
+
+*Note: Permanent long-term memories (LTMM) and environmental sensor telemetry are excluded to keep the list focused on fluid, conversational topics.*
+
 The injected block is compact and human-readable:
 
 ```
