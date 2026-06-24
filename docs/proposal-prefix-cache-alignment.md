@@ -28,9 +28,9 @@ We have identified 4 distinct prompt-compilation flows that build overlapping co
 * **Default Context:** Historical context (typically recent messages) paired with volatile telemetry (CPU load, active windows, idle seconds).
 * **Caching Strategy:** Must leverage **Global Performance Controls** directly. It does not warrant its own settings panel or character-level controls. Volatile telemetry must be appended as a suffix block at the tail.
 
-### B. Destiny 2 Event-Driven VLM Loop
+### B. Destiny 2 Event-Driven OCR Loop
 * **Path:** [proposal-destiny2-plugin.md](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/docs/proposal-destiny2-plugin.md)
-* **Default Context:** Tactical officer system prompts, active game state telemetry (HUD crop analysis), and chat history.
+* **Default Context:** Tactical officer system prompts, active game state telemetry (HUD crop text recognition), and chat history.
 * **Caching Strategy:** Will leverage **Global Performance Controls** directly. Building dedicated plugin-level caching controls would introduce unnecessary complexity. Game telemetry crops are appended at the tail of the message array.
 
 ### C. Producer Lite (Reply Suggestion Generator)
@@ -169,9 +169,9 @@ export function compileCacheAlignedPrompt(options: ContextBuilderOptions) {
 * **No UI Changes**: The proactivity loop calls `compileCacheAlignedPrompt` without passing `historyMode` or `sliceCount`, inheriting the global behavior settings directly.
 * **Prompt Assembly**: Telemetry data (idle time, load, window titles) is pushed to the tail of the message chain.
 
-### B. Destiny 2 VLM Plugin
-* **No UI Changes**: The Destiny 2 VLM agent invokes the prompt builder utilizing global fallbacks.
-* **Prompt Assembly**: The HUD detection details (e.g. weapon loadouts, score differentials, super status) are formatted as a tail directive after the conversation history.
+### B. Destiny 2 OCR Plugin
+* **No UI Changes**: The Destiny 2 OCR agent invokes the prompt builder utilizing global fallbacks.
+* **Prompt Assembly**: The HUD recognition details (e.g. weapon loadouts, score differentials, super status) are formatted as a tail directive after the conversation history.
 
 ### C. Producer Lite (Per-Turn Controls)
 * **UI Controls**: We add control toggles within the reply suggestions popover or settings sidebar.
