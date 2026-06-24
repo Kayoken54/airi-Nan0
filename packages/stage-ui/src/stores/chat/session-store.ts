@@ -58,6 +58,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   const loadedSessions = new Set<string>()
   const loadingSessions = new Map<string, Promise<void>>()
   let ensuringSessionPromise: Promise<void> | null = null
+  // Reactive flag so external stores (e.g. proactivity) can gate on card-switch completion.
+  const isEnsuringSession = ref(false)
 
   function getCurrentUserId() {
     return userId.value || 'local'
@@ -585,6 +587,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     if (ensuringSessionPromise)
       return ensuringSessionPromise
 
+    isEnsuringSession.value = true
     ensuringSessionPromise = (async () => {
       const airiCardStore = useAiriCardStore()
       await airiCardStore.initialize()
@@ -685,6 +688,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     }
     finally {
       ensuringSessionPromise = null
+      isEnsuringSession.value = false
     }
   }
 
@@ -1460,6 +1464,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     initialize,
 
     activeSessionId,
+    isEnsuringSession,
     messages,
 
     createSession,

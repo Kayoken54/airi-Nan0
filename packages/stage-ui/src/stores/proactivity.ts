@@ -489,6 +489,17 @@ export const useProactivityStore = defineStore('proactivity', () => {
         return
       }
 
+      // NOTICE: Guard against mid-card-switch state. When the user imports or switches to a new
+      // character card, ensureActiveSessionForCharacter() runs async and updates activeSessionId.
+      // If the heartbeat fires before that resolves, sessionMessages[activeSessionId] still holds
+      // the *previous* character's conversation, which would be injected as context for the new
+      // character — causing completely wrong roleplay history to appear in Nan0's proactive prompt.
+      if (!options?.force && chatSession.isEnsuringSession) {
+        // eslint-disable-next-line no-console
+        console.log('[Proactivity] Aborted: Session switch in progress, deferring heartbeat.')
+        return
+      }
+
       const now = new Date()
 
       // Check schedule
@@ -608,25 +619,44 @@ export const useProactivityStore = defineStore('proactivity', () => {
         const sessionId = chatSession.activeSessionId
         const sessionMessages = chatSession.sessionMessages[sessionId] || []
 
-        // Inject the last 6 messages (approx 3 turns) for conversational context
-        const recentMessages = sessionMessages.slice(-6)
-        for (const msg of recentMessages) {
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            let msgContent = ''
-            if (typeof msg.content === 'string') {
-              msgContent = msg.content as string
-            }
-            else if (Array.isArray(msg.content)) {
-              msgContent = (msg.content as any[]).map((part: any) => {
-                if (typeof part === 'string')
-                  return part
-                if (part && typeof part === 'object' && 'text' in part)
-                  return String(part.text ?? '')
-                return ''
-              }).join('')
-            }
-            if (msgContent) {
-              messages.push({ role: msg.role as 'user' | 'assistant', content: msgContent })
+        // NOTICE: Defensive character ownership check. The sessionMessages map holds every
+        // session ever loaded in memory (across all characters). Even after isEnsuringSession
+        // clears, a brief race or the RECOVERY BRIDGE loading candidate sessions could leave
+        // activeSessionId pointing at a session from a different character. We verify ownership
+        // via the session meta before injecting any messages, to prevent another character's
+        // conversation history (e.g. a previous roleplay session) from leaking into this
+        // character's proactive observation prompt.
+        const sessionMeta = chatSession.getSessionMeta(sessionId)
+        const sessionOwnerCharacterId = sessionMeta?.characterId
+        const currentCharacterId = activeCardId.value
+        if (sessionOwnerCharacterId && sessionOwnerCharacterId !== currentCharacterId) {
+          console.warn('[Proactivity] Session characterId mismatch — skipping history injection.', {
+            sessionId,
+            sessionOwnerCharacterId,
+            currentCharacterId,
+          })
+        }
+        else {
+          // Inject the last 6 messages (approx 3 turns) for conversational context
+          const recentMessages = sessionMessages.slice(-6)
+          for (const msg of recentMessages) {
+            if (msg.role === 'user' || msg.role === 'assistant') {
+              let msgContent = ''
+              if (typeof msg.content === 'string') {
+                msgContent = msg.content as string
+              }
+              else if (Array.isArray(msg.content)) {
+                msgContent = (msg.content as any[]).map((part: any) => {
+                  if (typeof part === 'string')
+                    return part
+                  if (part && typeof part === 'object' && 'text' in part)
+                    return String(part.text ?? '')
+                  return ''
+                }).join('')
+              }
+              if (msgContent) {
+                messages.push({ role: msg.role as 'user' | 'assistant', content: msgContent })
+              }
             }
           }
         }

@@ -142,8 +142,9 @@ watch(activeCard, (card) => {
     hiddenMotions.value = live2dData.hiddenMotions || []
   }
 }, { immediate: true })
-const normalize = (s: string) =>
-  s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
+function normalize(s: string) {
+  return s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
+}
 
 function getMappedName(fullPath: string) {
   const normPath = normalize(fullPath)
@@ -195,7 +196,7 @@ function startEditing(motion: any) {
 function saveMotionName(fullPath: string) {
   const normPath = normalize(fullPath)
   const updated = { ...motionMappings.value }
-  
+
   let existingKey = fullPath
   for (const key of Object.keys(updated)) {
     if (normalize(key) === normPath) {
