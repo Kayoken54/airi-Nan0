@@ -41,7 +41,7 @@ Settings > Modules > Destiny2
 │  ─── Advanced Controls ─────────────────────────────── │
 │  [X] Comment on Post-Game Carnage Reports (PGCR)       │
 │  [X] Comment when entering matchmaking / loading maps  │
-│  [X] Enable Local WebGPU HUD Tracking (FastVLM)        │
+│  [X] Enable Local OCR HUD Tracking (PP-OCRv6 Tiny)     │
 │  [ ] Show encouragement on death streaks               │
 └────────────────────────────────────────────────┘
 ```
@@ -54,9 +54,9 @@ Settings > Modules > Destiny2
 
 ---
 
-## 3. The Polling Lifecycle (Dynamic Timers & Local VLM)
+## 3. The Polling Lifecycle (Dynamic Timers & Local OCR)
 
-Instead of polling at a constant, static interval, the polling loop behaves like a state machine to reduce rate limits when idle, but transitions to active visual parsing once a match begins.
+Instead of polling at a constant, static interval, the polling loop behaves like a state machine to reduce rate limits when idle, but transitions to active OCR parsing once a match begins.
 
 ```mermaid
 stateDiagram-v2
@@ -66,7 +66,7 @@ stateDiagram-v2
     state Active_Match {
         [*] --> InProgress : API Polling (30s)
         InProgress --> HUD_Parsing : Local Screen Capture (Every 5s)
-        HUD_Parsing --> InProgress : VLM Event Logged / Analyzed
+        HUD_Parsing --> InProgress : OCR Text Extracted & Analyzed
         InProgress --> Match_Ended : currentActivityHash transitions to 0/Orbit
     }
 
@@ -81,14 +81,15 @@ stateDiagram-v2
 * **Frequency:** 15s in Orbit/Tower, 30s once inside a match.
 * **Transition:** When `currentActivityHash` changes from `0` (or orbit activity hash) to a PvP/PvE map hash, trigger the `MATCH_STARTED` event.
 
-#### 2. Local VLM HUD Parsing (In-Match)
+#### 2. Local OCR HUD Parsing (In-Match)
 Once inside an active match:
-* **Model:** `onnx-community/FastVLM-0.5B-ONNX` running locally client-side via WebGPU.
+* **Model:** `PaddlePaddle/PP-OCRv6_tiny_rec_onnx` running locally client-side via ONNX Runtime Web (WebGPU/WASM).
+* **Pipeline Optimization:** To maximize performance, text detection (`det`) is bypassed entirely. The system uses high-contrast, pixel-perfect crops aligned to the user's specific resolution/coordinates and feeds them directly into the text recognition (`rec`) model. Future updates can extend coordinate configurations to support arbitrary aspect ratios and resolutions.
 * **Frequency:** Every 5 seconds, capture the player's screenshot.
-* **Dynamic Crops:**
+* **HUD Crops:**
   * **Top-Center HUD Crop:** Extracted coordinates `{ left: 700, top: 0, width: 520, height: 180 }` (isolates scores, time, objective).
   * **Bottom-Left HUD Crop:** Extracted coordinates `{ left: 50, top: 800, width: 400, height: 250 }` (isolates super percentage tracker, active weapons).
-* **Latency:** ~2.5s on CPU, <300ms via browser WebGPU.
+* **Latency:** <5ms via browser WebGPU, ~15ms via WASM CPU.
 
 #### 3. Detecting Match End & Fetching PGCR
 * **Trigger:** When `currentActivityHash` transitions back to Orbit/Tower (`0`), immediately trigger a one-shot fetch for the Post Game Carnage Report.
@@ -113,8 +114,8 @@ When a game-state transition is detected, the event-driven module intercepts the
 * **AIRI's Prompt Context Directive:**
   *"Your companion has just entered a competitive match. Acknowledge the map/mode or express anticipation based on their loadout."*
 
-### Example Event: `IN_MATCH_HUD_UPDATE` (Local VLM Event Triggers)
-Rather than forcing commentary on a static interval, in-match dialogue is triggered by key delta-threshold events captured by the local VLM loop:
+### Example Event: `IN_MATCH_HUD_UPDATE` (Local OCR Event Triggers)
+Rather than forcing commentary on a static interval, in-match dialogue is triggered by key delta-threshold events captured by the local OCR loop:
 1. **The Lead Change:** Blue score overtakes Red score (comeback / lead loss commentary).
 2. **Time Warnings:** Time remaining reaches `1:00` or `0:30` (final pushes).
 3. **Super Availability:** Yellow bar fills up indicating Super is active (tactical recommendation).
