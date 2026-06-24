@@ -63,6 +63,16 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
         resolve()
       }, 5000)
 
+      if (client.value) {
+        try {
+          client.value.close()
+        }
+        catch (err) {
+          console.warn('Failed to close previous WebSocket client:', err)
+        }
+        client.value = undefined
+      }
+
       client.value = new Client({
         name: isStageWeb() ? WebSocketEventSource.StageWeb : isStageTamagotchi() ? WebSocketEventSource.StageTamagotchi : WebSocketEventSource.StageWeb,
         url: websocketUrl.value || defaultWebSocketUrl,

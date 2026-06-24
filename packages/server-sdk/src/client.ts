@@ -106,7 +106,7 @@ export class Client<C = undefined> {
     })
 
     this.onEvent('error', async (event) => {
-      if (event.data.message === 'not authenticated') {
+      if (event.data.message === 'not authenticated' || event.data.message === 'invalid token') {
         await this._reconnectDueToUnauthorized()
       }
     })

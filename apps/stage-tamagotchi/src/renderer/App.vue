@@ -163,6 +163,22 @@ onMounted(async () => {
 
   logStep('onMounted start')
 
+  // Load server channel config at the very beginning so the token is correct before any WebSocket client initializes
+  logStep('Requesting server channel config')
+  const serverChannelConfig = await getServerChannelConfig().catch((err: any) => {
+    console.error('[PipelineTTS:App] FAILED server channel config:', err)
+    return {} as any
+  })
+  logStep('Received server channel config')
+  serverChannelSettingsStore.websocketTlsConfig = serverChannelConfig.websocketTlsConfig
+  serverChannelSettingsStore.authToken = serverChannelConfig.authToken
+  serverChannelSettingsStore.hostname = serverChannelConfig.hostname
+
+  // Synchronize keys so the shared connection store reads the correct one immediately
+  if (serverChannelConfig.authToken) {
+    localStorage.setItem('settings/connection/auth-token', serverChannelConfig.authToken)
+  }
+
   // Safety net: if localStorage was wiped by an OOM crash or force-close, restore any
   // missing keys from the IndexedDB backup before any store reads their values.
   // This is non-destructive — it only writes keys that are currently absent.
@@ -200,18 +216,11 @@ onMounted(async () => {
   await settingsStore.initializeStageModel().catch((err: any) => console.error('[PipelineTTS:App] FAILED stage model init:', err))
   logStep('Stage model initialized')
 
-  logStep('Requesting server channel config')
-  const serverChannelConfig = await getServerChannelConfig().catch((err: any) => {
-    console.error('[PipelineTTS:App] FAILED server channel config:', err)
-    return {} as any
-  })
-  logStep('Received server channel config')
-  serverChannelSettingsStore.websocketTlsConfig = serverChannelConfig.websocketTlsConfig
-  serverChannelSettingsStore.authToken = serverChannelConfig.authToken
-  serverChannelSettingsStore.hostname = serverChannelConfig.hostname
-
   logStep('Initializing server channel store')
-  await serverChannelStore.initialize({ possibleEvents: ['ui:configure'] }).catch((err: any) => console.error('[PipelineTTS:App] FAILED server channel store init:', err))
+  await serverChannelStore.initialize({
+    possibleEvents: ['ui:configure'],
+    token: serverChannelSettingsStore.authToken,
+  }).catch((err: any) => console.error('[PipelineTTS:App] FAILED server channel store init:', err))
 
   logStep('Initializing character orchestrator')
   characterOrchestratorStore.initialize()

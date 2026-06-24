@@ -368,8 +368,16 @@ export function setupApp(options?: AppOptions): { app: H3, closeAllPeers: () => 
               peerRequest: peer.request.url,
               caller,
               purpose,
+              receivedToken: event.data.token,
+              expectedToken: authToken,
             }).warn('authentication failed: invalid token')
             send(peer, RESPONSES.error('invalid token', instanceId, event.metadata?.event.id))
+            try {
+              peer.close?.()
+            }
+            catch (error) {
+              logger.withFields({ peer: peer.id }).withError(error as Error).debug('failed to close peer after auth failure')
+            }
 
             return
           }
