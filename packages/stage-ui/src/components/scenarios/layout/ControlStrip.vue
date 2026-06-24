@@ -29,6 +29,7 @@ console.log('[ControlStrip.vue] Setup loaded with Selfie feature support')
 const colorMode = useColorMode()
 const controlStripStore = useSettingsControlStrip()
 const { orientation, buttons, stageEnabled, chatOpen, captionOpen, backgroundTint, stageMode, collapsed, selfieIncludeBg } = storeToRefs(controlStripStore)
+const isHoveredHandle = ref(false)
 const displayModelsStore = useDisplayModelsStore()
 const datingSimStore = useDatingSimStore()
 
@@ -951,12 +952,12 @@ function handlePerpendicularClick() {
   if (clickTimer) {
     clearTimeout(clickTimer)
     clickTimer = null
-    collapsed.value = !collapsed.value
+    toggleOrientation()
   }
   else {
     clickTimer = setTimeout(() => {
       clickTimer = null
-      toggleOrientation()
+      collapsed.value = !collapsed.value
     }, 250)
   }
 }
@@ -1121,7 +1122,7 @@ function getShortLabel(btnId: string): string {
     <!-- TOP/LEFT ENDCAP: Perpendicular Drag & Layout Handle -->
     <button
       :class="[
-        'flex items-center justify-center',
+        'relative flex items-center justify-center overflow-hidden',
         'w-9 h-9 rounded-full',
         'bg-white/10 hover:bg-white/25 dark:bg-white/5 dark:hover:bg-white/15',
         'border border-white/10 dark:border-white/5',
@@ -1129,17 +1130,31 @@ function getShortLabel(btnId: string): string {
         'transition-all duration-200',
         isDragging ? 'cursor-grabbing' : 'cursor-grab',
       ]"
-      title="Drag to Reposition | Double Click to Collapse/Expand | Click to Toggle Layout"
+      title="Drag to Reposition | Click to Collapse/Expand | Double Click to Toggle Layout"
       @mousedown="onDragStart"
       @touchstart="onDragStart"
+      @mouseenter="isHoveredHandle = true"
+      @mouseleave="isHoveredHandle = false"
       @click.stop
     >
+      <!-- Icon fades out on hover -->
       <span
         :class="[
-          'text-lg transition-transform duration-300',
+          'text-lg absolute transition-all duration-200 ease-in-out',
           collapsed ? 'i-solar:widget-linear scale-105' : (orientation === 'vertical' ? 'i-solar:double-alt-arrow-right-linear' : 'i-solar:double-alt-arrow-down-linear'),
+          isHoveredHandle ? 'opacity-0 scale-75' : 'opacity-100 scale-100',
         ]"
       />
+
+      <!-- Short label fades in on hover -->
+      <span
+        :class="[
+          'text-[9px] font-extrabold uppercase tracking-wider text-center px-0.5 leading-none absolute transition-all duration-200 ease-in-out',
+          isHoveredHandle ? 'opacity-100 scale-100' : 'opacity-0 scale-75',
+        ]"
+      >
+        {{ collapsed ? 'Show' : 'Hide' }}
+      </span>
     </button>
 
     <!-- CORE INTERACTIVE BUTTONS -->
