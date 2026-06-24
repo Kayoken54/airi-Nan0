@@ -75,13 +75,13 @@ async function handleAction(action: 'confirm' | 'cancel' | 'close') {
 </script>
 
 <template>
-  <div class="h-100dvh w-100dvw overflow-hidden bg-black text-white">
+  <div class="w-dvw overflow-hidden bg-black text-white h-dvh">
     <!-- Premium Gemini Backdrop -->
     <div class="absolute inset-0 z-0 h-full w-full opacity-30">
       <div class="gemini-gradient animate-gradient-slow h-full w-full" />
     </div>
 
-    <div class="relative z-1 h-full w-full flex">
+    <div class="relative z-[1] h-full w-full flex">
       <!-- Vertical Artist Graphic Sidebar (38%) -->
       <div
         v-motion

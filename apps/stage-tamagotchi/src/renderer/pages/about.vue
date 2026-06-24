@@ -58,8 +58,8 @@ const releaseNotesContent = computed(() => {
 <template>
   <div
     :class="[
-      'min-h-100dvh',
-      'min-w-100dvw',
+      'min-h-dvh',
+      'min-w-dvw',
       'bg-neutral-50/80',
       'text-neutral-800',
       'dark:bg-neutral-900',

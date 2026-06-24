@@ -203,7 +203,7 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     :background="selectedOption"
     :top-color="sampledColor"
   >
-    <div relative flex="~ col" z-2 h-100dvh w-100vw of-hidden>
+    <div flex="~ col" relative z-2 w-100vw of-hidden h-dvh>
       <!-- header -->
       <div class="px-0 py-1 md:px-3 md:py-3" w-full gap-2>
         <Header class="hidden md:flex" />

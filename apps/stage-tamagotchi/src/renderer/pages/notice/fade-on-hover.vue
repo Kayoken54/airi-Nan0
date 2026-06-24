@@ -84,7 +84,7 @@ async function handleAction(action: 'confirm' | 'cancel' | 'close') {
 </script>
 
 <template>
-  <div class="h-100dvh w-100dvw">
+  <div class="w-dvw h-dvh">
     <div class="relative h-full w-full flex flex-col gap-4 text-neutral-900 dark:text-neutral-100">
       <div class="absolute inset-0 z-0 h-full w-full overflow-hidden text-xs text-neutral-600 dark:text-neutral-400">
         <video :src="isDark ? VideoTutorialFadeOnHoverDark : VideoTutorialFadeOnHoverLight" autoplay muted loop class="h-full w-full object-cover" />
@@ -92,7 +92,7 @@ async function handleAction(action: 'confirm' | 'cancel' | 'close') {
       <div
         :class="[
           'pointer-events-none absolute left-0 top-0',
-          'h-100dvh w-100dvw',
+          'h-dvh w-dvw',
         ]"
         class="heading-backdrop"
       />
