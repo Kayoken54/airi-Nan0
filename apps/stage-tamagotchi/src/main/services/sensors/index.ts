@@ -18,6 +18,7 @@ import {
   sensorsSetTrackingEnabled,
 } from '@proj-airi/stage-shared'
 import { powerMonitor } from 'electron'
+import { x } from 'tinyexec'
 
 const require = createRequire(import.meta.url)
 let activeWindow: any = null
@@ -81,6 +82,31 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
   }
 
   async function getActiveWindowInfo(): Promise<WindowInfo | null> {
+    // macOS AppleScript (does not require screen recording permission, avoids 30s hangs)
+    if (platform === 'darwin') {
+      try {
+        const result = await x('osascript', [
+          '-e',
+          'tell application "System Events" to tell (first application process whose frontmost is true) to return {name, name of window 1}',
+        ])
+        if (result && result.stdout) {
+          const output = result.stdout.trim()
+          // Output format: "Electron, AIRI - Control Strip"
+          const parts = output.split(', ')
+          const processName = parts[0] || 'Unknown'
+          const title = parts.slice(1).join(', ') || 'Unknown'
+          return {
+            title,
+            processName,
+          }
+        }
+      }
+      catch (macErr) {
+        stdout.write(`[getActiveWindowInfo] macOS AppleScript query failed: ${String(macErr)}\n`)
+      }
+      return null
+    }
+
     try {
       if (typeof activeWindow !== 'function')
         throw new Error('active-win is not loaded')
@@ -92,11 +118,11 @@ export async function createSensorsService(params: { context: ReturnType<typeof 
         }
       }
     }
-    catch {
+    catch (err) {
       const now = Date.now()
       if (now - lastActiveWinErrorTime > ERROR_LOG_INTERVAL) {
         // eslint-disable-next-line no-console
-        console.log('[getActiveWindowInfo] active-win failed or missing, using Koffi fallback.')
+        console.log('[getActiveWindowInfo] active-win failed or missing:', err, 'using Koffi fallback if on Windows.')
         lastActiveWinErrorTime = now
       }
 

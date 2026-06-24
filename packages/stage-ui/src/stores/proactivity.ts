@@ -133,17 +133,29 @@ export const useProactivityStore = defineStore('proactivity', () => {
       return
     }
 
+    // Helper to measure individual query latency
+    const timePromise = async <T>(name: string, promise: Promise<T>): Promise<T> => {
+      const start = performance.now()
+      try {
+        return await promise
+      }
+      finally {
+        // eslint-disable-next-line no-console
+        console.log(`[Proactivity:Timer] ${name} took ${Math.round(performance.now() - start)}ms`)
+      }
+    }
+
     try {
       // Parallelize all OS sensor probes to reduce total latency to the slowest single call.
       const probes = [
         // Only trigger load if not already initialized or loading
-        textJournalStore.load(),
-        getIdleTimeInvoke ? getIdleTimeInvoke() : Promise.resolve(undefined),
-        getActiveWindowInvoke ? getActiveWindowInvoke() : Promise.resolve(undefined),
-        getActiveWindowHistoryInvoke ? getActiveWindowHistoryInvoke() : Promise.resolve([]),
-        getSystemLoadInvoke ? getSystemLoadInvoke() : Promise.resolve(null),
-        getLocalTimeInvoke ? getLocalTimeInvoke() : Promise.resolve(undefined),
-        getVolumeLevelInvoke ? getVolumeLevelInvoke() : Promise.resolve(undefined),
+        timePromise('textJournalStore.load', textJournalStore.load()),
+        timePromise('getIdleTime', getIdleTimeInvoke ? getIdleTimeInvoke() : Promise.resolve(undefined)),
+        timePromise('getActiveWindow', getActiveWindowInvoke ? getActiveWindowInvoke() : Promise.resolve(undefined)),
+        timePromise('getActiveWindowHistory', getActiveWindowHistoryInvoke ? getActiveWindowHistoryInvoke() : Promise.resolve([])),
+        timePromise('getSystemLoad', getSystemLoadInvoke ? getSystemLoadInvoke() : Promise.resolve(null)),
+        timePromise('getLocalTime', getLocalTimeInvoke ? getLocalTimeInvoke() : Promise.resolve(undefined)),
+        timePromise('getVolumeLevel', getVolumeLevelInvoke ? getVolumeLevelInvoke() : Promise.resolve(undefined)),
       ]
 
       const [
