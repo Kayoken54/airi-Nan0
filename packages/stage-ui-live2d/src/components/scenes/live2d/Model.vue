@@ -1279,7 +1279,11 @@ async function setMotion(motionName: string, index?: number) {
 
   console.info('Setting motion:', motionName, 'index:', index)
   try {
-    await applyMotionPlaybackPolicy(motionName, index ?? 0)
+    const hasMotion = await applyMotionPlaybackPolicy(motionName, index ?? 0)
+    if (!hasMotion) {
+      console.warn('[Model.vue] Aborting motion playback: motion is undefined or could not be loaded:', motionName, index)
+      return
+    }
     await model.value.motion(motionName, index, MotionPriority.FORCE)
     console.info('Motion started successfully:', motionName)
   }
@@ -1288,17 +1292,25 @@ async function setMotion(motionName: string, index?: number) {
   }
 }
 
-async function applyMotionPlaybackPolicy(motionName: string, index: number) {
+async function applyMotionPlaybackPolicy(motionName: string, index: number): Promise<boolean> {
   const currentModel = model.value
   const motionManager = currentModel?.internalModel?.motionManager
   if (!motionManager)
-    return
+    return false
 
   const context = resolveMotionPlaybackContext(motionName, index)
   const policy = resolveMotionPlaybackPolicy(context)
-  const motion = await motionManager.loadMotion?.(motionName, index)
+
+  let motion
+  try {
+    motion = await motionManager.loadMotion?.(motionName, index)
+  }
+  catch (e) {
+    console.warn('[Model.vue] Error loading motion:', e)
+  }
+
   if (!motion)
-    return
+    return false
 
   console.info(
     `[Live2D-Policy] 🔀 Motion Transition Requested | Context Info:`,
@@ -1310,6 +1322,7 @@ async function applyMotionPlaybackPolicy(motionName: string, index: number) {
       isConfiguredIdle: isConfiguredIdleMotion(motionName, index),
       resolvedContext: context,
       resolvedPolicy: policy,
+      resolvedMotion: motion,
     },
   )
 
@@ -1322,13 +1335,15 @@ async function applyMotionPlaybackPolicy(motionName: string, index: number) {
     if (motion._looper)
       motion._looper.loopDuration = motion.getLoopDuration?.() ?? motion._motionData?.duration ?? -1
     console.info('[Live2D Policy] Playing stage idle as a clean settle motion:', motionName, index)
-    return
+    return true
   }
 
   const definition = motionManager.definitions?.[motionName]?.[index]
   const shouldLoop = definition?.Loop ?? motion._motionData?.loop
   if (typeof shouldLoop === 'boolean')
     motion.setIsLoop?.(shouldLoop)
+
+  return true
 }
 
 const dropShadowColorComputer = ref<HTMLDivElement>()
