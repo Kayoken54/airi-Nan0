@@ -17,7 +17,7 @@ Rather than a simple toggle, the `i-solar:cpu-bold-duotone` button becomes a **p
 Panel header: **Grounding Options**
 Subheader: *Control what contextual data is bundled into each message.*
 
-The panel exposes four independent toggle rows, each persisted in the active card's `extensions.airi` config (handled in the card store [airi-card.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/stores/modules/airi-card.ts)):
+The panel exposes five independent toggle rows, each persisted in the active card's `extensions.airi` config (handled in the card store [airi-card.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/stores/modules/airi-card.ts)):
 
 ---
 
@@ -96,6 +96,25 @@ On hover, shows the actual current topic weight table for this card.
 
 ---
 
+### Toggle 5 — Visual Scene State (Director's Scratchpad) [Implemented]
+> *Attach the Director's latest visual/spatial state board*
+
+Maintains verbal-visual coherence between the Actor (character voice) and the Director (autonomous image generation).
+
+When enabled, the system retrieves the latest persistent scratchpad from the most recent `directorNotes` repository entry (maximum 1000 characters). This scratchpad tracks active scene information such as current location, active outfits/accessories, held items, and active lighting. The text is formatted and injected as a system context prompt:
+
+```
+[VISUAL STATE BOARD]
+Active scene & character visual state (maintained by Director):
+- Location: cozy tea room, torii gate in background
+- Outfit: maid uniform, cat ears accessory
+- Held Item: holding a chocolate chip cookie
+```
+
+This prevents the Actor from experiencing "blindness" regarding their visual model's active state, allowing them to make conversational references to the physical space or their current appearance.
+
+---
+
 ### Shortcuts & Configuration Link
 A link row at the bottom of the popover — styled like the "Visit Image Studio" shortcut in the same component family — that navigates directly to:
 
@@ -111,7 +130,7 @@ Rather than treating grounding injections (RAG, sensors, topics) as a silent bla
 
 ### The Real-Time Flow
 1. **Dynamic Composition**: As the user types into the composer, the system monitors for a 3-5s typing pause/throttle.
-2. **Context Compilation**: When triggered, the system fetches the current sensors (Toggle 1), triggers the scoped semantic query using the composer's draft text (Toggle 2 & 3), and processes decay topics (Toggle 4).
+2. **Context Compilation**: When triggered, the system fetches the current sensors (Toggle 1), triggers the scoped semantic query using the composer's draft text (Toggle 2 & 3), processes decay topics (Toggle 4), and retrieves the latest Director scratchpad visual state (Toggle 5).
 3. **The Grounding Preview Artifact**: An interactive context preview card renders in the chat layout ([history.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/chat/history.vue)), similar to the Director's Note (`DirectorNoteBubble.vue` in [DirectorNoteBubble.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/chat/DirectorNoteBubble.vue)).
 4. **Editorial Veto**: The user can expand this card to see exactly what telemetry and memory snippets are slated for injection. They have active control to **prune or edit individual snippets** (e.g., removing a tonally wrong memory snippet before it reaches the model).
 5. **Turn Lock**: Upon clicking Send, the finalized preview locks, is bundled into the system prompt compilation layer in `chat.ts`, and morphs into a static, historical record bubble (`[ ⚡️ Grounded with N sensors & memories ]`) in the chat timeline for future session inspection.
@@ -124,7 +143,7 @@ Toggles 2 and 3 are **visually disabled with an explanatory label** when no sema
 
 > *Requires semantic search index — not yet available for this character*
 
-The feature is designed to gracefully degrade — Toggle 1 (sensor data) works independently and is unaffected. Toggle 4 (Recent Topics) also works independently. Toggles 2 and 3 light up when the search backend is ready.
+The feature is designed to gracefully degrade — Toggle 1 (sensor data), Toggle 4 (Recent Topics), and Toggle 5 (Visual Scene State) work independently and are unaffected. Toggles 2 and 3 light up when the search backend is ready.
 
 ---
 
