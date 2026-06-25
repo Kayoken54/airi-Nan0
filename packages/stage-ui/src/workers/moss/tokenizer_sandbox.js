@@ -49,12 +49,12 @@ const require_base64_js = __commonJS({
     const revLookup = []
     const Arr = typeof Uint8Array !== 'undefined' ? Uint8Array : Array
     const code = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    let i
+    let len
     for (i = 0, len = code.length; i < len; ++i) {
       lookup[i] = code[i]
       revLookup[code.charCodeAt(i)] = i
     }
-    let i
-    let len
     revLookup['-'.charCodeAt(0)] = 62
     revLookup['_'.charCodeAt(0)] = 63
     function getLens(b64) {
