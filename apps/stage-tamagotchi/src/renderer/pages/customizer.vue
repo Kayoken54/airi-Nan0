@@ -10,6 +10,8 @@ import { useBroadcastChannel, useColorMode } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
+import ColorPicker from '../../../../../packages/stage-ui/src/components/data-pane/color-picker.vue'
+
 import { chatSessionsRepo } from '../../../../../packages/stage-ui/src/database/repos/chat-sessions.repo'
 import { electronCustomizerToggleVisibility, electronResetWindowPositions } from '../../shared/eventa'
 
@@ -843,10 +845,10 @@ onMounted(() => {
                     <span class="text-xs text-neutral-200 font-bold tracking-wider uppercase">Theme & Tint</span>
                   </div>
 
-                  <!-- Presets Grid -->
+                  <!-- Presets Grid + Custom swatch in one row -->
                   <div class="space-y-2">
                     <span class="text-[10px] text-neutral-400 font-medium">Color Presets</span>
-                    <div class="grid grid-cols-5 gap-2">
+                    <div class="grid grid-cols-6 gap-2">
                       <button
                         v-for="preset in colorPresets"
                         :key="preset.value"
@@ -860,28 +862,36 @@ onMounted(() => {
                         :title="preset.name"
                         @click="backgroundTint = preset.value"
                       >
-                        <!-- Checked Indicator if active -->
                         <span v-if="backgroundTint === preset.value" class="i-solar:check-circle-bold absolute rounded-full bg-neutral-950 text-xs text-emerald-400 -right-1 -top-1" />
                       </button>
-                    </div>
-                  </div>
 
-                  <!-- Custom Color Picker -->
-                  <div class="mt-2 space-y-2">
-                    <span class="text-[10px] text-neutral-400 font-medium">Custom Tint</span>
-                    <div class="flex items-center gap-3 border border-white/5 rounded-xl bg-black/25 p-3">
-                      <div class="relative h-10 w-10 shrink-0 overflow-hidden border border-white/10 rounded-lg">
-                        <input
+                      <!-- Custom swatch slot (6th column) -->
+                      <div
+                        class="relative aspect-square"
+                        :class="[
+                          !colorPresets.some(p => p.value === backgroundTint)
+                            ? 'scale-105'
+                            : '',
+                        ]"
+                      >
+                        <ColorPicker
                           v-model="backgroundTint"
-                          type="color"
-                          class="absolute inset-0 h-full w-full scale-150 cursor-pointer border-0 p-0"
-                        >
-                      </div>
-                      <div class="flex flex-1 flex-col gap-0.5">
-                        <span class="text-[10px] text-neutral-200 font-medium">Custom Color Picker</span>
-                        <span class="text-[9px] text-neutral-500 font-mono uppercase">{{ backgroundTint }}</span>
+                          :alpha="false"
+                          :compact="true"
+                          class="h-full w-full"
+                          :class="[
+                            !colorPresets.some(p => p.value === backgroundTint)
+                              ? 'border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.25)]'
+                              : 'border-white/10',
+                          ]"
+                        />
                       </div>
                     </div>
+
+                    <!-- Current hex below grid -->
+                    <p class="text-[9px] text-neutral-500 tracking-wider font-mono uppercase">
+                      Active: {{ backgroundTint }}
+                    </p>
                   </div>
                 </div>
               </div>

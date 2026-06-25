@@ -855,6 +855,8 @@ pages:
       virtual-audio-studio:
         title: 聲音工作室 (Audio Studio)
         description: 語音庫 - 使用自定義音效和對話過濾構建虛擬聲音配置文件
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: 服務來源
   connection:
     description: 設置 WebSocket 伺服器連接

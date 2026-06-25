@@ -1232,6 +1232,8 @@ pages:
       blip-local:
         title: BLIP / WD (Local)
         description: Local on-device vision models running client-side via WebGPU.
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: Providers
   connection:
     description: Configure server connection and external download tokens (e.g.

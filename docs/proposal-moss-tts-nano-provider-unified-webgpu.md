@@ -242,8 +242,11 @@ Voice cloning reference audio blobs are **heavy, user-managed assets** — conce
 
 **Design constraints adapted from BYOS asset patterns:**
 
-- **Metadata Store:** A new IndexedDB key namespace (`local:voice-profiles/*`) holding per-profile JSON metadata containing the `id`, user-associated `name`, `createdAt`, `durationMs`, `sampleRate`, `sourceFilename`, and `sha256` checksum.
+- **Metadata Store:** A new IndexedDB key namespace (`local:voice-profiles/*`) holding per-profile JSON metadata containing the `id`, user-associated `name`, `createdAt`, `durationMs`, `sampleRate`, `sourceFilename`, `sha256` checksum, and optionally cached **`prompt_audio_codes`** (the 2D array of tokens encoded by the tokenizer).
 - **Binary Blob Store (Strictly IndexedDB):** Binary audio files must be stored exclusively in **IndexedDB** (using `localforage` for lifecycle management). Storing binary audio blobs in `localStorage` is prohibited due to storage size limits.
+- **Hybrid Codec Caching Strategy:** To prevent the user from waiting for ONNX models to load at upload time and to avoid re-encoding raw WAV files on every request, a hybrid caching approach is utilized:
+  * **At Upload:** Only the raw audio file and basic metadata are saved immediately (making the upload instant and keeping cloud sync light/standardized).
+  * **At Inference:** The provider checks if `prompt_audio_codes` is present in the profile metadata. If not found, it runs the codec encoder session once, caches the result array back to the IndexedDB metadata record, and continues. Subsequent runs fetch the cached codes directly, skipping the audio encoding step completely.
 - **Deterministic Sync Naming:** To remain fully compatible with the existing sync engine, binary voice profiles must be uploaded to S3 with a deterministic suffix:
   `assets/voice-profiles/{id}.bin`
 - **Selective Sync Scope:** Voice Profiles are registered as a heavy-asset category in the sync engine. In the UI onboarding/settings tree, a toggle row `[ ] Voice Profiles` is presented to allow users to exclude voice cloning assets from high-speed database sync to conserve bandwidth.
@@ -296,13 +299,21 @@ In `packages/stage-ui/src/stores/providers.ts`:
 
 - Add a new provider definition:
   - category: `speech`
-  - tasks: `text-to-speech` / `tts`
+  - tasks: `text-to-speech`
   - deployment: `local`
   - capabilities:
     - `listModels` (Nano variants, device/dtype options)
-    - `listVoices` (may map to “voice profiles” rather than static voice IDs)
+    - `listVoices` (maps to “voice profiles” retrieved from IndexedDB + builtin presets)
     - explicit **voice cloning capability** surfaced in metadata/UI
-- Add settings UI surface similar to Kokoro local provider (choose device, caching, etc.).
+- Add settings UI surface under `packages/stage-pages/src/pages/settings/providers/speech/moss-nano-local.vue` using `<SpeechProviderSettings>` with the following streamlined controls:
+  - **Performance & Fallback Option:**
+    - **CPU Threads (Default: 4):** Dictates thread count for ORT WebAssembly runner during WASM EP fallback execution. (No effect when running under WebGPU).
+    - **Attention Backend:** Choice of `sdpa` (Scale Dot Product Attention) or `eager`.
+  - **Generation Tuning Options:**
+    - **Sampling Mode:** Dropdown offering `Fixed` (graph-compiled sampling using fixed hyperparameters, high performance) vs `Dynamic` (runs sampling loop in JS, allowing customization and higher quality).
+    - **Voice Clone Max Text Tokens (Default: 75):** Controls the maximum text token prompt length for reference audio conditioning.
+  - **Other options hidden:** Text normalization is omitted as it is handled by the upstream Audio Studio. Batch sizes (Mac TTS / Mac Codex batch sizes) are hardcoded and hidden from user control to keep the interface simple.
+  - **Voice Cloning Library:** Inline asset manager to upload new custom reference WAV files, sanitize user-defined names to `^[A-Za-z0-9 _-]+$`, and display saved profiles.
 
 ## Key technical unknowns / due diligence checklist
 

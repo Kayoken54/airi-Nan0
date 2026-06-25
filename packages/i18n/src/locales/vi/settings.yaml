@@ -872,8 +872,10 @@ pages:
           one endpoint
       virtual-audio-studio:
         title: Phòng thu Âm thanh (Audio Studio)
-        description: Thư viện giọng nói - Xây dựng hồ sơ giọng nói ảo với các hiệu ứng tùy
-          chỉnh và bộ lọc hội thoại
+        description: Thư viện giọng nói - Xây dựng hồ sơ giọng nói ảo với các hiệu ứng
+          tùy chỉnh và bộ lọc hội thoại
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: Nhà cung cấp
   connection:
     description: Cấu hình kết nối máy chủ WebSocket

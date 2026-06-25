@@ -34,6 +34,10 @@ const useSSML = ref(false)
 const ssmlText = ref('')
 const selectedVoice = ref('')
 
+const latencyMs = ref<number | null>(null)
+const audioDurationSec = ref<number | null>(null)
+const rtf = ref<number | null>(null)
+
 // Watch for changes in available voices
 watch(
   () => props.availableVoices,
@@ -59,6 +63,9 @@ async function handleGenerateTestSpeech() {
 
   isGenerating.value = true
   errorMessage.value = ''
+  latencyMs.value = null
+  audioDurationSec.value = null
+  rtf.value = null
 
   try {
     // Stop any currently playing audio
@@ -68,7 +75,27 @@ async function handleGenerateTestSpeech() {
 
     const input = useSSML.value ? ssmlText.value : testText.value
 
+    const startTime = performance.now()
     const response = await props.generateSpeech(input, selectedVoice.value, useSSML.value)
+    const endTime = performance.now()
+
+    const elapsedMs = endTime - startTime
+    latencyMs.value = Math.round(elapsedMs)
+
+    // Decode audio duration and compute RTF
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      if (AudioContextClass) {
+        const ctx = new AudioContextClass()
+        const decoded = await ctx.decodeAudioData(response.slice(0))
+        audioDurationSec.value = decoded.duration
+        rtf.value = Number((elapsedMs / (decoded.duration * 1000)).toFixed(3))
+        await ctx.close()
+      }
+    }
+    catch (e) {
+      console.warn('Failed to decode audio duration for stats:', e)
+    }
 
     // Convert the response to a blob and create an object URL
     audioUrl.value = URL.createObjectURL(new Blob([response]))
@@ -195,6 +222,18 @@ defineExpose({
         {{ errorMessage }}
       </div>
       <audio v-if="audioUrl" ref="audioPlayer" :src="audioUrl" controls class="mt-2 w-full" />
+
+      <div v-if="latencyMs !== null && audioDurationSec !== null" class="mt-2 flex flex-wrap gap-x-6 gap-y-2 border border-neutral-100 rounded-xl bg-neutral-50/50 p-3.5 text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/30 dark:text-neutral-400">
+        <div>
+          Latency: <span class="text-neutral-700 font-bold dark:text-neutral-300">{{ latencyMs }}ms</span>
+        </div>
+        <div>
+          Duration: <span class="text-neutral-700 font-bold dark:text-neutral-300">{{ audioDurationSec.toFixed(2) }}s</span>
+        </div>
+        <div>
+          Real-Time Factor (RTF): <span class="text-neutral-700 font-bold dark:text-neutral-300" :class="rtf !== null && rtf < 1.0 ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">{{ rtf }}</span>
+        </div>
+      </div>
 
       <SpeechStreamingPlayground
         :text="testText"

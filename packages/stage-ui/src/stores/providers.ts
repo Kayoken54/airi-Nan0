@@ -107,6 +107,40 @@ const ALIYUN_NLS_REGIONS = [
 
 type AliyunNlsRegion = typeof ALIYUN_NLS_REGIONS[number]
 
+let mossAdapter: any = null
+async function getMossAdapterInstance() {
+  if (!mossAdapter) {
+    const { createMossAdapter } = await import('../libs/inference/adapters/moss')
+    mossAdapter = createMossAdapter()
+  }
+  return mossAdapter
+}
+
+async function decodeAudioToWaveform(arrayBuffer: ArrayBuffer, targetSampleRate = 16000, targetChannels = 2): Promise<Float32Array> {
+  const AudioContextClass = typeof window !== 'undefined'
+    ? (window.AudioContext || (window as any).webkitAudioContext)
+    : null
+  if (!AudioContextClass) {
+    throw new Error('AudioContext is not supported in this environment.')
+  }
+  const ctx = new AudioContextClass({ sampleRate: targetSampleRate })
+  try {
+    const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0))
+    const waveformLength = decoded.length
+    const waveform = new Float32Array(targetChannels * waveformLength)
+    for (let channelIndex = 0; channelIndex < targetChannels; channelIndex += 1) {
+      const sourceChannel = decoded.getChannelData(
+        Math.min(channelIndex, decoded.numberOfChannels - 1),
+      )
+      waveform.set(sourceChannel, channelIndex * waveformLength)
+    }
+    return waveform
+  }
+  finally {
+    await ctx.close().catch(() => {})
+  }
+}
+
 export const useProvidersStore = defineStore('providers', () => {
   const providerCredentials = useLocalStorage<Record<string, Record<string, unknown>>>('settings/credentials/providers', {})
   const addedProviders = useLocalStorage<Record<string, boolean>>('settings/providers/added', {})
@@ -413,21 +447,75 @@ export const useProvidersStore = defineStore('providers', () => {
       defaultOptions: () => ({
         model: 'moss-tts-nano-100m',
         voiceId: '',
+        cpuThreads: 4,
+        attentionBackend: 'sdpa',
+        samplingMode: 'fixed',
+        voiceCloneMaxTokens: 75,
       }),
       createProvider: async (_config) => {
+        const adapter = await getMossAdapterInstance()
+
         const provider: SpeechProvider = {
           speech: () => {
             return {
               baseURL: 'http://moss-nano-local/v1/',
               model: 'moss-tts-nano-100m',
               fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
-                console.log('MOSS TTS fetch called with:', init?.body)
-                return new Response(new ArrayBuffer(0), {
-                  status: 200,
-                  headers: {
-                    'Content-Type': 'audio/wav',
-                  },
-                })
+                try {
+                  if (!init?.body || typeof init.body !== 'string') {
+                    throw new Error('Invalid request body')
+                  }
+                  const body = JSON.parse(init.body)
+                  const text = body.input
+                  const voiceId = body.voice
+
+                  if (!voiceId) {
+                    throw new Error('Voice parameter is required')
+                  }
+
+                  // Load model on demand if not ready
+                  if (adapter.state !== 'ready') {
+                    await adapter.loadModel()
+                  }
+
+                  // Fetch custom voice from IndexedDB if needed
+                  let promptAudioWaveform: Float32Array | undefined
+                  const builtinIds = ['Trump', 'LJS']
+                  if (!builtinIds.includes(voiceId)) {
+                    const localforage = (await import('localforage')).default
+                    const mossVoiceProfileBlobsStore = localforage.createInstance({
+                      name: 'voice-profile-blobs',
+                    })
+                    const audioBlob = await mossVoiceProfileBlobsStore.getItem<Blob>(voiceId)
+                    console.log('[MOSS Provider] voiceId:', voiceId, 'Found Blob:', !!audioBlob)
+                    if (audioBlob) {
+                      const buffer = await audioBlob.arrayBuffer()
+                      promptAudioWaveform = await decodeAudioToWaveform(buffer)
+                      console.log('[MOSS Provider] Decoded waveform length:', promptAudioWaveform?.length)
+                    }
+                  }
+
+                  const options = {
+                    cpuThreads: Number(_config.cpuThreads ?? 4),
+                    attentionBackend: String(_config.attentionBackend ?? 'sdpa'),
+                    samplingMode: String(_config.samplingMode ?? 'fixed'),
+                    voiceCloneMaxTokens: Number(_config.voiceCloneMaxTokens ?? 75),
+                    promptAudioWaveform,
+                  }
+
+                  const wavBuffer = await adapter.generate(text, voiceId, options)
+
+                  return new Response(wavBuffer, {
+                    status: 200,
+                    headers: {
+                      'Content-Type': 'audio/wav',
+                    },
+                  })
+                }
+                catch (error) {
+                  console.error('MOSS TTS generation failed:', error)
+                  throw error
+                }
               },
             }
           },
@@ -446,19 +534,24 @@ export const useProvidersStore = defineStore('providers', () => {
           ]
         },
         loadModel: async (_config: Record<string, unknown>, _hooks?: { onProgress?: (progress: ProgressInfo) => Promise<void> | void }) => {
-          if (_hooks?.onProgress) {
-            _hooks.onProgress({
-              status: 'progress',
-              file: 'moss_tts_prefill.onnx',
-              name: 'moss_tts_prefill.onnx',
-              progress: 100,
-              loaded: 1,
-              total: 1,
-            })
-          }
+          const adapter = await getMossAdapterInstance()
+          await adapter.loadModel({
+            onProgress: (p: any) => {
+              if (_hooks?.onProgress) {
+                _hooks.onProgress({
+                  status: 'progress',
+                  file: p.file || 'moss_tts_prefill.onnx',
+                  name: p.name || 'moss_tts_prefill.onnx',
+                  progress: p.percent ?? 0,
+                  loaded: p.loaded ?? 0,
+                  total: p.total ?? 0,
+                })
+              }
+            },
+          })
         },
         listVoices: async (_config: Record<string, unknown>) => {
-          return [
+          const builtin = [
             {
               id: 'Trump',
               name: 'EN Trump',
@@ -474,6 +567,27 @@ export const useProvidersStore = defineStore('providers', () => {
               gender: 'female',
             },
           ]
+          try {
+            const localforage = (await import('localforage')).default
+            const mossVoiceProfilesStore = localforage.createInstance({
+              name: 'moss-voice-profiles-metadata',
+            })
+            const customProfiles: any[] = []
+            await mossVoiceProfilesStore.iterate((val: any) => {
+              customProfiles.push({
+                id: val.id,
+                name: val.name,
+                provider: 'moss-nano-local',
+                languages: [{ code: 'en-US', title: 'English (US)' }],
+                gender: 'unknown',
+              })
+            })
+            return [...builtin, ...customProfiles]
+          }
+          catch (e) {
+            console.error('Failed to load custom voice profiles from IndexedDB:', e)
+            return builtin
+          }
         },
       },
       validators: {

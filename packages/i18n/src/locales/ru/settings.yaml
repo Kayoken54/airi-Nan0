@@ -894,6 +894,8 @@ pages:
         title: Аудиостудия (Audio Studio)
         description: Библиотека голосов - создавайте виртуальные профили голоса с
           пользовательскими эффектами и фильтрами диалога
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: Провайдеры
   connection:
     description: Настройка подключения к WebSocket-серверу

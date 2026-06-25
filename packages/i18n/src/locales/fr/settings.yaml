@@ -905,6 +905,8 @@ pages:
         title: Audio Studio
         description: Bibliothèque vocale - Créez des profils de voix virtuels avec des
           effets personnalisés et des filtres de dialogue
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: Fournisseurs
   connection:
     description: Configuration de la connexion au serveur WebSocket

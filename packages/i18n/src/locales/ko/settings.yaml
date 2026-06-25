@@ -858,6 +858,8 @@ pages:
       virtual-audio-studio:
         title: 오디오 스튜디오 (Audio Studio)
         description: 음성 라이브러리 - 사용자 정의 효과 및 대화 필터를 사용하여 가상 음성 프로필 구축
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: 제공자
   connection:
     description: WebSocket 서버 연결 구성

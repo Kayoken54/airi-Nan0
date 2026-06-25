@@ -314,3 +314,22 @@ export interface BlipProcessResult {
 export const blipLoadEvent = defineInvokeEventa<LoadStreamItem, BlipLoadRequest>('inference:blip:load')
 export const blipProcessEvent = defineInvokeEventa<BlipProcessResult, BlipProcessRequest>('inference:blip:process')
 export const blipUnloadEvent = defineInvokeEventa<void, undefined>('inference:blip:unload')
+
+export interface MossGenerateRequest {
+  text: string
+  voiceId: string
+  cpuThreads: number
+  attentionBackend: string
+  samplingMode: string
+  voiceCloneMaxTokens: number
+  promptAudioWaveform?: Float32Array
+}
+
+export interface MossGenerateChunk {
+  samples: Float32Array
+  samplingRate: number
+}
+
+export const mossLoadEvent = defineInvokeEventa<LoadStreamItem, LoadModelRequest>('inference:moss:load')
+export const mossGenerateEvent = defineInvokeEventa<MossGenerateChunk, MossGenerateRequest>('inference:moss:generate')
+export const mossUnloadEvent = defineInvokeEventa<void, undefined>('inference:moss:unload')

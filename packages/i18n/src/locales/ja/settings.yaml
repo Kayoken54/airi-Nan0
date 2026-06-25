@@ -882,6 +882,8 @@ pages:
       virtual-audio-studio:
         title: オーディオスタジオ (Audio Studio)
         description: ボイスライブラリ - カスタムエフェクト and 対話フィルターを使用してバーチャルボイスプロファイルを作成します
+      moss-nano-local:
+        title: Moss TTS (Nano)
     title: プロバイダー
   connection:
     description: WebSocketサーバー接続の設定

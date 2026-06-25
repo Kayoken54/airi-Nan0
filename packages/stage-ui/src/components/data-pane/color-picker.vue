@@ -7,11 +7,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 interface Props {
   alpha?: boolean
   disabled?: boolean
+  compact?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   alpha: true,
   disabled: false,
+  compact: false,
 })
 
 const modelValue = defineModel<string>({ required: false, default: '#000000' })
@@ -344,7 +346,23 @@ watch([hue, saturation, value, alphaValue], () => {
 
 <template>
   <PopoverRoot>
-    <PopoverTrigger class="grid grid-col-span-3 grid-cols-3 h-fit items-center">
+    <!-- Compact swatch trigger (for customizer / standalone use) -->
+    <PopoverTrigger
+      v-if="props.compact"
+      class="group relative aspect-square h-10 w-10 flex cursor-pointer items-center justify-center overflow-hidden border rounded-xl transition-all duration-200 hover:scale-105"
+      :class="[
+        props.disabled ? 'cursor-not-allowed opacity-50' : 'border-white/20 hover:border-white/40',
+      ]"
+      :disabled="props.disabled"
+    >
+      <div class="h-full w-full rounded-xl" :style="{ backgroundColor: modelValue }" />
+      <div class="pointer-events-none absolute inset-0 flex items-end justify-end p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <span class="i-solar:pen-2-linear rounded bg-black/50 p-0.5 text-[8px] text-white" />
+      </div>
+    </PopoverTrigger>
+
+    <!-- Default wide-bar trigger (for data-pane grid usage) -->
+    <PopoverTrigger v-else class="grid grid-col-span-3 grid-cols-3 h-fit items-center">
       <div :style="{ backgroundColor: modelValue }" grid-col-span-2 min-h-5 rounded-md />
       <div grid-col-span-1 font-mono text="[10px] right">
         {{ modelValue }}
