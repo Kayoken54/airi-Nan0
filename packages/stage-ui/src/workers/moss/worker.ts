@@ -1,6 +1,7 @@
 /**
  * MOSS TTS Web Worker entry point.
  * Speaks the Eventa inference contract for MOSS.
+ * Last rebuilt: 2026-06-25T12:50:00Z
  */
 
 import type { InferenceDevice, LoadModelRequest, LoadStreamItem, MossGenerateChunk, MossGenerateRequest } from '../../libs/inference/contract'

@@ -5304,7 +5304,8 @@ const createSentencePieceModule = (() => {
       if (!(typeof constructor === 'function')) {
         throw new TypeError(`new_ called with constructor type ${typeof constructor} which is not a function`)
       }
-      const dummy = createNamedFunction(constructor.name || 'unknownFunctionName', () => {
+      const dummy = createNamedFunction(constructor.name || 'unknownFunctionName', function dummyConstructor() {
+        return this
       })
       dummy.prototype = constructor.prototype
       const obj = new dummy()
