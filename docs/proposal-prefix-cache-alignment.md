@@ -43,6 +43,11 @@ We have identified 4 distinct prompt-compilation flows that build overlapping co
 * **Default Context:** Active character system prompt, environmental context, and chat history.
 * **Caching Strategy:** Requires strict **Per-Invocation Controls**. The user must be able to specify the exact history scope for the journal entry (e.g. journaling about the last narrative arc/last $X$ turns vs. summarizing the entire conversation history) to prevent the character from losing focus or drifting into unrelated historical details.
 
+### E. VLM "Forward to LLM" Pipeline
+* **Path:** [chat.ts](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/stores/chat.ts)
+* **Default Context:** When forwarding is enabled, user message history and the image are sent to the VLM to produce a description.
+* **Caching Strategy:** Will benefit from prefix cache alignment by placing the conversation history cleanly at the prefix so that repeated images/messages with identical history prefix cache hits are maximized, and volatile prompt-shims or instructions are kept at the tail.
+
 ---
 
 ## 3. Global LLM Performance Configurations

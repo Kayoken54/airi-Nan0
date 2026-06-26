@@ -19,9 +19,34 @@ const {
   providerModels,
   isLoadingActiveProviderModels,
   activeProviderModelError,
+  strategy,
 } = storeToRefs(visionStore)
 
-const currentStrategy = ref('direct')
+const activePromptShim = computed({
+  get() {
+    return strategy.value === 'forward'
+      ? visionStore.promptShimForward
+      : visionStore.promptShimDirect
+  },
+  set(value: string) {
+    if (strategy.value === 'forward') {
+      visionStore.promptShimForward = value
+    }
+    else {
+      visionStore.promptShimDirect = value
+    }
+  },
+})
+
+function resetActivePromptShim() {
+  if (strategy.value === 'forward') {
+    visionStore.promptShimForward = 'You are an objective image analysis model. Analyze the provided image in the context of the conversation and the user\'s latest message. Describe the key visual details, subjects, actions, colors, text, or any specific elements mentioned or asked about by the user, so that the primary chat LLM can respond appropriately. Keep your analysis descriptive and objective, and avoid any conversational filler.'
+  }
+  else {
+    visionStore.promptShimDirect = 'You are currently acting as a vision-capable stand-in for the main character. Keep your responses natural, in-character, and avoid any meta-commentary about "analyzing" or "describing" the image for the user. Just react to what you see as the character would.'
+  }
+}
+
 const customModelName = ref('')
 const modelSearchQuery = ref('')
 
@@ -320,7 +345,7 @@ function handleDeleteProvider(providerId: string) {
         <div flex="~ col gap-2" class="max-h-[300px] overflow-y-auto pr-2" max-w-full pb-2>
           <RadioCardSimple
             id="strategy-direct"
-            v-model="currentStrategy"
+            v-model="strategy"
             name="strategy"
             value="direct"
             title="Direct Response"
@@ -329,23 +354,13 @@ function handleDeleteProvider(providerId: string) {
           />
           <RadioCardSimple
             id="strategy-forward"
-            v-model="currentStrategy"
+            v-model="strategy"
             name="strategy"
             value="forward"
             title="Forward to LLM"
             description="Forward the description of the image to your consciousness model"
             class="min-w-65"
-            :disabled="true"
-          >
-            <template #title>
-              <div flex="~ row items-center gap-2">
-                <span>Forward to LLM</span>
-                <span class="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-500 font-bold tracking-wider uppercase dark:bg-neutral-800 dark:text-neutral-400">
-                  Planned
-                </span>
-              </div>
-            </template>
-          </RadioCardSimple>
+          />
         </div>
       </div>
     </div>
@@ -364,14 +379,14 @@ function handleDeleteProvider(providerId: string) {
 
         <div class="space-y-2">
           <textarea
-            v-model="visionStore.promptShim"
+            v-model="activePromptShim"
             class="min-h-24 w-full border border-neutral-300 rounded-lg bg-white p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900/50"
             placeholder="Enter hidden vision directives..."
           />
           <div class="flex justify-end">
             <button
               class="text-xs text-neutral-400 transition-colors hover:text-primary-500"
-              @click="visionStore.promptShim = 'You are currently acting as a vision-capable stand-in for the main character. Keep your responses natural, in-character, and avoid any meta-commentary about \'analyzing\' or \'describing\' the image for the user. Just react to what you see as the character would.'"
+              @click="resetActivePromptShim"
             >
               Reset to default
             </button>

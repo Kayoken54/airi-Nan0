@@ -15,12 +15,17 @@ export const useVisionStore = defineStore('vision', () => {
   const chatOrchestrator = useChatOrchestratorStore()
 
   // State
+  const strategy = useLocalStorageManualReset<'direct' | 'forward'>('settings/vision/strategy', 'direct')
   const activeProvider = useLocalStorageManualReset<string>('settings/vision/active-provider', '')
   const activeModel = useLocalStorageManualReset<string>('settings/vision/active-model', '')
   const contextWindow = useLocalStorageManualReset<number>('settings/vision/context-window', 1) // Number of images to include in context
-  const promptShim = useLocalStorageManualReset<string>(
+  const promptShimDirect = useLocalStorageManualReset<string>(
     'settings/vision/prompt-shim',
     'You are currently acting as a vision-capable stand-in for the main character. Keep your responses natural, in-character, and avoid any meta-commentary about "analyzing" or "describing" the image for the user. Just react to what you see as the character would.',
+  )
+  const promptShimForward = useLocalStorageManualReset<string>(
+    'settings/vision/prompt-shim-forward',
+    'You are an objective image analysis model. Analyze the provided image in the context of the conversation and the user\'s latest message. Describe the key visual details, subjects, actions, colors, text, or any specific elements mentioned or asked about by the user, so that the primary chat LLM can respond appropriately. Keep your analysis descriptive and objective, and avoid any conversational filler.',
   )
 
   // Witness (Proactive Ambient Vision)
@@ -263,10 +268,12 @@ export const useVisionStore = defineStore('vision', () => {
   return {
     // State
     configured,
+    strategy,
     activeProvider,
     activeModel,
     contextWindow,
-    promptShim,
+    promptShimDirect,
+    promptShimForward,
 
     // Witness
     isWitnessEnabled,
