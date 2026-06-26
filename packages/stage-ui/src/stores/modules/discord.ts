@@ -1007,11 +1007,11 @@ export const useDiscordStore = defineStore('discord', () => {
         // Fetch the Director's reasoning to include in the caption (if enabled)
         const artistryStore = useAutonomousArtistryStore()
         const cardStore = useAiriCardStore()
-        const monitorEnabled = (cardStore.activeCard?.extensions?.airi?.artistry as any)?.autonomousMonitorEnabled ?? true
+        const monitorDiscordEnabled = (cardStore.activeCard?.extensions?.airi?.artistry as any)?.autonomousMonitorDiscordEnabled ?? false
         const recentNote = [...artistryStore.directorNotes].reverse().find(n => n.title === entry.title || n.prompt === entry.prompt)
 
         let caption = `🎨 **New Visual Manifestation: ${entry.title}**`
-        if (monitorEnabled && recentNote && recentNote.content) {
+        if (monitorDiscordEnabled && recentNote && recentNote.content) {
           caption += `\n\n🎬 **Director's Note (${recentNote.intensity}/100):** *${recentNote.content}*`
         }
 

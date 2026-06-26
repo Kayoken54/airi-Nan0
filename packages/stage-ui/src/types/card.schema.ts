@@ -143,6 +143,7 @@ const AiriExtensionSchema = looseObject({
     autonomousThreshold: optional(number()),
     autonomousHistoryDepth: optional(number()),
     autonomousMonitorEnabled: optional(boolean()),
+    autonomousMonitorDiscordEnabled: optional(boolean()),
   })),
   agents: optional(record(string(), looseObject({
     prompt: string(),

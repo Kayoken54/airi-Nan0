@@ -126,6 +126,7 @@ const selectedArtistryAutonomousEnabled = ref<boolean>(false)
 const selectedArtistryAutonomousThreshold = ref<number>(70)
 const selectedArtistryAutonomousTarget = ref<'user' | 'assistant'>('user')
 const selectedArtistryAutonomousMonitorEnabled = ref<boolean>(true)
+const selectedArtistryAutonomousMonitorDiscordEnabled = ref<boolean>(false)
 const selectedArtistryAutonomousHistoryDepth = ref<number>(3)
 const selectedArtistrySpawnMode = ref<'bg' | 'widget' | 'inline' | 'bg_widget'>('bg_widget')
 const selectedArtistryConfigStr = ref<string>('{\n  \n}')
@@ -829,6 +830,7 @@ async function saveCard(card: Card): Promise<boolean> {
     autonomousThreshold: selectedArtistryAutonomousThreshold.value,
     autonomousTarget: selectedArtistryAutonomousTarget.value,
     autonomousMonitorEnabled: selectedArtistryAutonomousMonitorEnabled.value,
+    autonomousMonitorDiscordEnabled: selectedArtistryAutonomousMonitorDiscordEnabled.value,
     autonomousHistoryDepth: selectedArtistryAutonomousHistoryDepth.value,
     options: artistryConfig,
   }
@@ -870,6 +872,7 @@ function initializeCard(): Card {
   selectedArtistryAutonomousEnabled.value = airiExt?.artistry?.autonomousEnabled ?? false
   selectedArtistryAutonomousThreshold.value = airiExt?.artistry?.autonomousThreshold ?? 70
   selectedArtistryAutonomousMonitorEnabled.value = airiExt?.artistry?.autonomousMonitorEnabled ?? true
+  selectedArtistryAutonomousMonitorDiscordEnabled.value = airiExt?.artistry?.autonomousMonitorDiscordEnabled ?? false
   selectedArtistryAutonomousHistoryDepth.value = airiExt?.artistry?.autonomousHistoryDepth ?? 3
   selectedArtistryAutonomousTarget.value = airiExt?.artistry?.autonomousTarget ?? 'user'
   selectedArtistrySpawnMode.value = airiExt?.artistry?.spawnMode ?? 'bg_widget'
@@ -1286,6 +1289,7 @@ function handleGeneratorSave(newValue: string) {
             v-model:selected-artistry-autonomous-enabled="selectedArtistryAutonomousEnabled"
             v-model:selected-artistry-autonomous-threshold="selectedArtistryAutonomousThreshold"
             v-model:selected-artistry-autonomous-monitor-enabled="selectedArtistryAutonomousMonitorEnabled"
+            v-model:selected-artistry-autonomous-monitor-discord-enabled="selectedArtistryAutonomousMonitorDiscordEnabled"
             v-model:selected-artistry-autonomous-history-depth="selectedArtistryAutonomousHistoryDepth"
             v-model:selected-artistry-autonomous-target="selectedArtistryAutonomousTarget"
             v-model:selected-artistry-spawn-mode="selectedArtistrySpawnMode"

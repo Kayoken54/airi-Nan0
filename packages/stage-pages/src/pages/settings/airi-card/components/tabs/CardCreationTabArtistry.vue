@@ -21,6 +21,7 @@ const selectedArtistryWidgetInstruction = defineModel<string>('selectedArtistryW
 const selectedArtistryAutonomousEnabled = defineModel<boolean>('selectedArtistryAutonomousEnabled', { required: true })
 const selectedArtistryAutonomousThreshold = defineModel<number>('selectedArtistryAutonomousThreshold', { required: true })
 const selectedArtistryAutonomousMonitorEnabled = defineModel<boolean>('selectedArtistryAutonomousMonitorEnabled', { required: false, default: true })
+const selectedArtistryAutonomousMonitorDiscordEnabled = defineModel<boolean>('selectedArtistryAutonomousMonitorDiscordEnabled', { required: false, default: false })
 const selectedArtistryAutonomousTarget = defineModel<'user' | 'assistant'>('selectedArtistryAutonomousTarget', { required: true })
 const selectedArtistryAutonomousHistoryDepth = defineModel<number>('selectedArtistryAutonomousHistoryDepth', { required: false, default: 3 })
 const selectedArtistrySpawnMode = defineModel<'bg' | 'widget' | 'inline' | 'bg_widget'>('selectedArtistrySpawnMode', { required: true })
@@ -214,6 +215,34 @@ function applyTokenTemplate() {
               :class="[
                 'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
                 selectedArtistryAutonomousMonitorEnabled ? 'translate-x-4' : 'translate-x-0',
+              ]"
+            />
+          </button>
+        </div>
+
+        <!-- Director's Monitor (Discord) Toggle -->
+        <div :class="['flex', 'items-center', 'justify-between', 'pt-2']">
+          <div :class="['flex', 'flex-col']">
+            <label :class="['text-[10px]', 'font-bold', 'text-neutral-500', 'uppercase', 'tracking-wider']">
+              Director's Monitor (Discord)
+            </label>
+            <span :class="['text-[10px]', 'text-neutral-400', 'mt-1']">
+              Show reasoning notes inside Discord image captions.
+            </span>
+          </div>
+          <button
+            type="button"
+            :class="[
+              'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+              selectedArtistryAutonomousMonitorDiscordEnabled ? 'bg-primary-600' : 'bg-neutral-200 dark:bg-neutral-700',
+            ]"
+            @click="selectedArtistryAutonomousMonitorDiscordEnabled = !selectedArtistryAutonomousMonitorDiscordEnabled"
+          >
+            <span
+              aria-hidden="true"
+              :class="[
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                selectedArtistryAutonomousMonitorDiscordEnabled ? 'translate-x-4' : 'translate-x-0',
               ]"
             />
           </button>

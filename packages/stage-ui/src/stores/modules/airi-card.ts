@@ -170,6 +170,7 @@ export interface AiriExtension {
     autonomousThreshold?: number
     autonomousTarget?: 'user' | 'assistant'
     autonomousMonitorEnabled?: boolean
+    autonomousMonitorDiscordEnabled?: boolean
     autonomousHistoryDepth?: number
   }
 
@@ -835,6 +836,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
         autonomousThreshold: existingExtension?.artistry?.autonomousThreshold ?? 70,
         autonomousTarget: existingExtension?.artistry?.autonomousTarget ?? 'user',
         autonomousMonitorEnabled: existingExtension?.artistry?.autonomousMonitorEnabled ?? true,
+        autonomousMonitorDiscordEnabled: existingExtension?.artistry?.autonomousMonitorDiscordEnabled ?? false,
         autonomousHistoryDepth: existingExtension?.artistry?.autonomousHistoryDepth ?? 3,
       },
       generation: {
