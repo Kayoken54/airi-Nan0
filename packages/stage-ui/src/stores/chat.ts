@@ -431,6 +431,28 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         })
       }
 
+      // 4. Grounding Visual Scene State (Director's Scratchpad) Injection
+      if (activeCard.value?.extensions?.airi?.groundingDirectorScratchpadEnabled) {
+        try {
+          const { directorNotesRepo } = await import('../database/repos/director-notes.repo')
+          const notes = await directorNotesRepo.getNotes(sessionId)
+          if (notes && notes.length > 0) {
+            const sortedNotes = [...notes].sort((a, b) => b.createdAt - a.createdAt)
+            const lastNoteWithScratchpad = sortedNotes.find(n => !!n.scratchpad)
+            if (lastNoteWithScratchpad && lastNoteWithScratchpad.scratchpad) {
+              groundingMessages.push({
+                role: 'system',
+                content: `[VISUAL STATE BOARD]\nThe following telemetry describes your current visual and spatial context, managed by the Director. Use this description to remain verbally aligned with your current surroundings, outfit, or held items. Keep references natural and contextual:\n---\n${lastNoteWithScratchpad.scratchpad}`,
+              })
+              chatLog('Grounding Director Scratchpad injected into inference step.')
+            }
+          }
+        }
+        catch (err) {
+          console.error('[ChatStore] Failed to query director notes during scratchpad grounding:', err)
+        }
+      }
+
       // Splice them into the message list!
       if (groundingMessages.length > 0) {
         if (options.triggerOnly) {

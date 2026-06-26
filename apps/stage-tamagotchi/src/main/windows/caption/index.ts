@@ -26,6 +26,12 @@ import { createReusableWindow } from '../../libs/electron/window-manager'
 import { mapForBreakpoints, resolutionBreakpoints, widthFrom } from '../shared/display'
 import { setupBaseWindowElectronInvokes, transparentWindowConfig } from '../shared/window'
 
+let isCaptionVisible = false
+
+export function setCaptionVisibleState(visible: boolean) {
+  isCaptionVisible = visible
+}
+
 const captionConfigSchema = object({
   isFollowing: boolean(),
   matrices: record(string(), object({
@@ -164,7 +170,11 @@ function createCaptionWindow(options?: BrowserWindowConstructorOptions) {
     window.setWindowButtonVisibility(false)
   }
 
-  window.on('ready-to-show', () => window.show())
+  window.on('ready-to-show', () => {
+    if (isCaptionVisible) {
+      window.show()
+    }
+  })
   window.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -504,6 +514,7 @@ export function setupCaptionWindowManager(params: {
     window.on('resize', persistBounds)
     window.on('move', persistBounds)
     window.on('show', () => {
+      isCaptionVisible = true
       emitVisibilityChanged()
       syncGlobalConfig()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Caption window shown, broadcasting state')
@@ -512,6 +523,7 @@ export function setupCaptionWindowManager(params: {
       }
     })
     window.on('hide', () => {
+      isCaptionVisible = false
       emitVisibilityChanged()
       syncGlobalConfig()
       console.log('[@proj-airi/stage-tamagotchi] [Main] Caption window hidden, broadcasting state')
@@ -617,9 +629,11 @@ export function setupCaptionWindowManager(params: {
   async function toggleVisibility(enabled?: boolean) {
     if (enabled === undefined) {
       if (isVisible()) {
+        setCaptionVisibleState(false)
         currentWindow?.hide()
       }
       else {
+        setCaptionVisibleState(true)
         const window = await reusable.getWindow()
         if (window.isMinimized()) {
           window.restore()
@@ -631,6 +645,7 @@ export function setupCaptionWindowManager(params: {
     }
 
     if (enabled) {
+      setCaptionVisibleState(true)
       const window = await reusable.getWindow()
       if (window.isMinimized()) {
         window.restore()
@@ -639,6 +654,7 @@ export function setupCaptionWindowManager(params: {
       window.focus()
     }
     else {
+      setCaptionVisibleState(false)
       currentWindow?.hide()
     }
   }

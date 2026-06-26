@@ -101,7 +101,7 @@ const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
 const settingsStore = useSettings()
 const positioningStore = usePositioningStore()
 const controlStripStore = useSettingsControlStrip()
-const { stageEnabled, captionOpen, collapsed } = storeToRefs(controlStripStore)
+const { stageEnabled, captionOpen, collapsed, chatOpen } = storeToRefs(controlStripStore)
 const controlsIslandStore = useSettingsControlsIsland()
 const { fadeOnHoverEnabled } = storeToRefs(controlsIslandStore)
 const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
@@ -114,6 +114,7 @@ const vrmIdleAnimation = toRef(modelStore as any, 'vrmIdleAnimation')
 
 let lastIpcCaptionOpen: boolean | null = null
 let lastIpcStageEnabled: boolean | null = null
+let lastIpcChatOpen: boolean | null = null
 
 watch(stageEnabled, (val) => {
   if (val === lastIpcStageEnabled)
@@ -125,6 +126,12 @@ watch(captionOpen, (val) => {
   if (val === lastIpcCaptionOpen)
     return
   toggleCaptionVisibility(val)
+}, { immediate: true })
+
+watch(chatOpen, (val) => {
+  if (val === lastIpcChatOpen)
+    return
+  openChat(val)
 }, { immediate: true })
 
 // Treat stage and caption as partners when captionFollowStage is enabled
@@ -765,6 +772,7 @@ onMounted(async () => {
       settingsAudioDeviceStore.enabled = !settingsAudioDeviceStore.enabled
     })
     window.electron.ipcRenderer.on('chat-window-state', (_, isOpen: boolean) => {
+      lastIpcChatOpen = isOpen
       controlStripStore.chatOpen = isOpen
     })
     window.electron.ipcRenderer.on('caption-window-state', (_, isOpen: boolean) => {

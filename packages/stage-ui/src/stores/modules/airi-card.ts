@@ -192,6 +192,7 @@ export interface AiriExtension {
   groundingEnabled?: boolean
   groundingMemoryEnabled?: boolean
   groundingTopicsEnabled?: boolean
+  groundingDirectorScratchpadEnabled?: boolean
   recentTopics?: Array<{ topic: string, weight: number }>
   visual_assets?: Record<string, {
     description: string
@@ -531,6 +532,27 @@ export const useAiriCardStore = defineStore('airi-card', () => {
         console.error('[AiriCard] Failed to compute initial recent topics:', err)
       })
     }
+  }
+
+  const toggleGroundingDirectorScratchpad = async (id: string) => {
+    await until(cardsLoading).toBe(false)
+    const card = cards.value.get(id)
+    if (!card) {
+      console.warn('[AiriCard] toggleGroundingDirectorScratchpad: card not found for id', id)
+      return
+    }
+
+    const current = card.extensions?.airi?.groundingDirectorScratchpadEnabled ?? false
+    console.log('[AiriCard] toggleGroundingDirectorScratchpad:', { id, current, next: !current })
+    updateCard(id, {
+      extensions: {
+        ...card.extensions,
+        airi: {
+          ...card.extensions?.airi,
+          groundingDirectorScratchpadEnabled: !current,
+        },
+      },
+    } as any)
   }
 
   const setAutonomousArtistry = async (id: string, enabled: boolean) => {
@@ -1171,6 +1193,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     toggleGrounding,
     toggleGroundingMemory,
     toggleGroundingTopics,
+    toggleGroundingDirectorScratchpad,
     setAutonomousArtistry,
     getCardDisplayModelId,
     resetState,

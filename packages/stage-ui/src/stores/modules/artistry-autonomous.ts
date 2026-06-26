@@ -1083,7 +1083,7 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
       // Direct match on title or prompt (with fuzzy prompt matching for modifiers)
       if (title && n.title === title)
         return true
-      if (prompt && n.prompt && (n.prompt === prompt || n.prompt.startsWith(prompt) || prompt.startsWith(n.prompt)))
+      if (prompt && n.prompt && (n.prompt === prompt || n.prompt.includes(prompt) || prompt.includes(n.prompt)))
         return true
       return false
     })

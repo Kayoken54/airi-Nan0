@@ -77,6 +77,16 @@ const proactivityStore = useProactivityStore()
 const isGroundingPreviewExpanded = ref(false)
 const isMemoriesPreviewExpanded = ref(true)
 const isTopicsPreviewExpanded = ref(true)
+const isScratchpadPreviewExpanded = ref(true)
+const artistryStore = useAutonomousArtistryStore()
+
+const latestDirectorScratchpad = computed(() => {
+  if (!artistryStore.directorNotes || artistryStore.directorNotes.length === 0)
+    return ''
+  const sortedNotes = [...artistryStore.directorNotes].sort((a, b) => b.createdAt - a.createdAt)
+  const lastNoteWithScratchpad = sortedNotes.find(n => !!n.scratchpad)
+  return lastNoteWithScratchpad?.scratchpad || ''
+})
 
 const groundedMemories = ref<any[]>([])
 
@@ -1069,7 +1079,7 @@ function jumpToMessage(messageId: string) {
     </div>
     <!-- Ephemeral Grounding Preview Block -->
     <div
-      v-if="activeCard?.extensions?.airi?.groundingEnabled || (activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0) || (activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length)"
+      v-if="activeCard?.extensions?.airi?.groundingEnabled || (activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0) || (activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length) || (activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled && latestDirectorScratchpad)"
       class="grounding-preview-panel relative mx-2 flex flex-col border border-amber-500/20 rounded-lg bg-black/40 p-2 text-sm text-amber-200 font-mono shadow-[0_0_15px_rgba(245,158,11,0.05)] backdrop-blur-md transition-colors hover:bg-black/60"
     >
       <div class="pointer-events-none absolute inset-0 bg-[length:100%_4px] bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.1)_50%)] opacity-20" />
@@ -1084,6 +1094,7 @@ function jumpToMessage(messageId: string) {
           <span v-if="activeCard?.extensions?.airi?.groundingEnabled" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Sensors Active</span>
           <span v-if="activeCard?.extensions?.airi?.groundingMemoryEnabled && groundedMemories.length > 0" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Grounded Memories ({{ groundedMemories.length }})</span>
           <span v-if="activeCard?.extensions?.airi?.groundingTopicsEnabled && activeCard?.extensions?.airi?.recentTopics?.length" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Recent Topics ({{ activeCard.extensions.airi.recentTopics.length }})</span>
+          <span v-if="activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled && latestDirectorScratchpad" class="border border-amber-500/25 rounded bg-black/30 px-1.5 py-0.2 text-[8px] text-amber-400 font-bold font-mono">Visual Scene Active</span>
         </div>
         <div class="flex items-center gap-1.5">
           <button
@@ -1109,6 +1120,14 @@ function jumpToMessage(messageId: string) {
           >
             <span>Topics</span>
             <span class="text-amber-500 transition-transform" :class="isTopicsPreviewExpanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
+          </button>
+          <button
+            v-if="activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled && latestDirectorScratchpad"
+            class="flex items-center gap-1 border border-amber-500/25 rounded bg-black/50 px-2 py-0.5 text-xs text-amber-400 font-bold font-mono transition-colors hover:bg-black/80"
+            @click="isScratchpadPreviewExpanded = !isScratchpadPreviewExpanded"
+          >
+            <span>Visual Scene</span>
+            <span class="text-amber-500 transition-transform" :class="isScratchpadPreviewExpanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" />
           </button>
         </div>
       </div>
@@ -1169,6 +1188,17 @@ function jumpToMessage(messageId: string) {
             <span class="text-[8px] text-amber-500 font-bold">({{ item.weight.toFixed(1) }})</span>
           </div>
         </div>
+      </div>
+
+      <!-- Visual Scene Scratchpad Section -->
+      <div
+        v-if="activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled && latestDirectorScratchpad"
+        :class="[
+          'z-10 animate-fade-in animate-duration-200',
+          isScratchpadPreviewExpanded ? 'mt-2 border-t border-amber-500/10 pt-2' : '',
+        ]"
+      >
+        <pre v-show="isScratchpadPreviewExpanded" class="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-amber-950/20 p-2 text-[10px] text-amber-300/90 leading-normal font-mono scrollbar-thin">{{ latestDirectorScratchpad }}</pre>
       </div>
     </div>
 

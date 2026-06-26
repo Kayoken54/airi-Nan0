@@ -42,6 +42,12 @@ function handleToggleGroundingTopics() {
     airiCardStore.toggleGroundingTopics(activeCardId.value)
   }
 }
+
+function handleToggleGroundingDirectorScratchpad() {
+  if (activeCardId.value) {
+    airiCardStore.toggleGroundingDirectorScratchpad(activeCardId.value)
+  }
+}
 </script>
 
 <template>
@@ -58,7 +64,7 @@ function handleToggleGroundingTopics() {
         v-else
         class="max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md p-2 outline-none transition-colors transition-transform active:scale-95"
         :class="[
-          activeCard?.extensions?.airi?.groundingEnabled || activeCard?.extensions?.airi?.groundingMemoryEnabled || activeCard?.extensions?.airi?.groundingTopicsEnabled
+          activeCard?.extensions?.airi?.groundingEnabled || activeCard?.extensions?.airi?.groundingMemoryEnabled || activeCard?.extensions?.airi?.groundingTopicsEnabled || activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled
             ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
             : 'bg-neutral-100 text-neutral-500 hover:text-primary-500 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:text-primary-400',
         ]"
@@ -67,7 +73,7 @@ function handleToggleGroundingTopics() {
       >
         <div
           :class="[
-            activeCard?.extensions?.airi?.groundingEnabled || activeCard?.extensions?.airi?.groundingMemoryEnabled || activeCard?.extensions?.airi?.groundingTopicsEnabled
+            activeCard?.extensions?.airi?.groundingEnabled || activeCard?.extensions?.airi?.groundingMemoryEnabled || activeCard?.extensions?.airi?.groundingTopicsEnabled || activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled
               ? 'i-solar:cpu-bolt-bold-duotone'
               : 'i-solar:cpu-bold-duotone',
           ]"
@@ -196,6 +202,36 @@ function handleToggleGroundingTopics() {
             >
               <span
                 :class="activeCard?.extensions?.airi?.groundingTopicsEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+                class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              />
+            </div>
+          </div>
+
+          <!-- Toggle 5: Visual Scene State (Director's Scratchpad) -->
+          <div
+            class="w-full flex cursor-pointer items-center justify-between rounded-xl p-2 transition-all hover:bg-neutral-50 dark:hover:bg-neutral-800/40"
+            @click="handleToggleGroundingDirectorScratchpad"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="text-lg" :class="[
+                  activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled
+                    ? 'text-amber-500 i-solar:gallery-bold-duotone'
+                    : 'text-neutral-400 dark:text-neutral-500 i-solar:gallery-linear',
+                ]"
+              />
+              <div class="flex flex-col text-left">
+                <span class="text-xs text-neutral-800 font-semibold dark:text-neutral-200">Visual Scene State</span>
+                <span class="text-[9px] text-neutral-400">Attach Director's latest scratchpad</span>
+              </div>
+            </div>
+            <!-- Switch UI -->
+            <div
+              :class="activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+              class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+            >
+              <span
+                :class="activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
                 class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
               />
             </div>

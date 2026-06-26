@@ -104,6 +104,7 @@ const AiriExtensionSchema = looseObject({
   groundingEnabled: optional(boolean()),
   groundingMemoryEnabled: optional(boolean()),
   groundingTopicsEnabled: optional(boolean()),
+  groundingDirectorScratchpadEnabled: optional(boolean()),
   recentTopics: optional(array(looseObject({
     topic: string(),
     weight: number(),

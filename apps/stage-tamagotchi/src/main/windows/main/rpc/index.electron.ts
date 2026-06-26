@@ -28,6 +28,7 @@ import { createOnboardingService } from '../../../services/airi/onboarding'
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { createAutoUpdaterService } from '../../../services/electron'
 import { createDockModeService } from '../../../services/electron/dock-mode'
+import { setChatVisibleState } from '../../chat'
 import { toggleWindowShow } from '../../shared'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
 
@@ -65,15 +66,19 @@ export async function setupMainWindowElectronInvokes(params: {
     console.info(`[Main Process] [Chat Window] openChat handler called. enabled: ${enabled}, window exists: ${!!win}`)
     if (win && !win.isDestroyed()) {
       if (enabled === undefined) {
+        const nextState = !win.isVisible()
+        setChatVisibleState(nextState)
         toggleWindowShow(win)
       }
       else if (enabled) {
         console.info('[Main Process] [Chat Window] Showing chat window')
+        setChatVisibleState(true)
         win.show()
         win.focus()
       }
       else {
         console.info('[Main Process] [Chat Window] Hiding chat window')
+        setChatVisibleState(false)
         win.hide()
       }
     }

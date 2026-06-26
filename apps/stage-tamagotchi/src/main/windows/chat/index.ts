@@ -17,6 +17,12 @@ import { createReusableWindow } from '../../libs/electron/window-manager'
 import { ensureWindowInVisibleBounds } from '../shared/display'
 import { setupChatWindowElectronInvokes } from './rpc/index.electron'
 
+let isChatVisible = false
+
+export function setChatVisibleState(visible: boolean) {
+  isChatVisible = visible
+}
+
 export function setupChatWindowReusableFunc(params: {
   widgetsManager: WidgetsWindowManager
   serverChannel: ServerChannel
@@ -80,38 +86,58 @@ export function setupChatWindowReusableFunc(params: {
 
     window.on('ready-to-show', () => {
       restoreBounds()
-      console.log('[Main Process] [Chat Window] Event: "ready-to-show" triggered. Displaying window...')
-      window.show()
+      console.log(`[Main Process] [Chat Window] Event: "ready-to-show" triggered. isChatVisible: ${isChatVisible}`)
+      if (isChatVisible) {
+        window.show()
+      }
       setTimeout(() => restoreBounds(), 500)
     })
     window.on('show', () => {
       console.log('[Main Process] [Chat Window] Event: "show" triggered.')
+      isChatVisible = true
       const allWins = BrowserWindow.getAllWindows()
       const mainWin = allWins.find(w => (w as any).__is_main_window === true)
       console.log(`[Main Process] [Chat Window] Searching for main window. Total windows: ${allWins.length}, Main window found: ${!!mainWin}`)
-      if (mainWin && !mainWin.isDestroyed()) {
-        console.log('[Main Process] [Chat Window] Sending "chat-window-state" -> true to main window webContents')
-        mainWin.webContents.send('chat-window-state', true)
+      if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) {
+        try {
+          console.log('[Main Process] [Chat Window] Sending "chat-window-state" -> true to main window webContents')
+          mainWin.webContents.send('chat-window-state', true)
+        }
+        catch (e) {
+          console.error('[Main Process] Failed to send chat-window-state show event:', e)
+        }
       }
     })
     window.on('hide', () => {
       console.log('[Main Process] [Chat Window] Event: "hide" triggered.')
+      isChatVisible = false
       const allWins = BrowserWindow.getAllWindows()
       const mainWin = allWins.find(w => (w as any).__is_main_window === true)
       console.log(`[Main Process] [Chat Window] Searching for main window. Total windows: ${allWins.length}, Main window found: ${!!mainWin}`)
-      if (mainWin && !mainWin.isDestroyed()) {
-        console.log('[Main Process] [Chat Window] Sending "chat-window-state" -> false to main window webContents')
-        mainWin.webContents.send('chat-window-state', false)
+      if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) {
+        try {
+          console.log('[Main Process] [Chat Window] Sending "chat-window-state" -> false to main window webContents')
+          mainWin.webContents.send('chat-window-state', false)
+        }
+        catch (e) {
+          console.error('[Main Process] Failed to send chat-window-state hide event:', e)
+        }
       }
     })
     window.on('closed', () => {
       console.log('[Main Process] [Chat Window] Event: "closed" triggered.')
+      isChatVisible = false
       const allWins = BrowserWindow.getAllWindows()
       const mainWin = allWins.find(w => (w as any).__is_main_window === true)
       console.log(`[Main Process] [Chat Window] Searching for main window. Total windows: ${allWins.length}, Main window found: ${!!mainWin}`)
-      if (mainWin && !mainWin.isDestroyed()) {
-        console.log('[Main Process] [Chat Window] Sending "chat-window-state" -> false to main window webContents')
-        mainWin.webContents.send('chat-window-state', false)
+      if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) {
+        try {
+          console.log('[Main Process] [Chat Window] Sending "chat-window-state" -> false to main window webContents')
+          mainWin.webContents.send('chat-window-state', false)
+        }
+        catch (e) {
+          console.error('[Main Process] Failed to send chat-window-state closed event:', e)
+        }
       }
     })
 
