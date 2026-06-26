@@ -819,6 +819,9 @@ export const useDiscordStore = defineStore('discord', () => {
             artModelName = wf.name
         }
 
+        const vlmProvider = visionStore.activeProvider || 'None'
+        const vlmModel = visionStore.activeModel || 'None'
+
         const visionEnabled = visionStore.isWitnessEnabled
         const directorEnabled = artistryExt?.autonomousEnabled || false
         const liveActive = liveSessionStore.isActive
@@ -827,8 +830,10 @@ export const useDiscordStore = defineStore('discord', () => {
 -------------------------
 **Active Character:** ${activeCardName}
 **Conversation:** ${turns} turns in current session
+**Chat Mode:** ${chatMode.value === 'followup' ? 'Follow-up' : chatMode.value.charAt(0).toUpperCase() + chatMode.value.slice(1)}
 
 **🧠 Brains (LLM):** ${llmProvider} / ${llmModel}
+**👁️ Vision (VLM):** ${vlmProvider} / ${vlmModel}
 **🗣️ Voice (TTS):** ${ttsProvider} / ${ttsVoice}
 **🎨 Artistry:** ${artProvider} / ${artProvider === 'comfyui' ? 'Workflow' : 'Model'}: \`${artModelName}\`
 

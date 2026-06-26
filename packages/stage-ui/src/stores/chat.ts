@@ -215,13 +215,14 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     sessionId: string,
   ) {
     const isSentinel = rawSendingMessage === 'INVOKE_CHARACTER_FIRST'
-    const sendingMessage = isSentinel ? '' : rawSendingMessage
+    let sendingMessage = isSentinel ? '' : rawSendingMessage
+    let finalAttachments = options.attachments ? [...options.attachments] : []
     chatLog('performSend starting with message:', rawSendingMessage)
 
     let bridgedSteps = 0
     let needsBridgedFollowUp = false
 
-    if (!options.triggerOnly && !sendingMessage && !options.attachments?.length)
+    if (!options.triggerOnly && !sendingMessage && !finalAttachments.length)
       return
 
     chatSession.ensureSession(sessionId)
@@ -230,6 +231,82 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     const compactionStore = useCompactionStore()
     if (compactionStore.shouldCompact(sessionId)) {
       await compactionStore.executeCompaction(sessionId)
+    }
+
+    // Check if it's a VLM turn and Forward mode is enabled
+    const hasImageAttachment = finalAttachments.some(a => a.type === 'image')
+    const isVlmForwardTurn = !!(hasImageAttachment && visionStore.activeProvider && visionStore.activeModel && visionStore.strategy === 'forward')
+
+    if (isVlmForwardTurn) {
+      chatLog('[Vision] VLM Forward mode activated. Invoking VLM first to describe image.', {
+        provider: visionStore.activeProvider,
+        model: visionStore.activeModel,
+      })
+
+      try {
+        const vlmProvider = await providersStore.getProviderInstance(visionStore.activeProvider) as any
+
+        // Construct trimmed chat history message array for VLM context
+        const currentMessages = chatSession.getSessionMessages(sessionId)
+        const systemMessage = currentMessages.find(m => m.role === 'system')
+        const historyWithoutSystem = currentMessages.filter(m => m.role !== 'system')
+        const trimmedHistory = historyWithoutSystem.slice(-6)
+
+        // Compile VLM user message parts: user prompt shim text + optional message + image(s)
+        const vlmUserContentParts: CommonContentPart[] = [
+          { type: 'text', text: visionStore.promptShimForward || 'Describe the image.' },
+        ]
+        if (sendingMessage) {
+          vlmUserContentParts.push({ type: 'text', text: sendingMessage })
+        }
+        for (const attachment of finalAttachments) {
+          if (attachment.type === 'image') {
+            vlmUserContentParts.push({
+              type: 'image_url' as const,
+              image_url: {
+                url: `data:${attachment.mimeType};base64,${attachment.data}`,
+              },
+            })
+          }
+        }
+
+        const vlmUserMessage = {
+          role: 'user' as const,
+          content: vlmUserContentParts,
+        }
+
+        const vlmMessages = systemMessage
+          ? [systemMessage, ...trimmedHistory, vlmUserMessage]
+          : [...trimmedHistory, vlmUserMessage]
+
+        chatLog('[Vision] Sending request to VLM model...', visionStore.activeModel)
+        const vlmResponse = await llmStore.generate(
+          visionStore.activeModel,
+          vlmProvider,
+          vlmMessages as any,
+          { vision: true },
+        )
+
+        const visionOutput = vlmResponse.text || ''
+        chatLog('[Vision] Received VLM analysis:', visionOutput)
+
+        // Prepend the analysis into the main message content
+        const formattedText = `[IMAGE ANALYSIS: ${visionOutput}]`
+        sendingMessage = sendingMessage
+          ? `${formattedText}\n\n${sendingMessage}`
+          : formattedText
+
+        // Strip the image attachments so the primary LLM turn is text-only
+        finalAttachments = finalAttachments.filter(a => a.type !== 'image')
+      }
+      catch (err) {
+        console.error('[Vision] VLM analysis failed during forward hop:', err)
+        const formattedText = `[IMAGE ANALYSIS: Vision analysis failed. ${err instanceof Error ? err.message : String(err)}]`
+        sendingMessage = sendingMessage
+          ? `${formattedText}\n\n${sendingMessage}`
+          : formattedText
+        finalAttachments = finalAttachments.filter(a => a.type !== 'image')
+      }
     }
 
     // Inject current datetime context before composing the message
@@ -297,7 +374,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       let effectiveConfig = options.providerConfig
       let effectiveTools = options.tools || toolsResolver.value
 
-      const isVlmTurn = !!(options.attachments && options.attachments.some(a => a.type === 'image') && visionStore.activeProvider && visionStore.activeModel)
+      const isVlmTurn = !!(finalAttachments && finalAttachments.some(a => a.type === 'image') && visionStore.activeProvider && visionStore.activeModel)
       let promptShimText = ''
       if (isVlmTurn) {
         chatLog('Vision handover activated. Replacing main LLM with Vision VLM.', {
@@ -308,7 +385,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         effectiveProviderId = visionStore.activeProvider
         effectiveProvider = await providersStore.getProviderInstance(visionStore.activeProvider)
         effectiveConfig = providersStore.getProviderConfig(visionStore.activeProvider)
-        promptShimText = visionStore.promptShim || ''
+        promptShimText = visionStore.promptShimDirect || ''
         effectiveTools = undefined // Vision models often do not support tools, and we only need them for direct reply
       }
 
@@ -319,8 +396,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       const inferenceContentParts: CommonContentPart[] = [{ type: 'text', text: userText }]
       const historicalContentParts: CommonContentPart[] = [{ type: 'text', text: sendingMessage }]
 
-      if (options.attachments) {
-        for (const attachment of options.attachments) {
+      if (finalAttachments) {
+        for (const attachment of finalAttachments) {
           if (attachment.type === 'image') {
             const imagePart = {
               type: 'image_url' as const,
