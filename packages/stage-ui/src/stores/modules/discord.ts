@@ -40,7 +40,7 @@ const MAX_EVENT_LOG_ENTRIES = 200
 
 // ── Slash Command Definitions ──────────────────────────────────────────────────
 
-const COMMANDS_VERSION = 5
+const COMMANDS_VERSION = 6
 const CORE_COMMANDS: DiscordCommandDefinition[] = [
   {
     name: 'status',
@@ -133,6 +133,19 @@ const CORE_COMMANDS: DiscordCommandDefinition[] = [
           { name: 'steer', value: 'steer' },
           { name: 'collect', value: 'collect' },
         ],
+      },
+    ],
+  },
+  {
+    name: 'timelines',
+    description: 'List or switch chat timelines (sessions) for the active character',
+    options: [
+      {
+        name: 'id',
+        description: 'The unique ID of the timeline/session to switch to',
+        type: 3, // String
+        required: false,
+        autocomplete: true,
       },
     ],
   },
@@ -722,6 +735,68 @@ export const useDiscordStore = defineStore('discord', () => {
             ? `Started a new session with your message!`
             : `Chat session has been reset. Fresh start!`,
         })
+      }
+      else if (payload.commandName === 'timelines') {
+        const characterId = airiCard.activeCardId || 'default'
+        const characterName = airiCard.activeCard?.name || 'Active Character'
+        const targetId = payload.options.id?.toString().trim()
+
+        const characterIndex = chatSession.index?.characters?.[characterId]
+        const sessions = characterIndex?.sessions || {}
+        const activeId = chatSession.activeSessionId
+
+        if (targetId) {
+          if (sessions[targetId] || targetId === activeId) {
+            chatSession.setActiveSession(targetId)
+            const sessionMeta = sessions[targetId]
+            const title = sessionMeta?.title || 'Untitled Session'
+            await invokeReplyInteraction?.({
+              interactionId: payload.interactionId,
+              content: `Successfully switched active chat timeline to **${title}**! (id: \`${targetId}\`)`,
+            })
+          }
+          else {
+            await invokeReplyInteraction?.({
+              interactionId: payload.interactionId,
+              content: `Could not find a timeline matching ID \`${targetId}\` for **${characterName}**.`,
+            })
+          }
+        }
+        else {
+          const sessionList = Object.values(sessions)
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+
+          const activeMeta = sessions[activeId]
+          const activeTitle = activeMeta?.title || 'Untitled Session'
+          const activeCount = activeMeta?.messageCount || 0
+          const activeTime = activeMeta ? new Date(activeMeta.updatedAt).toLocaleString() : 'N/A'
+
+          let replyContent = `**⏳ Chat Timelines for ${characterName}**\n`
+          replyContent += `--------------------------------------------------\n`
+          replyContent += `🟢 **Active:** **${activeTitle}** (id: \`${activeId}\`, ${activeCount} messages, updated ${activeTime})\n`
+          replyContent += `--------------------------------------------------\n`
+
+          const otherSessions = sessionList.filter(s => s.sessionId !== activeId)
+          if (otherSessions.length > 0) {
+            replyContent += `**Other Timelines:**\n`
+            for (const s of otherSessions) {
+              const title = s.title || 'Untitled Session'
+              const count = s.messageCount || 0
+              const time = new Date(s.updatedAt).toLocaleString()
+              replyContent += `• **${title}** (id: \`${s.sessionId}\`, ${count} messages, updated ${time})\n`
+            }
+          }
+          else {
+            replyContent += `*No other timelines found.*\n`
+          }
+
+          replyContent += `\n*Use \`/timelines id:[session-id]\` to switch to a different timeline.*`
+
+          await invokeReplyInteraction?.({
+            interactionId: payload.interactionId,
+            content: replyContent,
+          })
+        }
       }
       else if (payload.commandName === 'status') {
         const activeCardName = airiCard.activeCard?.name || 'None'

@@ -663,6 +663,8 @@ const playbackManager = createPlaybackManager<AudioBuffer>({
   ownerOverflowPolicy: 'steal-oldest',
 })
 
+const rawAudioBuffers = new Map<string, ArrayBuffer>()
+
 const speechPipeline = createSpeechPipeline<AudioBuffer>({
   tts: async (request, signal) => {
     if (import.meta.env.DEV)
@@ -819,7 +821,8 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
 
       // Tap into the audio stream for Discord Voice Notes
       // We slice() because decodeAudioData(res) will detach the original buffer.
-      discordStore.addAudioToTurn(res.slice(0))
+      // Save it temporarily in the map to maintain exact sequence ordering
+      rawAudioBuffers.set(request.segmentId, res.slice(0))
 
       const audioBuffer = await audioContext.decodeAudioData(res)
       return audioBuffer
@@ -831,14 +834,24 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
   playback: playbackManager,
 })
 
+speechPipeline.on('onTtsResult', (result) => {
+  const raw = rawAudioBuffers.get(result.segmentId)
+  if (raw) {
+    discordStore.addAudioToTurn(raw)
+    rawAudioBuffers.delete(result.segmentId)
+  }
+})
+
 speechPipeline.on('onIntentEnd', () => {
   cardStore.isModelSyncPrevented = false
   void discordStore.flushAudioTurn()
+  rawAudioBuffers.clear()
 })
 
 speechPipeline.on('onIntentCancel', () => {
   cardStore.isModelSyncPrevented = false
   discordStore.clearAudioTurn()
+  rawAudioBuffers.clear()
 })
 
 // NOTICE: the speech runtime host must follow the Stage lifecycle. If a previous Stage instance
