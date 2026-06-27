@@ -111,11 +111,11 @@ This document tracks all active pending items, architectural roadmaps, and featu
 *Reference: [feat-audio-studio.md](../../../../../feat-audio-studio.md)*
 *   **Virtual Provider Abstraction**: Establish `virtual-audio-studio` to bundle base speech engines (Kokoro, Azure, OpenAI) with custom audio effects and UST settings into named, globally-referenceable voice profiles.
 *   **Xvan's Audio Effects**: Build modular high-fidelity post-processing transformations (Pitch Shifting, Rate/Speed adjustments, and Voice Equalizers) directly into the voice bundle engine (currently working perfectly).
-*   **Advanced UST Rules Expansion**: Expand the per-profile Universal Speech Transformer (UST) settings to support advanced, non-regex rules and custom character substitutions to prevent spelling-out glitches.
+*   **[x] Advanced UST Rules Expansion**: Expand the per-profile Universal Speech Transformer (UST) settings to support advanced, non-regex rules (Option A Bracket Action Mapper) and custom character substitutions (Custom Replacement Rules) to prevent spelling-out glitches. (Completed)
 
 ### Higgs Audio v3 TTS Integration
 *Reference: [proposal-higgs-audio-v3-tts-integration.md](../../../../../proposal-higgs-audio-v3-tts-integration.md)*
-*   **Universal Speech Transformer (UST) bracket-to-token converter**: Add a toggle in Audio Studio profiles to convert square bracket directions (`[emotion:sadness]`) into Higgs-compatible XML/token format (`<|emotion:sadness|>`) before sending the text to the TTS engine.
+*   **[x] Universal Speech Transformer (UST) bracket-to-token converter**: Add a toggle in Audio Studio profiles to convert square bracket directions (`[emotion:sadness]`) into Higgs-compatible XML/token format (`<|emotion:sadness|>`) before sending the text to the TTS engine. (Completed)
 *   **Expression Tag Buttons**: Populate emotions, styles, and sound effects as clickable speech tags in the Character Card Edit Modal using the chatterbox capabilities endpoint.
 
 ### Future Modalities (Audio & Video)

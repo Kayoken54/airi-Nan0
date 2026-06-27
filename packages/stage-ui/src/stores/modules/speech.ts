@@ -1,6 +1,6 @@
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 
-import type { VoiceInfo, VoiceProfile } from '../providers'
+import type { BracketAction, VoiceInfo, VoiceProfile } from '../providers'
 
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { refManualReset } from '@vueuse/core'
@@ -246,25 +246,79 @@ export const useSpeechStore = defineStore('speech', () => {
 
     let transformed = text
 
-    const stripNarrVal = profile.ust.mode === 'mute' || profile.ust.mode === 'flatten'
-    const stripCustomVal = profile.ust.mode === 'custom'
-    const stripEmojisVal = profile.ust.stripEmojis
-    const stripSymbolsVal = profile.ust.stripSymbols
-    const tildeVal = profile.ust.tildeReplacement
+    // 1. Resolve bracket action behaviors (supporting fallback/auto-migration of older profiles)
+    let asterisks = profile.ust.asterisks
+    let squareBrackets = profile.ust.squareBrackets
+    let parentheses = profile.ust.parentheses
+    let angleBrackets = profile.ust.angleBrackets
+    const customBracketEnabled = profile.ust.customBracketEnabled
+    const customBracketStart = profile.ust.customBracketStart || ''
+    const customBracketEnd = profile.ust.customBracketEnd || ''
+    const customBracketAction = profile.ust.customBracketAction || 'ignore'
 
-    // 1. Strip Narrative
-    if (stripNarrVal) {
-      if (profile.ust.mode === 'flatten') {
-        transformed = transformed.replace(/[*[\]()<>\\]/g, '')
+    if (!asterisks && !squareBrackets && !parentheses && !angleBrackets) {
+      const legacyMode = profile.ust.mode || 'mute'
+      if (legacyMode === 'mute') {
+        asterisks = 'mute'
+        squareBrackets = 'mute'
+        parentheses = 'mute'
+        angleBrackets = 'mute'
+      }
+      else if (legacyMode === 'flatten') {
+        asterisks = 'flatten'
+        squareBrackets = 'flatten'
+        parentheses = 'flatten'
+        angleBrackets = 'flatten'
       }
       else {
-        transformed = transformed.replace(/\*.*?\*|\[.*?\]|\(.*?\)|<.*?>/g, '')
-        transformed = transformed.replace(/[*[\]()<>\\]/g, '')
+        asterisks = 'ignore'
+        squareBrackets = 'ignore'
+        parentheses = 'ignore'
+        angleBrackets = 'ignore'
       }
     }
 
-    // 1.1 Custom Stripping Characters
-    if (stripCustomVal && profile.ust.customStripChars) {
+    // Helper to process a bracket type
+    const processBracket = (input: string, start: string, end: string, action: BracketAction): string => {
+      if (action === 'ignore' || !start || !end) {
+        return input
+      }
+
+      const escStart = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const escEnd = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+      if (action === 'mute') {
+        const regex = new RegExp(`${escStart}.*?${escEnd}`, 'g')
+        let result = input.replace(regex, '')
+        const boundaryRegex = new RegExp(`[${escStart}${escEnd}]`, 'g')
+        result = result.replace(boundaryRegex, '')
+        return result
+      }
+      else if (action === 'flatten') {
+        const boundaryRegex = new RegExp(`[${escStart}${escEnd}]`, 'g')
+        return input.replace(boundaryRegex, '')
+      }
+      else if (action === 'token') {
+        const regex = new RegExp(`${escStart}(.*?)${escEnd}`, 'g')
+        return input.replace(regex, '<|$1|>')
+      }
+
+      return input
+    }
+
+    // 2. Process bracket modes
+    transformed = processBracket(transformed, '*', '*', asterisks)
+    transformed = processBracket(transformed, '[', ']', squareBrackets)
+    transformed = processBracket(transformed, '(', ')', parentheses)
+    transformed = processBracket(transformed, '<', '>', angleBrackets)
+
+    // Process custom bracket if enabled
+    if (customBracketEnabled) {
+      transformed = processBracket(transformed, customBracketStart, customBracketEnd, customBracketAction)
+    }
+
+    // Legacy custom strip character fallback (if profile has customStripChars and was in custom mode)
+    if (profile.ust.mode === 'custom' && profile.ust.customStripChars) {
       const escapedChars = profile.ust.customStripChars.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       if (escapedChars) {
         const regex = new RegExp(`[${escapedChars}]`, 'g')
@@ -272,25 +326,56 @@ export const useSpeechStore = defineStore('speech', () => {
       }
     }
 
-    // 2. Strip Emojis
-    if (stripEmojisVal) {
+    // 3. Strip Emojis
+    if (profile.ust.stripEmojis) {
       transformed = transformed.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
       transformed = transformed.replace(/\u200D/g, '')
     }
 
-    // 3. Strip Symbols & Kaomoji (Extreme Cleaning)
-    if (stripSymbolsVal) {
+    // 4. Strip Symbols & Kaomoji (Extreme Cleaning)
+    if (profile.ust.stripSymbols) {
       transformed = transformed.replace(/[^\p{L}\p{N}\s.,!?;:"'-]/gu, '')
     }
 
-    // 4. Tilde substitution
-    if (tildeVal !== undefined) {
-      const replacement = tildeVal.trim()
+    // 5. Tilde substitution
+    if (profile.ust.tildeReplacement !== undefined) {
+      const replacement = profile.ust.tildeReplacement.trim()
       if (replacement) {
         transformed = transformed.replace(/~/g, ` ${replacement} `)
       }
       else {
         transformed = transformed.replace(/~/g, '')
+      }
+    }
+
+    // 6. Custom Replacement Rules
+    if (profile.ust.customReplacements && Array.isArray(profile.ust.customReplacements)) {
+      for (const rule of profile.ust.customReplacements) {
+        if (!rule.pattern)
+          continue
+        try {
+          if (rule.type === 'regex') {
+            let pattern = rule.pattern
+            let flags = ''
+            if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+              const lastSlash = pattern.lastIndexOf('/')
+              flags = pattern.slice(lastSlash + 1)
+              pattern = pattern.slice(1, lastSlash)
+            }
+            const regex = new RegExp(pattern, flags)
+            transformed = transformed.replace(regex, rule.replacement)
+          }
+          else {
+            const escPattern = rule.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const flags = rule.caseSensitive ? 'g' : 'gi'
+            const regexStr = rule.wholeWord ? `\\b${escPattern}\\b` : escPattern
+            const regex = new RegExp(regexStr, flags)
+            transformed = transformed.replace(regex, rule.replacement)
+          }
+        }
+        catch (err) {
+          console.error('Failed to apply custom replacement rule:', rule, err)
+        }
       }
     }
 

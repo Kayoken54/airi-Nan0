@@ -46,11 +46,18 @@ const form = ref<VoiceProfile>({
   },
   ust: {
     enabled: true,
-    mode: 'mute',
-    customStripChars: '*_[]()<>""\'\'',
+    asterisks: 'flatten',
+    squareBrackets: 'mute',
+    parentheses: 'ignore',
+    angleBrackets: 'flatten',
+    customBracketEnabled: false,
+    customBracketStart: '',
+    customBracketEnd: '',
+    customBracketAction: 'ignore',
     stripEmojis: true,
     stripSymbols: true,
     tildeReplacement: 'nyan',
+    customReplacements: [],
   },
 })
 
@@ -96,7 +103,25 @@ watch(() => form.value.baseProvider, () => {
 // Load profile data into form when selected profile changes
 watch(activeProfile, (newProfile) => {
   if (newProfile) {
-    form.value = JSON.parse(JSON.stringify(newProfile))
+    const loaded = JSON.parse(JSON.stringify(newProfile))
+
+    // Auto-migrate old profiles so the UI lights up
+    if (loaded.ust.enabled && !loaded.ust.asterisks && !loaded.ust.squareBrackets) {
+      const legacyMode = loaded.ust.mode || 'mute'
+      const defaultAction = legacyMode === 'custom' ? 'ignore' : legacyMode
+
+      loaded.ust.asterisks = defaultAction
+      loaded.ust.squareBrackets = defaultAction
+      loaded.ust.parentheses = defaultAction
+      loaded.ust.angleBrackets = defaultAction
+      loaded.ust.customBracketEnabled = false
+      loaded.ust.customBracketStart = ''
+      loaded.ust.customBracketEnd = ''
+      loaded.ust.customBracketAction = 'ignore'
+      loaded.ust.customReplacements = loaded.ust.customReplacements || []
+    }
+
+    form.value = loaded
   }
 }, { immediate: true })
 
@@ -131,15 +156,44 @@ function createNewProfile() {
     },
     ust: {
       enabled: true,
-      mode: 'mute',
-      customStripChars: '*_[]()<>""\'\'',
+      asterisks: 'flatten',
+      squareBrackets: 'mute',
+      parentheses: 'ignore',
+      angleBrackets: 'flatten',
+      customBracketEnabled: false,
+      customBracketStart: '',
+      customBracketEnd: '',
+      customBracketAction: 'ignore',
       stripEmojis: true,
       stripSymbols: true,
       tildeReplacement: 'nyan',
+      customReplacements: [],
     },
   }
   speechStore.saveVoiceProfile(newProfile)
   activeProfileId.value = id
+}
+
+function addCustomReplacement() {
+  if (!form.value.ust.customReplacements) {
+    form.value.ust.customReplacements = []
+  }
+  form.value.ust.customReplacements.push({
+    id: `rule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    type: 'text',
+    pattern: '',
+    replacement: '',
+    caseSensitive: false,
+    wholeWord: false,
+  })
+  saveProfile()
+}
+
+function removeCustomReplacement(index: number) {
+  if (form.value.ust.customReplacements) {
+    form.value.ust.customReplacements.splice(index, 1)
+    saveProfile()
+  }
 }
 
 function saveProfile() {
@@ -532,46 +586,155 @@ onUnmounted(() => {
         </div>
 
         <div v-if="form.ust.enabled" class="flex flex-col gap-6">
-          <div class="flex flex-col gap-2">
-            <label class="text-sm text-neutral-500 font-medium dark:text-neutral-400">Dialogue Transformation Mode</label>
-            <div class="grid grid-cols-3 gap-2">
-              <label
-                v-for="mode in (['mute', 'flatten', 'custom'] as const)"
-                :key="mode"
-                class="flex flex-col cursor-pointer border rounded-xl p-2.5 text-center capitalize transition-colors"
-                :class="[
-                  form.ust.mode === mode
-                    ? 'border-primary-500/50 bg-primary-500/10 text-primary-600 dark:text-primary-400'
-                    : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800/40',
-                ]"
-              >
-                <input
-                  v-model="form.ust.mode"
-                  type="radio"
-                  :value="mode"
-                  class="sr-only"
+          <!-- Option A: Bracket-by-Bracket Action Mapper -->
+          <div class="flex flex-col gap-3">
+            <div class="text-sm text-neutral-600 font-semibold dark:text-neutral-300">
+              Bracket Rules
+            </div>
+            <div class="grid grid-cols-1 gap-4 border border-neutral-200/60 rounded-xl bg-white p-4 dark:border-neutral-800/60 dark:bg-neutral-900/60">
+              <!-- Asterisks -->
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div class="flex flex-col">
+                  <span class="text-xs text-neutral-700 font-bold dark:text-neutral-300">Asterisks (*...*)</span>
+                  <span class="text-[10px] text-neutral-400">Used for italics, actions, or emotes</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <button
+                    v-for="act in (['mute', 'flatten', 'ignore'] as const)"
+                    :key="act"
+                    type="button"
+                    class="border rounded-lg px-2.5 py-1 text-[10px] font-semibold capitalize transition-all"
+                    :class="[
+                      form.ust.asterisks === act
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                        : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+                    ]"
+                    @click="form.ust.asterisks = act; saveProfile()"
+                  >
+                    {{ act }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Square Brackets -->
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div class="flex flex-col">
+                  <span class="text-xs text-neutral-700 font-bold dark:text-neutral-300">Square Brackets ([...])</span>
+                  <span class="text-[10px] text-neutral-400">Used for emotions, states, or labels</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <button
+                    v-for="act in (['mute', 'flatten', 'ignore', 'token'] as const)"
+                    :key="act"
+                    type="button"
+                    class="border rounded-lg px-2.5 py-1 text-[10px] font-semibold capitalize transition-all"
+                    :class="[
+                      form.ust.squareBrackets === act
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                        : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+                    ]"
+                    @click="form.ust.squareBrackets = act; saveProfile()"
+                  >
+                    {{ act === 'token' ? 'Convert to Token' : act }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Parentheses -->
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div class="flex flex-col">
+                  <span class="text-xs text-neutral-700 font-bold dark:text-neutral-300">Parentheses ((...))</span>
+                  <span class="text-[10px] text-neutral-400">Used for whispers or background info</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <button
+                    v-for="act in (['mute', 'flatten', 'ignore'] as const)"
+                    :key="act"
+                    type="button"
+                    class="border rounded-lg px-2.5 py-1 text-[10px] font-semibold capitalize transition-all"
+                    :class="[
+                      form.ust.parentheses === act
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                        : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+                    ]"
+                    @click="form.ust.parentheses = act; saveProfile()"
+                  >
+                    {{ act }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Angle Brackets -->
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div class="flex flex-col">
+                  <span class="text-xs text-neutral-700 font-bold dark:text-neutral-300">Angle Brackets (&lt;...&gt;)</span>
+                  <span class="text-[10px] text-neutral-400">Used for speech indicators or tags</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <button
+                    v-for="act in (['mute', 'flatten', 'ignore'] as const)"
+                    :key="act"
+                    type="button"
+                    class="border rounded-lg px-2.5 py-1 text-[10px] font-semibold capitalize transition-all"
+                    :class="[
+                      form.ust.angleBrackets === act
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                        : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+                    ]"
+                    @click="form.ust.angleBrackets = act; saveProfile()"
+                  >
+                    {{ act }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom Bracket Definition -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-neutral-700 font-bold dark:text-neutral-300">Enable Custom Bracket</span>
+              <FieldCheckbox
+                v-model="form.ust.customBracketEnabled"
+                hide-description
+                @update:model-value="saveProfile"
+              />
+            </div>
+            <div v-if="form.ust.customBracketEnabled" class="grid grid-cols-3 gap-3 border border-neutral-200/60 rounded-xl bg-white p-4 dark:border-neutral-800/60 dark:bg-neutral-900/60">
+              <FieldInput
+                v-model="form.ust.customBracketStart"
+                label="Start Symbol"
+                placeholder="e.g. {"
+                @update:model-value="saveProfile"
+              />
+              <FieldInput
+                v-model="form.ust.customBracketEnd"
+                label="End Symbol"
+                placeholder="e.g. }"
+                @update:model-value="saveProfile"
+              />
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs text-neutral-500 font-semibold">Action</label>
+                <select
+                  v-model="form.ust.customBracketAction"
+                  class="w-full border border-neutral-200 rounded-xl bg-white px-3 py-2.5 text-xs dark:border-neutral-800 dark:bg-neutral-900 focus:outline-none"
                   @change="saveProfile"
                 >
-                <span class="text-xs font-semibold">{{ mode }}</span>
-              </label>
+                  <option value="mute">
+                    Mute
+                  </option>
+                  <option value="flatten">
+                    Flatten
+                  </option>
+                  <option value="ignore">
+                    Ignore
+                  </option>
+                </select>
+              </div>
             </div>
-            <p class="mt-1 text-xs text-neutral-400">
-              <span v-if="form.ust.mode === 'mute'"><strong>Mute:</strong> Completely removes asterisk action blocks like <i>*smiles*</i> from synthesis.</span>
-              <span v-if="form.ust.mode === 'flatten'"><strong>Flatten:</strong> Vocalizes action descriptions but strips the markdown boundary symbols.</span>
-              <span v-if="form.ust.mode === 'custom'"><strong>Custom:</strong> Let you specify exactly which target character brackets to strip out.</span>
-            </p>
           </div>
 
-          <div v-if="form.ust.mode === 'custom'" class="transition-all duration-300">
-            <FieldInput
-              v-model="form.ust.customStripChars"
-              label="Characters to Strip"
-              description="Enter the literal characters to wipe out (without spaces, e.g. *_[]()<>)"
-              placeholder="*_[]()<>"
-              @update:model-value="saveProfile"
-            />
-          </div>
-
+          <!-- Emoji, Symbol & Tilde Replacements -->
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <FieldCheckbox
               v-model="form.ust.stripEmojis"
@@ -594,6 +757,98 @@ onUnmounted(() => {
               placeholder="e.g. nyan"
               @update:model-value="saveProfile"
             />
+          </div>
+
+          <!-- Custom Replacement Rules Builder -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between border-t border-neutral-200/50 pt-4 dark:border-neutral-800/50">
+              <span class="text-sm text-neutral-600 font-semibold dark:text-neutral-300">Custom Replacement Rules</span>
+              <button
+                type="button"
+                class="flex items-center gap-1 border border-primary-500 rounded-lg bg-primary-500/10 px-2 py-1 text-xs text-primary-600 font-semibold hover:bg-primary-500/20 dark:text-primary-400"
+                @click="addCustomReplacement"
+              >
+                <span class="text-xs">+ Add Rule</span>
+              </button>
+            </div>
+
+            <div v-if="form.ust.customReplacements && form.ust.customReplacements.length > 0" class="flex flex-col gap-3">
+              <div
+                v-for="(rule, index) in form.ust.customReplacements"
+                :key="rule.id"
+                class="flex flex-col gap-3 border border-neutral-200/60 rounded-xl bg-white p-4 dark:border-neutral-800/60 dark:bg-neutral-900/60"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex gap-1.5">
+                    <button
+                      type="button"
+                      class="border rounded-lg px-2 py-0.5 text-[10px] font-semibold transition-all"
+                      :class="[
+                        rule.type === 'text'
+                          ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                          : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+                      ]"
+                      @click="rule.type = 'text'; saveProfile()"
+                    >
+                      Plain Text
+                    </button>
+                    <button
+                      type="button"
+                      class="border rounded-lg px-2 py-0.5 text-[10px] font-semibold transition-all"
+                      :class="[
+                        rule.type === 'regex'
+                          ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                          : 'border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800',
+                      ]"
+                      @click="rule.type = 'regex'; saveProfile()"
+                    >
+                      Regex Match
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="text-[10px] text-red-500 font-bold hover:underline"
+                    @click="removeCustomReplacement(index)"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <FieldInput
+                    v-model="rule.pattern"
+                    label="Search Pattern"
+                    :placeholder="rule.type === 'regex' ? 'e.g. /nya/i' : 'e.g. Nya'"
+                    @update:model-value="saveProfile"
+                  />
+                  <FieldInput
+                    v-model="rule.replacement"
+                    label="Replacement"
+                    placeholder="e.g. meow"
+                    @update:model-value="saveProfile"
+                  />
+                </div>
+
+                <div v-if="rule.type === 'text'" class="flex items-center gap-4">
+                  <FieldCheckbox
+                    v-model="rule.caseSensitive"
+                    label="Case Sensitive"
+                    hide-description
+                    @update:model-value="saveProfile"
+                  />
+                  <FieldCheckbox
+                    v-model="rule.wholeWord"
+                    label="Whole Word Only"
+                    hide-description
+                    @update:model-value="saveProfile"
+                  />
+                </div>
+              </div>
+            </div>
+            <p v-else class="py-2 text-center text-xs text-neutral-400 italic">
+              No custom replacement rules defined yet.
+            </p>
           </div>
         </div>
       </div>

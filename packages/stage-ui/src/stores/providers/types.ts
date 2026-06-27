@@ -137,6 +137,17 @@ export interface ProviderRuntimeState {
   models: ModelInfo[]
 }
 
+export type BracketAction = 'mute' | 'flatten' | 'ignore' | 'token'
+
+export interface CustomReplacementRule {
+  id: string
+  type: 'text' | 'regex'
+  pattern: string
+  replacement: string
+  caseSensitive: boolean
+  wholeWord: boolean
+}
+
 export interface VoiceProfile {
   id: string
   name: string
@@ -160,10 +171,26 @@ export interface VoiceProfile {
   }
   ust: {
     enabled: boolean
-    mode: 'mute' | 'flatten' | 'custom'
-    customStripChars: string
+
+    // Bracket Actions
+    asterisks: BracketAction
+    squareBrackets: BracketAction
+    parentheses: BracketAction
+    angleBrackets: BracketAction
+
+    // Custom Bracket settings
+    customBracketEnabled: boolean
+    customBracketStart: string
+    customBracketEnd: string
+    customBracketAction: BracketAction
+
     stripEmojis: boolean
     stripSymbols: boolean
     tildeReplacement: string
+    customReplacements: CustomReplacementRule[]
+
+    // Legacy fields kept for backward compatibility / auto-migration
+    mode?: 'mute' | 'flatten' | 'custom'
+    customStripChars?: string
   }
 }

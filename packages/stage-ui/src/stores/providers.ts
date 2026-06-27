@@ -20,6 +20,7 @@ import type {
 
 import type { AliyunRealtimeSpeechExtraOptions } from './providers/aliyun/stream-transcription'
 import type {
+  BracketAction,
   ModelInfo,
   ProviderMetadata,
   ProviderRuntimeState,
@@ -87,6 +88,7 @@ import { createWebSpeechAPIProvider } from './providers/web-speech-api'
 import { createWhisperLocalTranscriptionProvider } from './providers/whisper-local'
 
 export type {
+  BracketAction,
   ModelInfo,
   ProviderMetadata,
   ProviderRuntimeState,
