@@ -196,9 +196,14 @@ const mapFormatRenderer: Record<string, string> = {
 const filteredManifestationModels = computed(() => {
   let result = [...displayModelsStore.displayModels]
 
+  // Search (matches name or tags partially)
   if (manifestationSearch.value.trim()) {
-    const q = manifestationSearch.value.toLowerCase()
-    result = result.filter(m => m.name.toLowerCase().includes(q))
+    const q = manifestationSearch.value.trim().toLowerCase()
+    result = result.filter((m) => {
+      const nameMatches = m.name.toLowerCase().includes(q)
+      const tagMatches = m.tags && Array.isArray(m.tags) && m.tags.some(t => t.toLowerCase().includes(q))
+      return nameMatches || tagMatches
+    })
   }
 
   if (manifestationFormatFilter.value !== 'all') {
