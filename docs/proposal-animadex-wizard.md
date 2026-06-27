@@ -1,73 +1,67 @@
-# Proposal: AnimaDex Character Creator Wizard & Multi-Character Integration
+# Proposal: AnimaDex AI-Assisted Multi-Character World Creator
 
-This proposal outlines the integration of the **AnimaDex** dataset (36k+ curated anime characters) into the **AIRI** character creation, vision, and visual state pipeline. It expands upon a simple single-character import flow, scaling it into a **multi-character concept builder** and a **smart vision cross-referencing system**.
-
----
-
-## 1. Core Architectural Routes
-
-We present two alternative integration paths for searching and querying the AnimaDex dataset within AIRI.
-
-### Route A: Native Offline Integration (No Images)
-*   **Database**: The 46MB SQLite metadata database (`animadex.db`) is bundled directly with the AIRI desktop distribution.
-*   **Search**: A native Vue search modal is built inside the settings or card manager.
-    *   *Note on Storage*: While AIRI uses **IndexedDB** (via `unstorage` and `localforage`) for all its runtime and user state persistence, the Electron main process can open a read-only connection to the bundled SQLite file via Node/Electron APIs (or we can run a one-time migration to ingest search indexing tables directly into a dedicated IndexedDB namespace like `local:animadex-metadata`).
-    *   Queries are run offline via Electron IPC to the database (latency < 15ms).
-*   **Visuals**: No images are displayed (except generic placeholders) to keep the base installer size compact.
-*   **Action**: Selecting a character immediately packages their metadata to bootstrap the card wizard.
-
-### Route B: Purpose-Built Hosted Directory (With Images)
-*   **Database**: A hosted index on a free web tier (e.g., GitHub Pages, Cloudflare Pages/Workers).
-*   **Search**: AIRI opens an embedded webview/iframe linking to the hosted companion page, displaying character tiles with CDN-hosted thumbnails.
-*   **Action**: Clicking "Import to AIRI" triggers a custom JSON download or sends a cross-document `postMessage` event. AIRI intercepts this event to bootstrap the card wizard.
+This proposal details the design of an AI-driven, multi-character onboarding and card creation wizard that leverages the **AnimaDex** dataset (36k+ curated characters) as a discovery catalog, using an LLM to synthesize rich, multi-actor roleplay cards dynamically.
 
 ---
 
-## 2. Multi-Character & Concept Integration (The "Basket" Model)
+## 1. The Core Concept: "World Basket Builder"
 
-Rather than treating the wizard as a tool to create a single static character card, we pivot the import pipeline to be **multi-character first**.
+Instead of mapping a single character from the catalog to a flat, static card, this wizard enables users to assemble a custom "World" containing one or more characters, configuring a personalized scenario that is synthesized by the LLM.
 
 ```
-[Search AnimaDex] ──> [Add to Basket (Queue)] ──> [Generate Multi-Actor Profile / Concepts]
+[Browse 36k Catalogue] ──> [Add Characters to Basket] ──> [Configure Story Prompts] ──> [LLM Synthesis] ──> [Multi-Actor Card]
 ```
-
-### Multi-Character Basket Setup
-*   **Queueing**: When browsing the AnimaDex catalog, the user can "add to basket" multiple characters (e.g., Hatsune Miku, Kagamine Rin, and Megurine Luka) before proceeding.
-*   **Dynamic Actor Mapping**: Instead of duplicating prompt systems, each selected character from the basket is mapped to a distinct **Visual Asset Concept** (`actor_{name}`) inside the card's profile.
-*   **Multi-Model Spawning**: At runtime, each character in the profile is bound to their respective Live2D/VRM model ID and prompt modifiers. The Director LLM can dynamically swap the active actor on the stage.
-
-### Post-Creation: "Add Character" in Production Studio
-*   **Context**: Based on the `proposal-visual-state-outfit-hook.md` specifications, the Production Studio tracks a character's "Registry of Concepts" (Identity, Artistry, Manifestation).
-*   **The Feature**: We add an "Add Character" button in the Production Studio interface.
-*   **Behavior**: Clicking the button opens the AnimaDex search popup. Selecting a character automatically creates a new additive **Actor Concept** (`actor_{slug}`) on the existing card.
-*   **Result**: Users can easily transform any existing single-character card into a multi-character group stage post-creation.
 
 ---
 
-## 3. Vision Integration: WD14 Tag Cross-Referencing
+## 2. Step-by-Step Wizard Flow
 
-AIRI's local vision pipeline (specified in `design-vision-system-support.md`) supports the **SmilingWolf WD14 SwinV2 Tagger** for converting uploaded user images into comma-separated Danbooru tags.
+### Step 1: Character Selection (The Basket)
+*   The user is presented with the AnimaDex character grid/list.
+*   The user can browse, search, and click "Add to World" on one or more characters.
+*   **Activation Condition**: The moment at least one character is added to the basket, the "Next" button lights up. However, the user can continue adding multiple characters (e.g., Hatsune Miku, Kagamine Rin, and Luka) to create a group scene.
 
-```
-[User Uploads Image] ──> [WD14 Tagger Extracts Tags] ──> [Cross-Reference Local AnimaDex DB] ──> [Suggest Trigger Words]
-```
+### Step 2: Context & Story Prompts
+After selecting the cast, the user is presented with a streamlined form of three simple, open-ended questions to outline the scene:
 
-### How it Works
-1. When the user attaches an image in chat, the local WD14 vision model processes the file and generates a list of active Danbooru tags (e.g., `1girl, aqua hair, twintails, detached sleeves, boots`).
-2. AIRI queries the local 46MB AnimaDex database, matching the generated tag list against character `core_tags` and `trigger` vocabularies.
-3. If a high-confidence character match is detected (e.g. `hatsune_miku`), a floating prompt tip appears:
-   > *"We detected Hatsune Miku in this image. Would you like to automatically apply her trigger words (`hatsune miku, vocaloid`) and visual DNA to the current prompt?"*
-4. Accepting the suggestion injects the character's exact prompt signature into the active generation cycle.
+1.  **Setting & Location**: *"Where do you want this story to take place?"*
+    *   *Placeholder*: "Leave blank to let the AI suggest a fitting location."
+2.  **User Nickname / Identity**: *"What do you want the characters to call you?"*
+    *   *Placeholder*: "Leave blank for the AI to make up a name."
+3.  **Lore & Behavior Rules**: *"Do you want the characters to follow canon lore/personality?"*
+    *   *Placeholder*: "Explain what you want instead (e.g., 'Make them tsundere', 'Set in a fantasy medieval AU')."
 
 ---
 
-## Open Questions
+## 3. The LLM Synthesis Pipeline
 
-### 1. Metadata Mapping & Translation
-*   **Logic Mapping**: How do we best translate the raw AnimaDex fields into AIRI card attributes?
-    *   What logic should be used to map AnimaDex `core_tags` into behavioral system prompt modifiers?
-    *   How should the Stable Diffusion `trigger` prompt translate into the LLM system prompt definition?
-    *   Should we auto-populate recommended voice/personality archetypes based on physical attributes (e.g., gender, hair/eye color, series theme)?
+When the user clicks "Generate", AIRI compiles the inputs and makes a structured call to the active LLM (using JSON schema output mapping).
 
-### 2. Image Retention & Local Storage
-*   If we use Route B (hosted), when a character is imported, should AIRI attempt to download and save their thumbnail locally so they have an avatar inside the app? If so, where should this live in the local filesystem?
+### The Ingestion Payload
+The system sends the following to the LLM:
+*   Names, copyright/series, and core tags of all selected characters in the basket.
+*   The user's answers to the setting, user nickname, and lore configuration questions.
+
+### The Naming Rule
+*   **Single Character**: If `selectedCharacters.length === 1`, the card's name is automatically assigned to that character's name (e.g., `name = selectedCharacters[0].name`).
+*   **Multi-Character**: If `selectedCharacters.length > 1`, the card is named after the synthesized world/setting or group theme (e.g., `"Vocaloid Music Studio"` or `"Genshin Tavern Lounge"`), while individual actors are split into discrete visual/acting concepts.
+
+### The Generated Output Schema
+The LLM returns a structured JSON matching AIRI's schema:
+1.  **System Prompt & Scenario**: Composed text placing the characters in the defined setting, reflecting the custom lore/behavior rules.
+2.  **Greetings**: A list of alternate greetings, styled contextually to the environment and the user's nickname.
+3.  **Actor Concept Registry**:
+    *   Creates a concept block for each character (`actor_{name}`).
+    *   Embeds their specific trigger words, core tags, and maps them to their visual assets (Live2D/VRM display models).
+
+---
+
+## 4. Open Questions & Metadata Mapping
+
+### 1. Ingestion & Prompt Mapping
+*   What template prompts should we feed to the LLM to guarantee high-fidelity, in-character system prompts and greetings during synthesis?
+*   How do we map physical traits (hair/eye color) extracted from AnimaDex `core_tags` to default model parameters if the user doesn't specify a custom 3D/2D avatar?
+
+### 2. SQLite vs IndexedDB Context
+*   AIRI uses **IndexedDB** (via `unstorage` / `localforage`) for all its runtime and user state persistence.
+*   **Access Pattern**: The search step queries the local read-only SQLite database `animadex.db` (Route A) via Electron IPC, but once a card is synthesized, the completed multi-character card definition is saved natively into AIRI's IndexedDB `local:airi-cards` namespace.
