@@ -131,6 +131,10 @@ This document tracks all active pending items, architectural roadmaps, and featu
 *   **Manifestation Tab Expression Triggers**: Rescope visual state concept manifestation to support activating expressions mapped to emotions or motions via the ACT system.
 *   **ACTOR Token Model Spawning**: Ensure the ACTOR token spawns a new model defined by the `display-model-id`.
 *   **Preset Expression Configuration**: Map active manifestations to VRM blendshapes or Live2D parameters, binding the outfit to the visual state setting.
+*   **"Bases for Places" Concept Packs**: Preload location sets (bedroom, kitchen, etc.) as Base concepts to cleanly reset/wipe the active modifier stack on room changes, with actors and moods layered as Additive layers.
+*   **"Add Character as Concept" Creator**: Implement a QoL button to query active model, voice, and artistry parameters to dynamically output a decoupled `actor_{name}` concept.
+*   **Director Dynamic Mood/Expression Pipeline**: Introduce an emotional output field to the Director to emit 1 of 6 possible core emotions, dynamically mapping it to VRM blendshapes or Live2D parameters in a zero-awareness actor environment.
+
 
 ### Director-Led Regional Orchestration (Spatial Vision)
 *Reference: [proposal-director-led-regional-orchestration.md](../../../../../proposal-director-led-regional-orchestration.md)*

@@ -54,5 +54,29 @@ Before the full "Bridge" architecture was completed, we used **Moriinatsu** to v
 
 ---
 
-## Future Vision: The Lain Protocol
-The system is designed to scale to complex multi-state characters like **Lain Iwakura**, who may have 20+ dress/expression combinations. The next phase involves stress-testing the stack with high-frequency switching and expression-mapped manifestation overrides.
+## Future Vision & Design Best Practices
+
+### The "Bases for Places" Design Principle
+When orchestrating multi-character casts or complex environments, treating the characters themselves as the "Base Layer" causes scene collision. Instead, treat the **Set / Location** as the Base Layer ("Bases for Places"):
+*   **Base Concepts (The Sets)**: Predefine the location as the exclusionary Base (e.g., `place_bedroom`, `place_kitchen`, `place_livingroom`, `place_outdoors`). When the location changes, the Base concept is swapped, automatically resetting the active modifier stack.
+*   **Layer Concepts (The Actors & Atmospheres)**: Actors (e.g., `actor_character1`) and thematic modifiers (e.g., `concept_intimate`, `concept_fun`, `concept_calm`, `concept_happy`) are layered additively on top of the place base. This lets the scene reset its slate cleanly when shifting rooms while characters layer in naturally.
+
+### Pre-made Concept Packs
+To educate users on configuring Visual Asset stacks, the Production Studio will ship with preloaded, structured concept templates:
+*   **Cozy / Slice of Life Set Pack**: Includes prompt-guiding sets (`place_bedroom`, `place_kitchen`, `place_livingroom`, `place_outdoors`) that automatically direct Stable Diffusion / ComfyUI backgrounds.
+*   **Atmospheric & Emotional Styles**: Standardized style modifiers (`concept_intimate`, `concept_fun`, `concept_calm`, `concept_happy`) that affect camera lens, color grading, and pipeline overrides.
+
+### Dynamic Creator: "Add Character as Concept"
+A new QoL button in the UI will allow users to instantly formalize any character as a reusable concept:
+*   **Behavior**: When clicked, it queries the character's active model, voice, and artistry configuration.
+*   **Output**: Automatically registers a new concept object:
+    *   **ID**: `actor_{name}`
+    *   **Model**: `model-id`
+    *   **Voice**: `voice-id`
+    *   **Prompt**: Appends the character's baseline artistry prefix.
+This teaches users how to decouple their characters' visual/audio configurations from their base personalities.
+
+### Director Dynamic Mood & Expression Pipeline
+A new output field will be added to the Director to automatically track the scene's emotional tone:
+*   **Dynamic Expression Mapping**: The Director will output 1 of 6 possible core emotions.
+*   **Zero-Awareness Actor**: The main character actor LLM does not need to know its visual status. The stage reads the Director's emotion payload and dynamically maps it to VRM blendshapes or Live2D parameters (affecting the active display model ID), syncing the avatar's expression to the conversation automatically.
