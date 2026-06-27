@@ -50,6 +50,7 @@ export interface DisplayModelFile {
   importedAt: number
   nsfw?: boolean
   groups?: string[]
+  tags?: string[]
 }
 
 export interface DisplayModelURL {
@@ -62,6 +63,7 @@ export interface DisplayModelURL {
   importedAt: number
   nsfw?: boolean
   groups?: string[]
+  tags?: string[]
 }
 
 const displayModelsPresets: DisplayModel[] = [
@@ -766,6 +768,30 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
   }
 
+  async function updateDisplayModelTags(id: string, tags: string[]) {
+    await until(displayModelsFromIndexedDBLoading).toBe(false)
+    const displayModel = id.startsWith('display-model-')
+      ? await localforage.getItem<DisplayModelFile>(id)
+      : displayModels.value.find(m => m.id === id)
+
+    if (!displayModel)
+      return
+
+    displayModel.tags = tags
+
+    // Update reactive state
+    const index = displayModels.value.findIndex(m => m.id === id)
+    if (index !== -1) {
+      displayModels.value[index].tags = tags
+    }
+
+    // Persist if it's a file-based model
+    if (id.startsWith('display-model-')) {
+      await localforage.setItem(id, displayModel)
+      broadcastModelsSync(Date.now())
+    }
+  }
+
   async function removeDisplayModel(id: string) {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
     await localforage.removeItem(id)
@@ -798,6 +824,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     getDisplayModelTextures,
     renameDisplayModel,
     updateDisplayModelMeta,
+    updateDisplayModelTags,
     removeDisplayModel,
     resetDisplayModels,
   }

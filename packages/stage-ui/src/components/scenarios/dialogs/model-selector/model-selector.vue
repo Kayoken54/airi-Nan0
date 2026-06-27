@@ -18,6 +18,7 @@ import { toast } from 'vue-sonner'
 import Live2DReportModal from './Live2DReportModal.vue'
 
 import { DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
+import { useProvidersStore } from '../../../../stores/providers'
 
 const emits = defineEmits<{
   (e: 'close', value: void): void
@@ -28,6 +29,7 @@ const selectedModel = defineModel<DisplayModel | undefined>({ type: Object, requ
 const displayModelStore = useDisplayModelsStore()
 const customVrmAnimationsStore = useCustomVrmAnimationsStore()
 const mmdStore = useMmd()
+const providersStore = useProvidersStore()
 const { displayModelsFromIndexedDBLoading, displayModels } = storeToRefs(displayModelStore)
 
 // Redesign State
@@ -46,6 +48,9 @@ const nsfwFilter = ref<'sfw' | 'nsfw' | 'all'>('sfw')
 // Groups filter state
 const selectedGroups = ref<string[]>([])
 const filterNotSet = ref(false)
+
+// Tags filter state
+const selectedTags = ref<string[]>([])
 
 // Groups dialog/modal state
 const showGroupsDialog = ref(false)
@@ -96,10 +101,14 @@ const marketplaces = [
 const filteredModels = computed(() => {
   let result = [...displayModels.value]
 
-  // Search
+  // Search (matches name or tags partially)
   if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
-    result = result.filter(m => m.name.toLowerCase().includes(q))
+    const q = searchQuery.value.trim().toLowerCase()
+    result = result.filter((m) => {
+      const nameMatches = m.name.toLowerCase().includes(q)
+      const tagMatches = m.tags && Array.isArray(m.tags) && m.tags.some(t => t.toLowerCase().includes(q))
+      return nameMatches || tagMatches
+    })
   }
 
   // Format Filter
@@ -134,6 +143,15 @@ const filteredModels = computed(() => {
       if (!m.groups || !Array.isArray(m.groups))
         return false
       return m.groups.some(g => selectedGroups.value.includes(g))
+    })
+  }
+
+  // Tags Filter
+  if (selectedTags.value.length > 0) {
+    result = result.filter((m) => {
+      if (!m.tags || !Array.isArray(m.tags))
+        return false
+      return selectedTags.value.every(t => m.tags!.includes(t))
     })
   }
 
@@ -185,6 +203,32 @@ const groupCounts = computed(() => {
 
 const ungroupedCount = computed(() => {
   return displayModels.value.filter(m => !m.groups || !Array.isArray(m.groups) || m.groups.length === 0).length
+})
+
+const tagCounts = computed(() => {
+  const counts: Record<string, number> = {}
+  displayModels.value.forEach((m) => {
+    if (m.tags && Array.isArray(m.tags)) {
+      m.tags.forEach((t) => {
+        const trimmed = t.trim().toLowerCase()
+        if (trimmed) {
+          counts[trimmed] = (counts[trimmed] || 0) + 1
+        }
+      })
+    }
+  })
+  return counts
+})
+
+const top20Tags = computed(() => {
+  const counts = tagCounts.value
+  return Object.keys(counts)
+    .sort((a, b) => counts[b] - counts[a])
+    .slice(0, 20)
+})
+
+const isTagsInitialized = computed(() => {
+  return displayModels.value.some(m => m.tags && m.tags.length > 0)
 })
 
 function openGroupsDialog(model: DisplayModel) {
@@ -405,6 +449,116 @@ function handleFixError(err: string) {
   if (err.toLowerCase().includes('preview') || err.toLowerCase().includes('thumbnail') || err.toLowerCase().includes('icon')) {
     // If it's a missing preview, we could generate a placeholder
     // For this PR feedback, we just acknowledged the "Quick Fix" button existence
+  }
+}
+
+const TAG_BLOCKLIST = new Set([
+  '1girl',
+  '1boy',
+  'solo',
+  'looking at viewer',
+  'simple background',
+  'white background',
+  'black background',
+  'grey background',
+  'transparent background',
+  'outstretched arms',
+  'straight-on',
+  'spread arms',
+  'cowboy shot',
+  'standing',
+  't-pose',
+  'full body',
+  'upper body',
+  'close-up',
+  'tachi-e',
+  'closed mouth',
+  'blush',
+  'blush stickers',
+  'smile',
+  'parted lips',
+  'open mouth',
+  'expressionless',
+  'male focus',
+  'holding',
+  'hand on own hip',
+])
+
+async function testTagModel(mode: 'reindex' | 'fill-in' = 'reindex') {
+  let modelsToTag = displayModels.value.filter(m => m.previewImage)
+  if (mode === 'fill-in') {
+    modelsToTag = modelsToTag.filter(m => !m.tags || m.tags.length === 0)
+  }
+
+  if (modelsToTag.length === 0) {
+    toast.info(mode === 'fill-in' ? 'All models with preview images already have tags.' : 'No models with a preview image found to process.')
+    return
+  }
+
+  const toastId = toast.loading('Starting Image Tagging process...')
+  // eslint-disable-next-line no-console
+  console.log(`[Model Selector] Starting batch auto-tagging (${mode}) on models:`, modelsToTag)
+
+  const providerId = 'blip-local'
+  try {
+    providersStore.initializeProvider(providerId)
+    if (!providersStore.addedProviders[providerId]) {
+      providersStore.markProviderAdded(providerId)
+    }
+    if (providersStore.providerRuntimeState[providerId]) {
+      providersStore.providerRuntimeState[providerId].isConfigured = true
+    }
+
+    const providerInstance = await providersStore.getProviderInstance<any>(providerId)
+    if (!providerInstance) {
+      throw new Error('Failed to retrieve Sparkle local vision provider instance')
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('[Model Selector] Loading local vision tagger model...')
+    toast('Loading Vision Model (WebGPU)...', { id: toastId })
+    await providerInstance.loadModel()
+
+    let count = 0
+    for (const model of modelsToTag) {
+      toast(`Processing ${count + 1}/${modelsToTag.length} models: ${model.name}`, { id: toastId })
+
+      try {
+        // eslint-disable-next-line no-console
+        console.log(`[Model Selector] Captioning model preview image for: ${model.name}`)
+        const tagsResult = await providerInstance.captionImage(model.previewImage!)
+
+        const tagsArray = tagsResult
+          .split(',')
+          .map(t => t.trim().toLowerCase())
+          .filter(t => t && !TAG_BLOCKLIST.has(t))
+
+        await displayModelStore.updateDisplayModelTags(model.id, tagsArray)
+
+        // eslint-disable-next-line no-console
+        console.log(`[Model Selector] SUCCESS! Generated Tags for ${model.name}:`, tagsArray)
+      }
+      catch (err) {
+        console.error(`[Model Selector] Failed to tag model ${model.name}:`, err)
+      }
+      count++
+    }
+
+    const exportedDataset = displayModels.value.map(m => ({
+      id: m.id,
+      name: m.name,
+      format: m.format,
+      tags: m.tags || [],
+    }))
+
+    // eslint-disable-next-line no-console
+    console.log('[Model Selector] ALL MODELS TAGGED! Exported Dataset:', exportedDataset)
+
+    toast.success('All Models Tagged!', { id: toastId })
+  }
+  catch (error) {
+    console.error('[Model Selector] Auto-tagging batch failed:', error)
+    toast.error(`Tagging failed: ${error instanceof Error ? error.message : String(error)}`, { id: toastId })
   }
 }
 </script>
@@ -878,6 +1032,91 @@ function handleFixError(err: string) {
             </PopoverContent>
           </PopoverPortal>
         </PopoverRoot>
+
+        <!-- Tag Button / Popover -->
+        <PopoverRoot v-if="isTagsInitialized">
+          <PopoverTrigger as-child>
+            <button
+              :class="[
+                'h-[32px] flex items-center justify-center gap-1.5 rounded-lg border border-transparent px-3 py-1 text-xs font-semibold outline-none transition-all',
+                selectedTags.length > 0
+                  ? 'bg-primary-500/10 text-primary-500 border-primary-500/20 dark:bg-primary-500/20 dark:text-primary-400'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              ]"
+            >
+              <div class="i-solar:tag-bold-duotone text-xs" />
+              <span>Tags</span>
+              <span v-if="selectedTags.length > 0" class="rounded-full bg-primary-500 px-1 py-0.2 text-[9px] text-white font-bold">
+                {{ selectedTags.length }}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverPortal>
+            <PopoverContent
+              side="bottom"
+              :side-offset="6"
+              align="start"
+              class="animate-in fade-in zoom-in z-10000 w-68 border border-neutral-200/50 rounded-xl bg-white/95 p-3 shadow-xl backdrop-blur-xl duration-150 dark:border-neutral-700/50 dark:bg-neutral-900/95"
+            >
+              <div class="mb-2 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                Filter by Tags
+              </div>
+              <div v-if="top20Tags.length === 0" class="py-2 text-center text-xs text-neutral-400">
+                No tags found.
+              </div>
+              <div v-else class="max-h-40 flex flex-wrap gap-1.5 overflow-y-auto pr-1">
+                <button
+                  v-for="tag in top20Tags"
+                  :key="tag"
+                  :class="[
+                    'px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all border',
+                    selectedTags.includes(tag)
+                      ? 'bg-primary-500 text-white border-primary-500'
+                      : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700',
+                  ]"
+                  @click="selectedTags.includes(tag) ? selectedTags = selectedTags.filter(t => t !== tag) : selectedTags.push(tag)"
+                >
+                  {{ tag }} ({{ tagCounts[tag] || 0 }})
+                </button>
+              </div>
+
+              <div class="mt-2.5 flex items-center justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
+                <div class="flex gap-1.5">
+                  <button
+                    class="rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] text-neutral-600 font-bold transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                    @click="testTagModel('fill-in')"
+                  >
+                    Fill In
+                  </button>
+                  <button
+                    class="rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] text-neutral-600 font-bold transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                    @click="testTagModel('reindex')"
+                  >
+                    Reindex
+                  </button>
+                </div>
+                <button
+                  class="text-[10px] text-neutral-400 font-bold hover:text-neutral-600 dark:hover:text-neutral-200"
+                  :disabled="selectedTags.length === 0"
+                  :class="selectedTags.length === 0 ? 'opacity-40 cursor-not-allowed' : ''"
+                  @click="selectedTags = []"
+                >
+                  Reset
+                </button>
+              </div>
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
+
+        <!-- Uninitialized Tag Button -->
+        <button
+          v-else
+          class="h-[32px] flex items-center justify-center gap-1.5 border border-transparent rounded-lg bg-neutral-100 px-3 py-1 text-xs text-neutral-600 font-semibold outline-none transition-all dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+          @click="testTagModel('reindex')"
+        >
+          <div class="i-solar:tag-bold-duotone text-xs" />
+          <span>Tag</span>
+        </button>
       </div>
 
       <div v-if="displayModelsFromIndexedDBLoading">
@@ -1016,6 +1255,15 @@ function handleFixError(err: string) {
                   <span v-if="model.nsfw" class="rounded bg-red-500/10 px-1 py-0.2 text-[8px] text-red-500 font-bold tracking-wider uppercase">NSFW</span>
                   <!-- Group Badges -->
                   <span v-for="g in model.groups" :key="g" class="select-none rounded bg-primary-500/10 px-1.5 py-0.2 text-[8px] text-primary-500 font-semibold">{{ g }}</span>
+                  <!-- Tag Badge -->
+                  <span
+                    v-if="model.tags && model.tags.length > 0"
+                    :title="model.tags.join(', ')"
+                    class="flex cursor-help select-none items-center gap-0.5 rounded bg-neutral-100 px-1.5 py-0.2 text-[8px] text-neutral-600 font-semibold dark:bg-neutral-800 dark:text-neutral-300"
+                  >
+                    <div class="i-solar:tag-bold text-[8px]" />
+                    <span>{{ model.tags.length }}</span>
+                  </span>
                 </div>
                 <div
                   class="font-bold transition-colors"

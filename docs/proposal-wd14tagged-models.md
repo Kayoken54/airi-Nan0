@@ -37,45 +37,66 @@ Since model metadata is tracked and synchronized (referenced in `docs/project-by
 
 ## 3. UI/UX Changes in the Model Selector
 
-We will enhance the **Model Selector** dialog/screen (shown in the settings interface):
+We have implemented the following features:
 
-### A. The [Auto Tag] Toolbar Button
-*   **Location**: Placed in the top toolbar of the Model Selector alongside the search and filter controls.
-*   **Action**: Clicking this button initiates a batch job:
-    1. Loads the local WD14 Tagger model via WebGPU (if not already loaded).
-    2. Runs each model's `previewImage` (extracted from the model's binary/blob) through the tagger pipeline.
-    3. Saves the resulting tags (filtered by threshold `> 0.35`) back to the model store.
-*   **Progress**: Shows a non-blocking toast indicating the process (e.g., *"Tagging models: 4/12 completed"*).
+### A. The [Tag] Toolbar Button & Popover
+*   **Icon & Label**: Placed in the top toolbar of the Model Selector as `<div class="i-solar:tag-bold-duotone text-xs" /> Tag`.
+*   **Contextual Trigger**:
+    *   If **uninitialized** (no tags exist in the DB), clicking the button triggers the batch indexer (`testTagModel('reindex')`).
+    *   If **initialized**, clicking it opens the `PopoverRoot` containing the **Top 20 filter tags** (pills showing tag counts).
+*   **Reindex & Fill In Options**: Located at the bottom of the popover content block:
+    *   `Fill In`: Runs the tagger only on new models without existing tags (highly efficient).
+    *   `Reindex`: Runs a full force-overwrite tagging job on all models.
+    *   `Reset`: Clears the selected tags filter.
 
-### B. Badge and Reka Popover Display
-*   To keep the card grid clean, tags are hidden by default.
-*   **The Popover**: We will add a small visual badge (e.g. tag icon) to each model card. Hovering or clicking this badge triggers a **Reka-UI Popover** that displays a clean grid of the model's auto-generated tags (read-only, not user-editable).
+### B. Lightweight Tag Count Badge (Option B)
+*   To avoid Reka/Radix UI rendering overhead for hundreds of cards, each model card displays a simple, non-interactive badge (e.g., `[🏷️ 34]`) indicating the tag count.
+*   Hovering over this badge displays the full list of tags as a native browser tooltip (`title` attribute) with **zero performance penalty**.
 
-### C. Visual Tag Filter Dropdown (NEW)
-*   Similar to the existing **"Groups"** dropdown (which filters models by franchises/categories with counts like `Azur Lane (5)`, `Hololive (54)`), we will introduce a **"Tags"** filter dropdown in the toolbar.
-*   **Dynamic Aggregation**: The UI dynamically aggregates all auto-generated model tags, counts their occurrences, and determines the **top 20 most popular tags** across the local collection.
-*   **Interactive Filters**: Selecting tags in this dropdown (e.g., `blonde hair (12)`, `glasses (4)`, `swimsuit (8)`) dynamically filters the library, allowing users to find models visually without typing.
+### C. Search Field Extension
+*   The text search box in the Model Selector matches the user's input against **both** the model name and the tags array partially (e.g., searching "blond" will match models tagged "blonde hair").
 
-### D. Search Field Extension
-*   The text search box in the Model Selector is updated to look through the `tags` array:
-    ```typescript
-    const filtered = models.filter(m =>
-      m.name.toLowerCase().includes(query)
-      || m.tags?.some(tag => tag.toLowerCase().includes(query))
-    )
-    ```
-*   **Result**: Typing "blonde" immediately isolates all models displaying yellow/blonde hair. Typing "sailor uniform" isolates those models wearing school uniforms.
+---
+
+## 4. Consumer File References
+
+The tags field is consumed or will be integrated in the following files:
+
+### 1. Main Model Selector Dialog
+*   **Path**: [model-selector.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/dialogs/model-selector/model-selector.vue)
+    *   *Search filter logic*: lines 101-113
+    *   *Tags filter Popover & toolbar*: lines 1008-1090
+    *   *Tag count badge*: lines 1227-1236
+
+### 2. Control Strip "Avatars" Panel
+*   **Path**: [ControlStrip.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-ui/src/components/scenarios/layout/ControlStrip.vue)
+    *   *Search/filtering logic*: lines 36-65
+    *   *Search input binding*: lines 2300-2308
+
+### 3. Concept Builder Modal (Manifestation Tab)
+*   **Path**: [ConceptBuilderModal.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/airi-card/components/ConceptBuilderModal.vue)
+    *   *Search/filtering logic*: lines 196-215
+    *   *Search input binding*: lines 502-506
+
+### 4. Card Import Wizard (Visual Avatar step)
+*   **Path**: [CardImportWizard.vue](file:///Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-pages/src/pages/settings/airi-card/components/CardImportWizard.vue)
+    *   *Model mapping & computed state*: lines 85-104
+    *   *Model grid display*: lines 555-586
 
 ---
 
 ## Open Questions & System Decisions
 
 ### 1. Tag Pruning & Noise Filtering
-*   **Decision**: We will build a blocklist of generic tags to keep the index clean.
-*   **Initial Blocklist**: `1girl`, `1boy`, `solo`, `looking at viewer`, `simple background`, `white background`, `black background`, `grey background`.
-*   **Next Steps**: Perform a curation pass after the first batch runs to identify other common layout/background descriptors to discard.
+*   **Decision**: We curated the blocklist based on the complete ingestion run of 363 models.
+*   **Final Blocklist**: `1girl`, `1boy`, `solo`, `looking at viewer`, `simple background`, `white background`, `black background`, `grey background`, `transparent background`, `outstretched arms`, `straight-on`, `spread arms`, `cowboy shot`, `standing`, `t-pose`, `full body`, `upper body`, `close-up`, `tachi-e`, `closed mouth`, `blush`, `blush stickers`, `smile`, `parted lips`, `open mouth`, `expressionless`, `male focus`, `holding`, `hand on own hip`.
 
 ### 2. Auto-Run on Import vs. User Consent
 *   **Decision**: Auto-tagging will **not** run automatically upon model import. Since loading and running the WD14 ONNX/WebGPU tagger model introduces non-trivial resource overhead and asset downloading, it requires explicit user consent.
-*   **Flow**: Tagging remains a manual, user-triggered action via the **[Auto Tag]** or **[Image Tag]** button in the Model Selector.
+*   **Flow**: Tagging remains a manual, user-triggered action via the **[Tag]** popover buttons.
+
+### 3. Database Write Performance Optimization
+*   **Problem**: Sequentially awaiting database writes and firing reactive cross-window broadcasts for each model (363 re-saves) caused a massive I/O bottleneck.
+*   **Proposed Optimization**: In the next iteration, we will use a **Chunked Batch Queue** (e.g., size of 10) that writes updates in parallel via `Promise.all` and fires the cross-window sync broadcast only once per batch.
+
 
