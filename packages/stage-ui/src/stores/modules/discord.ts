@@ -980,7 +980,7 @@ export const useDiscordStore = defineStore('discord', () => {
 
         try {
           console.log('[DiscordStore] Generating background journal moment via /journalmoment...')
-          const textJournalStore = (await import('../stores/memory-text-journal')).useTextJournalStore()
+          const textJournalStore = (await import('../memory-text-journal')).useTextJournalStore()
           const entry = await textJournalStore.createJournalMoment({
             messages,
             instructions: prompt || undefined,
