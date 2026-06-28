@@ -500,14 +500,11 @@ JSON Schema format:
         >
           <div i-solar:arrow-left-outline class="text-lg" />
         </Button>
-        <div>
-          <h2 class="flex items-center gap-2 text-lg text-neutral-100 font-bold">
-            <div i-solar:magic-stick-3-line-duotone class="text-primary-500" />
-            AnimaDex Guided Creator
+        <div class="flex items-center gap-2">
+          <div i-solar:magic-stick-3-line-duotone class="text-base text-primary-500" />
+          <h2 class="text-sm text-neutral-100 font-bold leading-none">
+            AnimaDex Wizard
           </h2>
-          <p class="text-xs text-neutral-500">
-            AI-driven multi-character world builder
-          </p>
         </div>
       </div>
 
@@ -733,11 +730,11 @@ JSON Schema format:
             <div
               v-for="char in selectedCharacters"
               :key="char.id"
-              class="flex flex-col justify-between gap-4 border border-neutral-800 rounded-2xl bg-neutral-900/40 p-5 md:flex-row md:items-center"
+              class="flex flex-col gap-3 border border-neutral-800 rounded-2xl bg-neutral-900/40 p-4"
             >
-              <!-- Left Column: Character card thumb + name -->
-              <div class="min-w-[200px] flex items-center gap-3.5">
-                <div class="h-14 w-14 overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
+              <!-- Identity Row: Character thumb + name -->
+              <div class="flex items-center gap-3">
+                <div class="h-11 w-11 shrink-0 overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
                   <img :src="getThumbUrl(char.trigger)" alt="" class="h-full w-full object-cover">
                 </div>
                 <div class="min-w-0 flex flex-col">
@@ -748,55 +745,48 @@ JSON Schema format:
                 </div>
               </div>
 
-              <!-- Center Column: Visual Model Selector -->
-              <div class="flex flex-col items-center gap-1.5">
-                <label class="text-[9px] text-neutral-500 font-bold tracking-wider uppercase">Visual Avatar</label>
+              <!-- Bindings Row: Avatar circle + Voice input + cog all inline -->
+              <div class="flex items-center gap-3">
+                <!-- Avatar circle -->
                 <div
-                  class="relative cursor-pointer transition-transform hover:scale-105"
+                  class="relative shrink-0 cursor-pointer transition-transform hover:scale-105"
                   title="Select Model / Avatar"
                   @click="openModelSelector(char.id)"
                 >
-                  <div class="h-14 w-14 flex items-center justify-center overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
+                  <div class="h-11 w-11 flex items-center justify-center overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
                     <img
                       v-if="getBoundModel(char.id)?.previewImage"
                       :src="getBoundModel(char.id)?.previewImage"
                       class="h-full w-full object-cover"
                     >
-                    <div v-else class="i-solar:gallery-bold text-xl text-neutral-600" />
+                    <div v-else class="i-solar:gallery-bold text-lg text-neutral-600" />
                   </div>
-                  <!-- Format Badge overlaid on bottom of avatar -->
                   <span
                     v-if="getBoundModel(char.id)"
-                    class="absolute left-1/2 rounded bg-primary-500 px-1 py-0.2 text-[8px] text-neutral-950 font-black tracking-wide uppercase shadow-md -bottom-1 -translate-x-1/2"
+                    class="absolute left-1/2 rounded bg-primary-500 px-1 text-[7px] text-neutral-950 font-black tracking-wide uppercase shadow-md -bottom-1 -translate-x-1/2"
                   >
                     {{ getBoundModel(char.id)?.format.toLowerCase().includes('live2d') ? 'L2D' : 'VRM' }}
                   </span>
                 </div>
-              </div>
 
-              <!-- Right Column: Speech Voice Selector -->
-              <div class="min-w-[240px] flex flex-col gap-2">
-                <label class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase">TTS Speech Voice</label>
-                <div class="flex items-center gap-2">
-                  <!-- Select dropdown or current voice -->
-                  <div class="flex flex-1 items-center justify-between border border-neutral-800 rounded-xl bg-neutral-950/40 p-2.5">
-                    <div class="min-w-0 flex items-center gap-2">
-                      <div i-solar:music-bold class="shrink-0 text-sm text-neutral-600" />
-                      <span class="truncate text-xs text-neutral-200">
-                        {{ boundVoices[char.id] ? speechStore.savedVoiceProfiles.find(p => p.id === boundVoices[char.id])?.name || 'Default Voice' : 'Inherit Default' }}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class="h-[40px] w-[40px] border border-neutral-800 rounded-xl p-0 hover:bg-neutral-800/40"
-                    title="Configure Custom Voice"
-                    @click="voiceCreatorOpen = true; voiceTargetCharacterId = char.id"
-                  >
-                    <div i-solar:settings-bold-duotone class="text-sm text-neutral-400" />
-                  </Button>
+                <!-- Voice display pill -->
+                <div class="min-w-0 flex flex-1 items-center gap-2 border border-neutral-800 rounded-xl bg-neutral-950/40 px-3 py-2">
+                  <div i-solar:music-bold class="shrink-0 text-sm text-neutral-600" />
+                  <span class="truncate text-xs text-neutral-300">
+                    {{ boundVoices[char.id] ? speechStore.savedVoiceProfiles.find(p => p.id === boundVoices[char.id])?.name || 'Default Voice' : 'Inherit Default' }}
+                  </span>
                 </div>
+
+                <!-- Cog button -->
+                <Button
+                  type="button"
+                  variant="ghost"
+                  class="h-[38px] w-[38px] shrink-0 border border-neutral-800 rounded-xl p-0 hover:bg-neutral-800/40"
+                  title="Configure Voice"
+                  @click="voiceCreatorOpen = true; voiceTargetCharacterId = char.id"
+                >
+                  <div i-solar:settings-bold-duotone class="text-sm text-neutral-400" />
+                </Button>
               </div>
             </div>
           </div>
