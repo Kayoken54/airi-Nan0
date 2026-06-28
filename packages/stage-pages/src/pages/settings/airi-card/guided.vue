@@ -48,6 +48,130 @@ const modelSelectorOpen = ref(false)
 const voiceCreatorOpen = ref(false)
 const voiceTargetCharacterId = ref<string | null>(null)
 
+const voicePresets = [
+  { id: 'af_heart', name: 'Heart', gender: 'Female', accent: 'US', description: 'Conversational, warm, smiling tone, natural breathiness.' },
+  { id: 'af_bella', name: 'Bella', gender: 'Female', accent: 'US', description: 'Polished, articulate, professional narration.' },
+  { id: 'af_nicole', name: 'Nicole', gender: 'Female', accent: 'US', description: 'Soothing, whisper-soft, ASMR-style, noticeable vocal fry.' },
+  { id: 'af_sky', name: 'Sky', gender: 'Female', accent: 'US', description: 'Youthful energy, clear, helpful assistant tone.' },
+  { id: 'af_sarah', name: 'Sarah', gender: 'Female', accent: 'US', description: 'Standard narrator voice, balanced and neutral.' },
+  { id: 'am_adam', name: 'Adam', gender: 'Male', accent: 'US', description: 'Clear, low-pitched, general-purpose male narrator.' },
+  { id: 'am_echo', name: 'Echo', gender: 'Male', accent: 'US', description: 'Distinct, clear American male voice.' },
+  { id: 'am_eric', name: 'Eric', gender: 'Male', accent: 'US', description: 'Polished corporate voice, excellent for instructions.' },
+  { id: 'bf_emma', name: 'Emma', gender: 'Female', accent: 'UK', description: 'Gentle, friendly British female speaker.' },
+  { id: 'bm_george', name: 'George', gender: 'Male', accent: 'UK', description: 'Rich, deep, professional British male voice.' },
+]
+
+const voiceForm = ref({
+  name: '',
+  baseVoice: 'af_heart',
+  pitch: 1.0,
+  rate: 1.0,
+  filterByGender: true,
+  testText: 'Hello! This is a preview of my new voice. How does it sound?',
+})
+
+watch(voiceTargetCharacterId, (newVal) => {
+  if (newVal) {
+    const char = selectedCharacters.value.find(c => c.id === newVal)
+    if (char) {
+      voiceForm.value.name = `${char.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_voice`
+      const genderIdx = char.traits[0]
+      const genderName = wizardStore.facets.gender[genderIdx]
+      if (genderName) {
+        if (genderName.toLowerCase() === 'female') {
+          voiceForm.value.baseVoice = 'af_heart'
+          voiceForm.value.filterByGender = true
+        }
+        else if (genderName.toLowerCase() === 'male') {
+          voiceForm.value.baseVoice = 'am_adam'
+          voiceForm.value.filterByGender = true
+        }
+        else {
+          voiceForm.value.filterByGender = false
+        }
+      }
+    }
+  }
+})
+
+const filteredVoicePresets = computed(() => {
+  if (!voiceForm.value.filterByGender || !voiceTargetCharacterId.value) {
+    return voicePresets
+  }
+  const char = selectedCharacters.value.find(c => c.id === voiceTargetCharacterId.value)
+  if (!char)
+    return voicePresets
+  const genderIdx = char.traits[0]
+  const genderName = wizardStore.facets.gender[genderIdx] || ''
+
+  return voicePresets.filter((v) => {
+    return v.gender.toLowerCase() === genderName.toLowerCase()
+  })
+})
+
+function saveCustomVoiceProfile() {
+  if (!voiceTargetCharacterId.value)
+    return
+
+  const profileId = `voice_profile_${voiceForm.value.name}`
+  const newProfile = {
+    id: profileId,
+    name: voiceForm.value.name,
+    baseProvider: 'kokoro',
+    baseModel: '',
+    baseVoice: voiceForm.value.baseVoice,
+    effects: {
+      pitch: voiceForm.value.pitch,
+      rate: voiceForm.value.rate,
+      volume: 1.0,
+      asmr: 0,
+      radio: 0,
+      robot: 0,
+      reverb: 0,
+      spatial: 0,
+    },
+    ust: {
+      enabled: true,
+      mode: 'mute' as any,
+      customStripChars: '*_[]()<>"\'',
+      stripEmojis: true,
+      tildeReplacement: '',
+      autoLowercaseCapsThreshold: 2,
+      autoLowercaseCapsExclude: [],
+      convertBracketsToTokenFormat: true,
+      customReplacements: [],
+    },
+  }
+
+  speechStore.saveVoiceProfile(newProfile as any)
+  wizardStore.bindVoiceToCharacter(voiceTargetCharacterId.value, profileId)
+  toast.success(`Voice profile "${voiceForm.value.name}" saved!`)
+  voiceCreatorOpen.value = false
+}
+
+async function playVoicePreview() {
+  try {
+    toast.info('Synthesizing audio preview...')
+    const provider = await providersStore.getProviderInstance('kokoro')
+    if (!provider) {
+      throw new Error('Kokoro TTS provider not active or configured.')
+    }
+    const audioData = await speechStore.speech(
+      provider as any,
+      '',
+      voiceForm.value.testText,
+      voiceForm.value.baseVoice,
+    )
+    const audioUrl = URL.createObjectURL(new Blob([audioData]))
+    const audio = new Audio(audioUrl)
+    audio.play()
+  }
+  catch (err: any) {
+    console.error('[AnimaDexWizard] Play preview error:', err)
+    toast.error(err.message || 'Failed to play voice preview. Make sure Kokoro TTS is active.')
+  }
+}
+
 const activeBindingCharacterModel = computed(() => {
   if (!activeBindingCharacterId.value)
     return undefined
@@ -693,6 +817,158 @@ JSON Schema format:
         :selected-model="activeBindingCharacterModel"
         @pick="handlePickModel"
       />
+
+      <!-- Quick Audio Studio Creator Modal Overlay -->
+      <div
+        v-if="voiceCreatorOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+        @click.self="voiceCreatorOpen = false"
+      >
+        <div class="max-w-xl w-full border border-neutral-800 rounded-2xl bg-neutral-900 p-6 shadow-2xl">
+          <!-- Header -->
+          <div class="mb-5 flex items-center justify-between border-b border-neutral-800 pb-4">
+            <div class="flex items-center gap-2">
+              <div i-solar:music-notes-bold-duotone class="text-lg text-primary-500" />
+              <h3 class="text-base text-neutral-100 font-bold">
+                Configure Voice Profile
+              </h3>
+            </div>
+            <button class="text-neutral-500 hover:text-neutral-300" @click="voiceCreatorOpen = false">
+              <div i-solar:close-circle-bold class="text-xl" />
+            </button>
+          </div>
+
+          <div class="flex flex-col gap-5">
+            <!-- Voice Profile Name -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Profile Name</label>
+              <input
+                v-model="voiceForm.name"
+                type="text"
+                class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-sm text-neutral-200 outline-none focus:border-primary-500"
+              >
+            </div>
+
+            <!-- Kokoro Voice Presets Selector Grid -->
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Select Voice Preset (Kokoro Local)</label>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] text-neutral-500 font-semibold">Gender Filter:</span>
+                  <input
+                    v-model="voiceForm.filterByGender"
+                    type="checkbox"
+                    class="border-neutral-800 rounded bg-neutral-950 text-primary-500 focus:ring-primary-500"
+                  >
+                </div>
+              </div>
+
+              <!-- List Grid -->
+              <div class="grid grid-cols-1 max-h-[160px] gap-2.5 overflow-y-auto pr-1">
+                <div
+                  v-for="voice in filteredVoicePresets"
+                  :key="voice.id"
+                  :class="[
+                    'flex flex-col gap-1 p-3 border rounded-xl cursor-pointer transition-colors',
+                    voiceForm.baseVoice === voice.id
+                      ? 'border-primary-500 bg-primary-500/5'
+                      : 'border-neutral-800 bg-neutral-950/40 hover:bg-neutral-950/80',
+                  ]"
+                  @click="voiceForm.baseVoice = voice.id"
+                >
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-neutral-200 font-bold">{{ voice.name }}</span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="rounded bg-neutral-800 px-1.5 py-0.5 text-[8px] text-neutral-400 font-bold uppercase">
+                        {{ voice.gender }}
+                      </span>
+                      <span class="rounded bg-neutral-800 px-1.5 py-0.5 text-[8px] text-neutral-400 font-bold uppercase">
+                        {{ voice.accent }}
+                      </span>
+                    </div>
+                  </div>
+                  <p class="text-[10px] text-neutral-500 leading-normal">
+                    {{ voice.description }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- DSP Effects Sliders -->
+            <div class="grid grid-cols-2 gap-4">
+              <!-- Pitch -->
+              <div class="flex flex-col gap-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Pitch Shift</label>
+                  <span class="text-xs text-primary-500 font-semibold">{{ voiceForm.pitch.toFixed(1) }}x</span>
+                </div>
+                <input
+                  v-model.number="voiceForm.pitch"
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  class="h-1 w-full cursor-pointer appearance-none rounded-lg bg-neutral-800 accent-primary-500"
+                >
+              </div>
+
+              <!-- Speed -->
+              <div class="flex flex-col gap-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Speech Speed</label>
+                  <span class="text-xs text-primary-500 font-semibold">{{ voiceForm.rate.toFixed(1) }}x</span>
+                </div>
+                <input
+                  v-model.number="voiceForm.rate"
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  class="h-1 w-full cursor-pointer appearance-none rounded-lg bg-neutral-800 accent-primary-500"
+                >
+              </div>
+            </div>
+
+            <!-- Test Sandbox Playground -->
+            <div class="flex flex-col gap-2 border-t border-neutral-800/60 pt-4">
+              <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Playground (Test speech)</label>
+              <div class="flex gap-2">
+                <input
+                  v-model="voiceForm.testText"
+                  type="text"
+                  class="flex-1 border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-xs text-neutral-300 outline-none focus:border-primary-500"
+                >
+                <Button
+                  variant="secondary"
+                  class="h-[36px] flex items-center gap-1 border border-neutral-800 rounded-xl px-4 text-xs font-bold"
+                  @click="playVoicePreview"
+                >
+                  <div i-solar:play-circle-bold-duotone class="text-sm" />
+                  Play
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer actions -->
+          <div class="mt-6 flex items-center justify-end gap-3 border-t border-neutral-800 pt-4">
+            <Button
+              variant="ghost"
+              class="h-[36px] border border-neutral-800 rounded-xl px-4 text-xs font-bold"
+              @click="voiceCreatorOpen = false"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              class="h-[36px] border border-primary-500/20 rounded-xl px-5 text-xs font-bold shadow-lg shadow-primary-500/10"
+              @click="saveCustomVoiceProfile"
+            >
+              Save Voice Profile
+            </Button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </template>
