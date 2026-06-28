@@ -1,3 +1,4 @@
+export * from './animadex-wizard'
 export * from './background'
 export * from './display-models'
 export * from './echo-chips'

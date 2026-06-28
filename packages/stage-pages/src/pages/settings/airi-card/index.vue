@@ -27,6 +27,7 @@ import CardCreationDialog from './components/CardCreationDialog.vue'
 import CardDetailDialog from './components/CardDetailDialog.vue'
 import CardImportWizard from './components/CardImportWizard.vue'
 import CardListItem from './components/CardListItem.vue'
+import CreateModeSelectorDialog from './components/CreateModeSelectorDialog.vue'
 import DeleteCardDialog from './components/DeleteCardDialog.vue'
 
 const { t } = useI18n()
@@ -51,6 +52,7 @@ const editingCardId = ref<string>('')
 // Dialog state
 const isCardDialogOpen = ref(false)
 const isCardCreationDialogOpen = ref(false)
+const isCreateModePromptOpen = ref(false)
 
 // Card browser drawer & wizard states
 const activeBrowserSource = ref<any>(null)
@@ -581,6 +583,14 @@ function handleOpenStudio(cardId: string) {
 }
 
 function handleCardCreationDialog() {
+  isCreateModePromptOpen.value = true
+}
+
+function handleGuidedMode() {
+  router.push('/settings/airi-card/guided')
+}
+
+function handleAdvancedMode() {
   editingCardId.value = '' // Clear editing state for new card creation
   isCardCreationDialogOpen.value = true
 }
@@ -1171,6 +1181,13 @@ function getDisplayModelId(id: string) {
     v-model="isCardCreationDialogOpen"
     :card-id="editingCardId"
     @studio="handleOpenStudio"
+  />
+
+  <!-- Mode Selector Dialog -->
+  <CreateModeSelectorDialog
+    v-model="isCreateModePromptOpen"
+    @guided="handleGuidedMode"
+    @advanced="handleAdvancedMode"
   />
 
   <!-- Card import wizard dialog -->
