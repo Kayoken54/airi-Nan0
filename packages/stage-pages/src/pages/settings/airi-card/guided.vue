@@ -8,6 +8,7 @@ import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consci
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button } from '@proj-airi/ui'
+import { Select } from '@proj-airi/ui/components/form'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -63,6 +64,8 @@ const voicePresets = [
 
 const voiceForm = ref({
   name: '',
+  baseProvider: 'kokoro-local',
+  baseModel: '',
   baseVoice: 'af_heart',
   pitch: 1.0,
   rate: 1.0,
@@ -70,11 +73,66 @@ const voiceForm = ref({
   testText: 'Hello! This is a preview of my new voice. How does it sound?',
 })
 
+const speechProviders = computed(() => {
+  const list = [
+    { value: 'kokoro-local', label: 'Kokoro TTS (Local)' },
+  ]
+  providersStore.configuredSpeechProvidersMetadata.forEach((meta) => {
+    if (meta.id !== 'kokoro-local' && meta.id !== 'virtual-audio-studio' && meta.id !== 'speech-noop') {
+      list.push({ value: meta.id, label: meta.name })
+    }
+  })
+  return list
+})
+
+const isLoadingProviderData = ref(false)
+const selectedProviderVoices = ref<any[]>([])
+const selectedProviderModels = ref<any[]>([])
+
+watch(() => voiceForm.value.baseProvider, async (newProvider) => {
+  if (!newProvider || newProvider === 'kokoro-local') {
+    selectedProviderVoices.value = []
+    selectedProviderModels.value = []
+    return
+  }
+
+  isLoadingProviderData.value = true
+  try {
+    await speechStore.loadVoicesForProvider(newProvider)
+    await providersStore.loadModelsForConfiguredProviders()
+
+    selectedProviderVoices.value = speechStore.availableVoices[newProvider] || []
+    selectedProviderModels.value = speechStore.providerModels || []
+
+    if (selectedProviderVoices.value.length > 0) {
+      voiceForm.value.baseVoice = selectedProviderVoices.value[0].id
+    }
+    else {
+      voiceForm.value.baseVoice = ''
+    }
+
+    if (selectedProviderModels.value.length > 0) {
+      voiceForm.value.baseModel = selectedProviderModels.value[0].id
+    }
+    else {
+      const config = providersStore.getProviderConfig(newProvider)
+      voiceForm.value.baseModel = (config?.model as string) || ''
+    }
+  }
+  catch (err) {
+    console.error('Error loading provider models/voices:', err)
+  }
+  finally {
+    isLoadingProviderData.value = false
+  }
+})
+
 watch(voiceTargetCharacterId, (newVal) => {
   if (newVal) {
     const char = selectedCharacters.value.find(c => c.id === newVal)
     if (char) {
       voiceForm.value.name = `${char.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_voice`
+      voiceForm.value.baseProvider = 'kokoro-local'
       const genderIdx = char.traits[0]
       const genderName = wizardStore.facets.gender[genderIdx]
       if (genderName) {
@@ -117,8 +175,8 @@ function saveCustomVoiceProfile() {
   const newProfile = {
     id: profileId,
     name: voiceForm.value.name,
-    baseProvider: 'kokoro',
-    baseModel: '',
+    baseProvider: voiceForm.value.baseProvider,
+    baseModel: voiceForm.value.baseProvider === 'kokoro-local' ? '' : voiceForm.value.baseModel,
     baseVoice: voiceForm.value.baseVoice,
     effects: {
       pitch: voiceForm.value.pitch,
@@ -152,12 +210,13 @@ function saveCustomVoiceProfile() {
 async function playVoicePreview() {
   try {
     toast.info('Synthesizing audio preview...')
-    const provider = await providersStore.getProviderInstance('kokoro-local')
+    const provider = await providersStore.getProviderInstance(voiceForm.value.baseProvider)
     if (!provider) {
-      throw new Error('Kokoro TTS (Local) provider is not active or configured. Please enable it in Settings > Providers.')
+      throw new Error(`Provider "${voiceForm.value.baseProvider}" is not active or configured. Please enable it in Settings > Providers.`)
     }
-    const providerConfig = providersStore.getProviderConfig('kokoro-local')
-    const model = (providerConfig?.model as string) || 'q4'
+    const model = voiceForm.value.baseProvider === 'kokoro-local'
+      ? ((providersStore.getProviderConfig('kokoro-local')?.model as string) || 'q4')
+      : voiceForm.value.baseModel
 
     const audioData = await speechStore.speech(
       provider as any,
@@ -171,7 +230,7 @@ async function playVoicePreview() {
   }
   catch (err: any) {
     console.error('[AnimaDexWizard] Play preview error:', err)
-    toast.error(err.message || 'Failed to play voice preview. Make sure Kokoro TTS is active.')
+    toast.error(err.message || 'Failed to play voice preview.')
   }
 }
 
@@ -842,46 +901,63 @@ JSON Schema format:
           </div>
 
           <div class="flex flex-col gap-5">
-            <!-- Voice Profile Name -->
-            <div class="flex flex-col gap-1.5">
-              <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Profile Name</label>
-              <input
-                v-model="voiceForm.name"
-                type="text"
-                class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-sm text-neutral-200 outline-none focus:border-primary-500"
-              >
-            </div>
-
-            <!-- Kokoro Voice Presets Selector Grid -->
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center justify-between">
-                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Select Voice Preset (Kokoro Local)</label>
-                <div class="flex items-center gap-2">
-                  <span class="text-[10px] text-neutral-500 font-semibold">Gender Filter:</span>
-                  <input
-                    v-model="voiceForm.filterByGender"
-                    type="checkbox"
-                    class="border-neutral-800 rounded bg-neutral-950 text-primary-500 focus:ring-primary-500"
-                  >
-                </div>
+            <div class="grid grid-cols-2 gap-4">
+              <!-- Voice Profile Name -->
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Profile Name</label>
+                <input
+                  v-model="voiceForm.name"
+                  type="text"
+                  class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-sm text-neutral-200 outline-none focus:border-primary-500"
+                >
               </div>
 
-              <!-- List Grid -->
-              <div class="grid grid-cols-1 max-h-[160px] gap-2.5 overflow-y-auto pr-1">
-                <div
-                  v-for="voice in filteredVoicePresets"
-                  :key="voice.id"
-                  :class="[
-                    'flex flex-col gap-1 p-3 border rounded-xl cursor-pointer transition-colors',
-                    voiceForm.baseVoice === voice.id
-                      ? 'border-primary-500 bg-primary-500/5'
-                      : 'border-neutral-800 bg-neutral-950/40 hover:bg-neutral-950/80',
-                  ]"
-                  @click="voiceForm.baseVoice = voice.id"
-                >
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs text-neutral-200 font-bold">{{ voice.name }}</span>
-                    <div class="flex items-center gap-1.5">
+              <!-- Voice Provider Dropdown -->
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Provider</label>
+                <Select
+                  v-model="voiceForm.baseProvider"
+                  :options="speechProviders"
+                  class="w-full"
+                />
+              </div>
+            </div>
+
+            <!-- Kokoro-Local Specialized UI -->
+            <div v-if="voiceForm.baseProvider === 'kokoro-local'" class="flex flex-col gap-5">
+              <!-- Kokoro Voice Presets Selector Grid -->
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Select Voice Preset (Kokoro Local)</label>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-neutral-500 font-semibold">Gender Filter:</span>
+                    <input
+                      v-model="voiceForm.filterByGender"
+                      type="checkbox"
+                      class="border-neutral-800 rounded bg-neutral-950 text-primary-500 focus:ring-primary-500"
+                    >
+                  </div>
+                </div>
+
+                <!-- Collapsed List Grid (Inline style) -->
+                <div class="grid grid-cols-1 max-h-[160px] gap-2 overflow-y-auto pr-1">
+                  <div
+                    v-for="voice in filteredVoicePresets"
+                    :key="voice.id"
+                    :class="[
+                      'flex items-center justify-between p-2.5 border rounded-xl cursor-pointer transition-colors',
+                      voiceForm.baseVoice === voice.id
+                        ? 'border-primary-500 bg-primary-500/5'
+                        : 'border-neutral-800 bg-neutral-950/40 hover:bg-neutral-950/80',
+                    ]"
+                    @click="voiceForm.baseVoice = voice.id"
+                  >
+                    <div class="min-w-0 flex items-center gap-2">
+                      <span class="shrink-0 text-xs text-neutral-200 font-bold">{{ voice.name }}</span>
+                      <span class="text-xs text-neutral-500">—</span>
+                      <span class="truncate text-[10px] text-neutral-500 italic">{{ voice.description }}</span>
+                    </div>
+                    <div class="ml-3 flex shrink-0 items-center gap-1.5">
                       <span class="rounded bg-neutral-800 px-1.5 py-0.5 text-[8px] text-neutral-400 font-bold uppercase">
                         {{ voice.gender }}
                       </span>
@@ -890,44 +966,82 @@ JSON Schema format:
                       </span>
                     </div>
                   </div>
-                  <p class="text-[10px] text-neutral-500 leading-normal">
-                    {{ voice.description }}
-                  </p>
+                </div>
+              </div>
+
+              <!-- DSP Effects Sliders -->
+              <div class="grid grid-cols-2 gap-4">
+                <!-- Pitch -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Pitch Shift</label>
+                    <span class="text-xs text-primary-500 font-semibold">{{ voiceForm.pitch.toFixed(1) }}x</span>
+                  </div>
+                  <input
+                    v-model.number="voiceForm.pitch"
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.1"
+                    class="h-1 w-full cursor-pointer appearance-none rounded-lg bg-neutral-800 accent-primary-500"
+                  >
+                </div>
+
+                <!-- Speed -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Speech Speed</label>
+                    <span class="text-xs text-primary-500 font-semibold">{{ voiceForm.rate.toFixed(1) }}x</span>
+                  </div>
+                  <input
+                    v-model.number="voiceForm.rate"
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.1"
+                    class="h-1 w-full cursor-pointer appearance-none rounded-lg bg-neutral-800 accent-primary-500"
+                  >
                 </div>
               </div>
             </div>
 
-            <!-- DSP Effects Sliders -->
-            <div class="grid grid-cols-2 gap-4">
-              <!-- Pitch -->
+            <!-- Standard Providers Options (Searchable Dropdowns) -->
+            <div v-else class="flex flex-col gap-4">
+              <!-- Speech Model Select -->
               <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Pitch Shift</label>
-                  <span class="text-xs text-primary-500 font-semibold">{{ voiceForm.pitch.toFixed(1) }}x</span>
-                </div>
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Speech Model</label>
+                <Select
+                  v-if="selectedProviderModels.length > 0"
+                  v-model="voiceForm.baseModel"
+                  :options="selectedProviderModels.map(m => ({ value: m.id, label: m.name || m.id }))"
+                  placeholder="Select model"
+                  class="w-full"
+                />
                 <input
-                  v-model.number="voiceForm.pitch"
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
-                  class="h-1 w-full cursor-pointer appearance-none rounded-lg bg-neutral-800 accent-primary-500"
+                  v-else
+                  v-model="voiceForm.baseModel"
+                  type="text"
+                  placeholder="e.g. tts-1"
+                  class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2.5 text-sm text-neutral-200 outline-none focus:border-primary-500"
                 >
               </div>
 
-              <!-- Speed -->
+              <!-- Speech Voice ID Select -->
               <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Speech Speed</label>
-                  <span class="text-xs text-primary-500 font-semibold">{{ voiceForm.rate.toFixed(1) }}x</span>
-                </div>
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Speech Voice ID</label>
+                <Select
+                  v-if="selectedProviderVoices.length > 0"
+                  v-model="voiceForm.baseVoice"
+                  :options="selectedProviderVoices.map(v => ({ value: v.id, label: `${v.name} (${v.gender})` }))"
+                  placeholder="Select voice"
+                  class="w-full"
+                />
                 <input
-                  v-model.number="voiceForm.rate"
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
-                  class="h-1 w-full cursor-pointer appearance-none rounded-lg bg-neutral-800 accent-primary-500"
+                  v-else
+                  v-model="voiceForm.baseVoice"
+                  type="text"
+                  placeholder="e.g. alloy, bella"
+                  class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2.5 text-sm text-neutral-200 outline-none focus:border-primary-500"
                 >
               </div>
             </div>
