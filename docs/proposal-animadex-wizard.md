@@ -39,20 +39,27 @@ When the user clicks "Generate", AIRI compiles the inputs and makes a structured
 
 ### The Ingestion Payload
 The system sends the following to the LLM:
-*   Names, copyright/series, and core tags of all selected characters in the basket.
+*   Names, **copyright/series**, trigger words, and core tags of all selected characters in the basket (crucial for helping the LLM guide the roleplay/thematic direction, especially for less-known characters).
 *   The user's answers to the setting, user nickname, and lore configuration questions.
 
 ### The Naming Rule
 *   **Single Character**: If `selectedCharacters.length === 1`, the card's name is automatically assigned to that character's name (e.g., `name = selectedCharacters[0].name`).
-*   **Multi-Character**: If `selectedCharacters.length > 1`, the card is named after the synthesized world/setting or group theme (e.g., `"Vocaloid Music Studio"` or `"Genshin Tavern Lounge"`), while individual actors are split into discrete visual/acting concepts.
+*   **Multi-Character**: If `selectedCharacters.length > 1`, the card is named after the synthesized world/setting or group theme (e.g., `"Vocaloid Music Studio"` or `"Genshin Tavern Lounge"`).
 
 ### The Generated Output Schema
-The LLM returns a structured JSON matching AIRI's schema:
-1.  **System Prompt & Scenario**: Composed text placing the characters in the defined setting, reflecting the custom lore/behavior rules.
-2.  **Greetings**: A list of alternate greetings, styled contextually to the environment and the user's nickname.
-3.  **Actor Concept Registry**:
-    *   Creates a concept block for each character (`actor_{name}`).
-    *   Embeds their specific trigger words, core tags, and maps them to their visual assets (Live2D/VRM display models).
+The LLM returns a structured JSON containing modular card metadata. Visual assets keys and prompts are generated deterministically by the frontend to prevent hallucinations, while the LLM populates descriptions and personalities:
+
+1.  **name**: Slug-like or thematic name of the synthesized world or character card.
+2.  **scenario**: The active circumstance, starting conflict, and narrative premise of the roleplay (excluding static physical location details).
+3.  **first_mes**: Greeting message (multi-actor script format using asterisks for actions, prefixing speaker turns with their corresponding `<|ACTOR:key|>` tokens).
+4.  **alternate_greetings**: String array of alternative starting scenarios.
+5.  **places**: A dictionary of 2 or 3 distinct sets representing the main story settings (e.g. `place_main`, `place_alt_1`):
+    *   `name`: Readable name of the location.
+    *   `description`: High-fidelity visual description of the setting.
+6.  **actors**: A dictionary mapped to the deterministic keys provided in the ingestion instructions (e.g. `actor_{name}` or `actress_{name}`):
+    *   `short_description`: A super brief, low-resolution visual prose description of the character's baseline appearance and current attire (used directly in `visual_assets[actor_key].description`).
+    *   `long_prose`: A high-fidelity visual description of the character's detailed physical appearance and default outfit (concatenated into the card's root `description` field).
+    *   `personality_prompt`: The character's specific personality traits, behavior blueprints, speech style, and rules (concatenated into the card's root `system_prompt`).
 
 ---
 
@@ -65,3 +72,4 @@ The LLM returns a structured JSON matching AIRI's schema:
 ### 2. SQLite vs IndexedDB Context
 *   AIRI uses **IndexedDB** (via `unstorage` / `localforage`) for all its runtime and user state persistence.
 *   **Access Pattern**: The search step queries the local read-only SQLite database `animadex.db` (Route A) via Electron IPC, but once a card is synthesized, the completed multi-character card definition is saved natively into AIRI's IndexedDB `local:airi-cards` namespace.
+
