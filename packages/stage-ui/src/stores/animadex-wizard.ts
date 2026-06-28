@@ -38,6 +38,10 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
   })
   const isGenerating = ref(false)
 
+  // Bindings state (characterId -> displayModelId/voiceId)
+  const boundModels = ref<Record<string, string>>({})
+  const boundVoices = ref<Record<string, string>>({})
+
   // Filters
   const selectedGender = ref<string | null>(null)
   const selectedChips = ref<FilterChip[]>([])
@@ -93,14 +97,30 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
 
   function removeCharacterFromBasket(charId: string) {
     selectedCharacters.value = selectedCharacters.value.filter(c => c.id !== charId)
+    // Clean up bindings for removed character
+    delete boundModels.value[charId]
+    delete boundVoices.value[charId]
+  }
+
+  // Bind actions
+  function bindModelToCharacter(characterId: string, modelId: string) {
+    boundModels.value[characterId] = modelId
+  }
+
+  function bindVoiceToCharacter(characterId: string, voiceId: string) {
+    boundVoices.value[characterId] = voiceId
   }
 
   function clearBasket() {
     selectedCharacters.value = []
+    boundModels.value = {}
+    boundVoices.value = {}
   }
 
   function resetWizard() {
     selectedCharacters.value = []
+    boundModels.value = {}
+    boundVoices.value = {}
     currentStep.value = 1
     storyPrompt.setting = ''
     storyPrompt.nickname = ''
@@ -234,12 +254,16 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
     selectedGender,
     selectedChips,
     searchQuery,
+    boundModels,
+    boundVoices,
     loadCatalog,
     addChip,
     removeChip,
     setGender,
     addCharacterToBasket,
     removeCharacterFromBasket,
+    bindModelToCharacter,
+    bindVoiceToCharacter,
     clearBasket,
     resetWizard,
     suggestions,

@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import { ModelSelectorDialog } from '@proj-airi/stage-ui/components/scenarios/dialogs/model-selector'
 import { useAnimaDexWizardStore } from '@proj-airi/stage-ui/stores/animadex-wizard'
+import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useLLM } from '@proj-airi/stage-ui/stores/llm'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
+import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -16,6 +19,8 @@ const airiCardStore = useAiriCardStore()
 const llmStore = useLLM()
 const consciousnessStore = useConsciousnessStore()
 const providersStore = useProvidersStore()
+const displayModelsStore = useDisplayModelsStore()
+const speechStore = useSpeechStore()
 
 const {
   catalogLoaded,
@@ -28,11 +33,29 @@ const {
   searchQuery,
   suggestions,
   filteredCharacters,
+  boundModels,
+  boundVoices,
+  copyrights,
 } = storeToRefs(wizardStore)
 
 // Local UI state
 const isSearchFocused = ref(false)
 const displayLimit = ref(60) // Paginate/limit grid size for performance
+
+// Model & Voice Selector state
+const activeBindingCharacterId = ref<string | null>(null)
+const modelSelectorOpen = ref(false)
+const voiceCreatorOpen = ref(false)
+const voiceTargetCharacterId = ref<string | null>(null)
+
+const activeBindingCharacterModel = computed(() => {
+  if (!activeBindingCharacterId.value)
+    return undefined
+  const boundId = boundModels.value[activeBindingCharacterId.value]
+  if (!boundId)
+    return undefined
+  return displayModelsStore.displayModels.find(m => m.id === boundId)
+})
 
 onMounted(async () => {
   await wizardStore.loadCatalog()
@@ -109,6 +132,27 @@ function handleNext() {
   if (currentStep.value === 1 && selectedCharacters.value.length > 0) {
     currentStep.value = 2
   }
+  else if (currentStep.value === 2) {
+    currentStep.value = 3
+  }
+}
+
+function openModelSelector(characterId: string) {
+  activeBindingCharacterId.value = characterId
+  modelSelectorOpen.value = true
+}
+
+function handlePickModel(model: any) {
+  if (activeBindingCharacterId.value) {
+    wizardStore.bindModelToCharacter(activeBindingCharacterId.value, model?.id || '')
+  }
+}
+
+function getBoundModel(characterId: string) {
+  const modelId = boundModels.value[characterId]
+  if (!modelId)
+    return undefined
+  return displayModelsStore.displayModels.find(m => m.id === modelId)
 }
 
 // Card Synthesis Pipeline
@@ -239,9 +283,11 @@ JSON Schema format:
       <div class="mr-4 flex items-center gap-2 text-xs font-semibold">
         <span :class="[currentStep >= 1 ? 'text-primary-500' : 'text-neutral-600']">1. Cast Selection</span>
         <div i-solar:alt-arrow-right-line-duotone class="text-neutral-700" />
-        <span :class="[currentStep >= 2 ? 'text-primary-500' : 'text-neutral-600']">2. Story prompts</span>
+        <span :class="[currentStep >= 2 ? 'text-primary-500' : 'text-neutral-600']">2. Roster Settings</span>
         <div i-solar:alt-arrow-right-line-duotone class="text-neutral-700" />
-        <span :class="[currentStep >= 3 ? 'text-primary-500' : 'text-neutral-600']">3. LLM Synthesis</span>
+        <span :class="[currentStep >= 3 ? 'text-primary-500' : 'text-neutral-600']">3. Story Prompts</span>
+        <div i-solar:alt-arrow-right-line-duotone class="text-neutral-700" />
+        <span :class="[currentStep >= 4 ? 'text-primary-500' : 'text-neutral-600']">4. LLM Synthesis</span>
       </div>
     </header>
 
@@ -435,15 +481,125 @@ JSON Schema format:
               class="h-[40px] flex items-center gap-1.5 border border-primary-500/20 rounded-xl px-5 text-xs font-bold shadow-lg shadow-primary-500/10"
               @click="handleNext"
             >
-              Next: Configure Story
+              Next: Align Roster
               <div i-solar:alt-arrow-right-bold class="text-base" />
             </Button>
           </div>
         </transition>
       </div>
 
-      <!-- STEP 2: CONTEXT & STORY PROMPTS -->
-      <div v-else-if="currentStep === 2" class="flex flex-1 flex-col items-center justify-center overflow-y-auto bg-neutral-950 p-6">
+      <!-- STEP 2: ROSTER SETTINGS (MODEL & VOICE BINDING) -->
+      <div v-else-if="currentStep === 2" class="flex flex-1 flex-col items-center overflow-y-auto bg-neutral-950 p-6">
+        <div class="max-w-4xl w-full border border-neutral-900 rounded-2xl bg-neutral-900/20 p-8 shadow-xl">
+          <h3 class="mb-6 flex items-center gap-2 text-lg text-neutral-200 font-bold">
+            <div i-solar:user-circle-bold-duotone class="text-primary-500" />
+            Actor Alignment (Visual & Audio Settings)
+          </h3>
+
+          <div class="flex flex-col gap-4">
+            <!-- Row per character -->
+            <div
+              v-for="char in selectedCharacters"
+              :key="char.id"
+              class="flex flex-col justify-between gap-4 border border-neutral-800 rounded-2xl bg-neutral-900/40 p-5 md:flex-row md:items-center"
+            >
+              <!-- Left Column: Character card thumb + name -->
+              <div class="min-w-[200px] flex items-center gap-3.5">
+                <div class="h-14 w-14 overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
+                  <img :src="getThumbUrl(char.trigger)" alt="" class="h-full w-full object-cover">
+                </div>
+                <div class="min-w-0 flex flex-col">
+                  <span class="truncate text-sm text-neutral-100 font-bold">{{ char.name }}</span>
+                  <span class="truncate text-xs text-neutral-500 italic">
+                    {{ copyrights[char.copyrightIndex] || 'Original' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Center Column: Visual Model Selector -->
+              <div class="min-w-[240px] flex flex-col gap-2">
+                <label class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase">Visual Model / Avatar</label>
+                <div
+                  class="flex cursor-pointer items-center justify-between border border-neutral-800 rounded-xl bg-neutral-950/40 p-2.5 transition-colors hover:border-neutral-700"
+                  @click="openModelSelector(char.id)"
+                >
+                  <div class="flex items-center gap-3 overflow-hidden">
+                    <div class="h-10 w-10 flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900">
+                      <img
+                        v-if="getBoundModel(char.id)?.previewImage"
+                        :src="getBoundModel(char.id)?.previewImage"
+                        class="h-full w-full object-cover"
+                      >
+                      <div v-else class="i-solar:gallery-bold text-lg text-neutral-600" />
+                    </div>
+                    <div class="min-w-0 flex flex-col">
+                      <span class="truncate text-xs text-neutral-200 font-semibold">
+                        {{ getBoundModel(char.id)?.name || 'LLM Only (No Avatar)' }}
+                      </span>
+                      <span
+                        v-if="getBoundModel(char.id)"
+                        class="mt-0.5 self-start rounded bg-primary-500/10 px-1.5 py-0.2 text-[8px] text-primary-500 font-bold uppercase"
+                      >
+                        {{ getBoundModel(char.id)?.format.toLowerCase().includes('live2d') ? 'Live2D' : 'VRM' }}
+                      </span>
+                    </div>
+                  </div>
+                  <div i-solar:gallery-send-bold-duotone class="mr-1 text-sm text-neutral-500" />
+                </div>
+              </div>
+
+              <!-- Right Column: Speech Voice Selector -->
+              <div class="min-w-[240px] flex flex-col gap-2">
+                <label class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase">TTS Speech Voice</label>
+                <div class="flex items-center gap-2">
+                  <!-- Select dropdown or current voice -->
+                  <div class="flex flex-1 items-center justify-between border border-neutral-800 rounded-xl bg-neutral-950/40 p-2.5">
+                    <div class="min-w-0 flex items-center gap-2">
+                      <div i-solar:music-bold class="shrink-0 text-sm text-neutral-600" />
+                      <span class="truncate text-xs text-neutral-200">
+                        {{ boundVoices[char.id] ? speechStore.savedVoiceProfiles.find(p => p.id === boundVoices[char.id])?.name || 'Default Voice' : 'Inherit Default' }}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="h-[40px] w-[40px] border border-neutral-800 rounded-xl p-0 hover:bg-neutral-800/40"
+                    title="Configure Custom Voice"
+                    @click="voiceCreatorOpen = true; voiceTargetCharacterId = char.id"
+                  >
+                    <div i-solar:settings-bold-duotone class="text-sm text-neutral-400" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Actions -->
+          <div class="mt-8 flex items-center justify-between border-t border-neutral-800/60 pt-6">
+            <Button
+              variant="secondary"
+              class="h-[38px] flex items-center gap-1.5 border border-neutral-800 rounded-xl px-4 text-xs font-bold"
+              @click="currentStep = 1"
+            >
+              <div i-solar:alt-arrow-left-bold class="text-base" />
+              Back
+            </Button>
+
+            <Button
+              variant="primary"
+              class="h-[38px] flex items-center gap-1.5 border border-primary-500/20 rounded-xl px-5 text-xs font-bold shadow-lg shadow-primary-500/10"
+              @click="handleNext"
+            >
+              Next: Configure Story
+              <div i-solar:alt-arrow-right-bold class="text-base" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: CONTEXT & STORY PROMPTS -->
+      <div v-else-if="currentStep === 3" class="flex flex-1 flex-col items-center justify-center overflow-y-auto bg-neutral-950 p-6">
         <div class="max-w-xl w-full border border-neutral-900 rounded-2xl bg-neutral-900/20 p-8 shadow-xl">
           <h3 class="mb-6 flex items-center gap-2 text-lg text-neutral-200 font-bold">
             <div i-solar:clipboard-text-line-duotone class="text-primary-500" />
@@ -488,7 +644,7 @@ JSON Schema format:
             <Button
               variant="secondary"
               class="h-[38px] flex items-center gap-1.5 border border-neutral-800 rounded-xl px-4 text-xs font-bold"
-              @click="currentStep = 1"
+              @click="currentStep = 2"
             >
               <div i-solar:alt-arrow-left-bold class="text-base" />
               Back
@@ -506,8 +662,8 @@ JSON Schema format:
         </div>
       </div>
 
-      <!-- STEP 3: LLM SYNTHESIS (LOADING STATE) -->
-      <div v-else-if="currentStep === 3" class="flex flex-1 flex-col items-center justify-center bg-neutral-950 p-6">
+      <!-- STEP 4: LLM SYNTHESIS (LOADING STATE) -->
+      <div v-else-if="currentStep === 4" class="flex flex-1 flex-col items-center justify-center bg-neutral-950 p-6">
         <div class="max-w-md w-full flex flex-col items-center gap-5 text-center">
           <!-- Premium Glowing Loader -->
           <div class="relative flex items-center justify-center">
@@ -530,6 +686,13 @@ JSON Schema format:
           </div>
         </div>
       </div>
+
+      <!-- Dialog Components -->
+      <ModelSelectorDialog
+        v-model:show="modelSelectorOpen"
+        :selected-model="activeBindingCharacterModel"
+        @pick="handlePickModel"
+      />
     </main>
   </div>
 </template>
