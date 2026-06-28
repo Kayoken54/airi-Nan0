@@ -49,6 +49,19 @@ const modelSelectorOpen = ref(false)
 const voiceCreatorOpen = ref(false)
 const voiceTargetCharacterId = ref<string | null>(null)
 
+// AI Story Idea Suggester state
+interface StoryIdea {
+  title: string
+  location: string
+  nickname: string
+  lore: string
+}
+const storyIdeas = ref<StoryIdea[]>([])
+const activeSuggestionIndex = ref<number | null>(null)
+const isSuggestingIdeas = ref(false)
+const suggestionGuidance = ref('')
+const showSuggestions = ref(false)
+
 const voicePresets = [
   { id: 'af_heart', name: 'Heart', gender: 'Female', accent: 'US', description: 'Conversational, warm, smiling tone, natural breathiness.' },
   { id: 'af_bella', name: 'Bella', gender: 'Female', accent: 'US', description: 'Polished, articulate, professional narration.' },
@@ -385,6 +398,57 @@ function getBoundModel(characterId: string) {
   if (!modelId)
     return undefined
   return displayModelsStore.displayModels.find(m => m.id === modelId)
+}
+
+// AI Story Idea Suggester
+async function fetchStoryIdeas(guidance = '') {
+  isSuggestingIdeas.value = true
+  showSuggestions.value = true
+  storyIdeas.value = []
+  activeSuggestionIndex.value = null
+  try {
+    const activeModel = consciousnessStore.activeModel
+    const activeProviderName = consciousnessStore.activeProvider
+    if (!activeModel || !activeProviderName) {
+      throw new Error('No active LLM configured.')
+    }
+    const providerInstance = await providersStore.getProviderInstance(activeProviderName)
+    if (!providerInstance) {
+      throw new Error('Failed to retrieve provider instance.')
+    }
+    const castInfo = selectedCharacters.value.map((c) => {
+      const series = wizardStore.copyrights[c.copyrightIndex] || 'Unknown'
+      return `- ${c.name} (${series})`
+    }).join('\n')
+    const systemMsg = `You are a creative roleplay scenario designer for an anime companion platform.
+Based on the provided character cast, generate exactly 3 distinct and creative story scenario ideas.
+Return ONLY a raw JSON array (no markdown, no wrapping text). Each element must match:
+{ "title": "short catchy scenario title", "location": "vivid 1-sentence setting description", "nickname": "what the characters call the user (1-2 words)", "lore": "1-2 sentence behavioral or world rules" }`
+    const userMsg = `Cast:\n${castInfo}${guidance ? `\n\nUser guidance: ${guidance}` : ''}`
+    const response = await llmStore.generate(activeModel, providerInstance as any, [
+      { role: 'system', content: systemMsg },
+      { role: 'user', content: userMsg },
+    ] as any)
+    const cleaned = response.text?.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim()
+    storyIdeas.value = JSON.parse(cleaned || '[]')
+  }
+  catch (e) {
+    console.error('[Story Suggester] Error:', e)
+    toast.error('Could not generate story ideas. Check your LLM provider.')
+  }
+  finally {
+    isSuggestingIdeas.value = false
+  }
+}
+
+function applySuggestion(idx: number) {
+  activeSuggestionIndex.value = idx
+  const idea = storyIdeas.value[idx]
+  if (!idea)
+    return
+  storyPrompt.value.setting = idea.location
+  storyPrompt.value.nickname = idea.nickname
+  storyPrompt.value.lore = idea.lore
 }
 
 // Card Synthesis Pipeline
@@ -725,6 +789,19 @@ JSON Schema format:
             Actor Alignment (Visual & Audio Settings)
           </h3>
 
+          <!-- Contextual hint strip -->
+          <div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 border border-neutral-800/50 rounded-xl bg-neutral-900/60 px-4 py-2.5">
+            <div class="flex items-center gap-1.5">
+              <div i-solar:gallery-bold class="shrink-0 text-xs text-neutral-500" />
+              <span class="text-xs text-neutral-500">Tap the avatar to bind a 3D model</span>
+            </div>
+            <span class="text-xs text-neutral-700">·</span>
+            <div class="flex items-center gap-1.5">
+              <div i-solar:user-speak-linear class="shrink-0 text-xs text-neutral-500" />
+              <span class="text-xs text-neutral-500">Tap the voice button to set a TTS voice</span>
+            </div>
+          </div>
+
           <div class="flex flex-col gap-4">
             <!-- Row per character -->
             <div
@@ -745,48 +822,62 @@ JSON Schema format:
                 </div>
               </div>
 
-              <!-- Bindings Row: Avatar circle + Voice input + cog all inline -->
-              <div class="flex items-center gap-3">
-                <!-- Avatar circle -->
-                <div
-                  class="relative shrink-0 cursor-pointer transition-transform hover:scale-105"
-                  title="Select Model / Avatar"
-                  @click="openModelSelector(char.id)"
-                >
-                  <div class="h-11 w-11 flex items-center justify-center overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
-                    <img
-                      v-if="getBoundModel(char.id)?.previewImage"
-                      :src="getBoundModel(char.id)?.previewImage"
-                      class="h-full w-full object-cover"
-                    >
-                    <div v-else class="i-solar:gallery-bold text-lg text-neutral-600" />
+              <!-- Bindings Section -->
+              <div class="flex flex-col gap-1">
+                <!-- Micro-labels row -->
+                <div class="flex items-center gap-3">
+                  <div class="w-11 shrink-0 text-center text-[9px] text-primary-400 font-black tracking-wider uppercase">
+                    Bind
                   </div>
-                  <span
-                    v-if="getBoundModel(char.id)"
-                    class="absolute left-1/2 rounded bg-primary-500 px-1 text-[7px] text-neutral-950 font-black tracking-wide uppercase shadow-md -bottom-1 -translate-x-1/2"
+                  <div class="flex-1 text-[9px] text-primary-400 font-black tracking-wider uppercase">
+                    Set Voice
+                  </div>
+                  <div class="w-[38px] shrink-0" />
+                </div>
+
+                <!-- Controls row -->
+                <div class="flex items-center gap-3">
+                  <!-- Avatar circle -->
+                  <div
+                    class="relative shrink-0 cursor-pointer transition-transform hover:scale-105"
+                    title="Select Model / Avatar"
+                    @click="openModelSelector(char.id)"
                   >
-                    {{ getBoundModel(char.id)?.format.toLowerCase().includes('live2d') ? 'L2D' : 'VRM' }}
-                  </span>
-                </div>
+                    <div class="h-11 w-11 flex items-center justify-center overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
+                      <img
+                        v-if="getBoundModel(char.id)?.previewImage"
+                        :src="getBoundModel(char.id)?.previewImage"
+                        class="h-full w-full object-cover"
+                      >
+                      <div v-else class="i-solar:gallery-bold text-lg text-neutral-600" />
+                    </div>
+                    <span
+                      v-if="getBoundModel(char.id)"
+                      class="absolute left-1/2 rounded bg-primary-500 px-1 text-[7px] text-neutral-950 font-black tracking-wide uppercase shadow-md -bottom-1 -translate-x-1/2"
+                    >
+                      {{ getBoundModel(char.id)?.format.toLowerCase().includes('live2d') ? 'L2D' : 'VRM' }}
+                    </span>
+                  </div>
 
-                <!-- Voice display pill -->
-                <div class="min-w-0 flex flex-1 items-center gap-2 border border-neutral-800 rounded-xl bg-neutral-950/40 px-3 py-2">
-                  <div i-solar:music-bold class="shrink-0 text-sm text-neutral-600" />
-                  <span class="truncate text-xs text-neutral-300">
-                    {{ boundVoices[char.id] ? speechStore.savedVoiceProfiles.find(p => p.id === boundVoices[char.id])?.name || 'Default Voice' : 'Inherit Default' }}
-                  </span>
-                </div>
+                  <!-- Voice display pill -->
+                  <div class="min-w-0 flex flex-1 items-center gap-2 border border-neutral-800 rounded-xl bg-neutral-950/40 px-3 py-2">
+                    <div i-solar:music-bold class="shrink-0 text-sm text-neutral-600" />
+                    <span class="truncate text-xs text-neutral-300">
+                      {{ boundVoices[char.id] ? speechStore.savedVoiceProfiles.find(p => p.id === boundVoices[char.id])?.name || 'Default Voice' : 'Inherit Default' }}
+                    </span>
+                  </div>
 
-                <!-- Cog button -->
-                <Button
-                  type="button"
-                  variant="ghost"
-                  class="h-[38px] w-[38px] shrink-0 border border-neutral-800 rounded-xl p-0 hover:bg-neutral-800/40"
-                  title="Configure Voice"
-                  @click="voiceCreatorOpen = true; voiceTargetCharacterId = char.id"
-                >
-                  <div i-solar:user-speak-linear class="text-sm text-neutral-400" />
-                </Button>
+                  <!-- Voice button -->
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="h-[38px] w-[38px] shrink-0 border border-neutral-800 rounded-xl p-0 hover:bg-neutral-800/40"
+                    title="Configure Voice"
+                    @click="voiceCreatorOpen = true; voiceTargetCharacterId = char.id"
+                  >
+                    <div i-solar:user-speak-linear class="text-sm text-neutral-400" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -823,6 +914,77 @@ JSON Schema format:
           </h3>
 
           <div class="flex flex-col gap-5">
+            <!-- AI Suggest Strip -->
+            <div class="flex items-center justify-between border border-primary-500/20 rounded-xl bg-primary-500/5 px-4 py-2.5">
+              <div class="flex items-center gap-2">
+                <div i-solar:stars-bold-duotone class="shrink-0 text-sm text-primary-400" />
+                <span class="text-xs text-primary-300 font-semibold">Suggest story ideas from your cast</span>
+              </div>
+              <button
+                class="h-[28px] flex items-center gap-1.5 border border-primary-500/40 rounded-lg bg-primary-500/10 px-3 text-[10px] text-primary-300 font-bold tracking-wide transition-all hover:bg-primary-500/20 disabled:opacity-50"
+                :disabled="isSuggestingIdeas"
+                @click="fetchStoryIdeas()"
+              >
+                <div
+                  :class="isSuggestingIdeas ? 'i-solar:refresh-bold animate-spin' : 'i-solar:magic-stick-3-bold'"
+                  class="text-xs"
+                />
+                {{ isSuggestingIdeas ? 'Thinking...' : 'Suggest' }}
+              </button>
+            </div>
+
+            <!-- Suggestion Panel -->
+            <div v-if="showSuggestions" class="flex flex-col gap-2">
+              <!-- Skeleton loading -->
+              <template v-if="isSuggestingIdeas">
+                <div
+                  v-for="i in 3"
+                  :key="i"
+                  class="h-[52px] animate-pulse border border-neutral-800 rounded-xl bg-neutral-800/40"
+                />
+              </template>
+
+              <!-- Loaded suggestions -->
+              <template v-else-if="storyIdeas.length > 0">
+                <button
+                  v-for="(idea, idx) in storyIdeas"
+                  :key="idx"
+                  :class="[
+                    'w-full text-left border rounded-xl px-4 py-3 transition-all cursor-pointer',
+                    activeSuggestionIndex === idx
+                      ? 'border-primary-500 bg-primary-500/8'
+                      : 'border-neutral-800 bg-neutral-900/40 hover:bg-neutral-800/60',
+                  ]"
+                  @click="applySuggestion(idx)"
+                >
+                  <div class="text-xs text-neutral-100 font-bold leading-snug">
+                    {{ idea.title }}
+                  </div>
+                  <div class="mt-0.5 truncate text-[10px] text-neutral-500">
+                    {{ idea.location }} · <span class="italic">{{ idea.nickname }}</span>
+                  </div>
+                </button>
+              </template>
+
+              <!-- Guidance + Refine row -->
+              <div v-if="!isSuggestingIdeas && storyIdeas.length > 0" class="flex items-center gap-2 pt-1">
+                <input
+                  v-model="suggestionGuidance"
+                  type="text"
+                  placeholder="Add guidance to refine ideas (e.g. I'm a girl, call me Betsie, slice-of-life AU)"
+                  class="flex-1 border border-neutral-800 rounded-xl bg-neutral-900/60 px-3 py-2 text-xs text-neutral-300 outline-none transition-all focus:border-primary-500 placeholder-neutral-600"
+                >
+                <button
+                  class="h-[34px] flex shrink-0 items-center gap-1 border border-neutral-800 rounded-xl bg-neutral-900/60 px-3 text-[10px] text-neutral-400 font-bold transition-all hover:bg-neutral-800/60 disabled:opacity-50"
+                  :disabled="isSuggestingIdeas"
+                  @click="fetchStoryIdeas(suggestionGuidance)"
+                >
+                  <div i-solar:refresh-bold class="text-xs" />
+                  Refine
+                </button>
+              </div>
+            </div>
+
             <!-- Setting / Location -->
             <div class="flex flex-col gap-1.5">
               <label class="text-xs text-neutral-400 font-bold tracking-wider uppercase">Where does this take place?</label>
