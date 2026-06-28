@@ -49,12 +49,14 @@ The system sends the following to the LLM:
 ### The Generated Output Schema
 The LLM returns a structured JSON containing modular card metadata. Visual assets keys and prompts are generated deterministically by the frontend to prevent hallucinations, while the LLM populates descriptions and personalities:
 
-1.  **name**: Slug-like or thematic name of the synthesized world or character card.
-2.  **scenario**: The active circumstance, starting conflict, and narrative premise of the roleplay (excluding static physical location details).
-3.  **places**: A dictionary of 2 or 3 distinct sets representing the main story settings (e.g. `place_main`, `place_alt_1`):
-    *   `name`: Readable name of the location.
-    *   `description`: High-fidelity visual description of the setting.
-4.  **actors**: A dictionary mapped to the deterministic keys provided in the ingestion instructions (e.g. `actor_{name}` or `actress_{name}`):
+1.  **id**: Sluggified, URL-safe formal name for the card identity (e.g., `multiverse-talent-agency`).
+2.  **name**: The readable nickname / display name of the world (e.g., `Multiverse Talent Agency`).
+3.  **scenario**: The active circumstance, starting conflict, and narrative premise of the roleplay (excluding static physical location details).
+4.  **places**: A dictionary of 2 or 3 distinct sets representing the main story settings (e.g. `place_main`, `place_alt_1`):
+    *   `name`: Readable name of the location (used for description headings).
+    *   `description`: High-fidelity visual description of the setting (concatenated into the card's root `description` field).
+    *   `prompt`: Generative prompt tags for Stable Diffusion / ComfyUI background generation (copied into `visual_assets[place_key].prompt`).
+5.  **actors**: A dictionary mapped to the deterministic keys provided in the ingestion instructions (e.g. `actor_{name}` or `actress_{name}`):
     *   `short_description`: A super brief, low-resolution visual prose description of the character's baseline appearance and current attire (used directly in `visual_assets[actor_key].description`).
     *   `long_prose`: A high-fidelity visual description of the character's detailed physical appearance and default outfit (concatenated into the card's root `description` field).
     *   `personality_prompt`: The character's specific personality traits, behavior blueprints, speech style, and rules (concatenated into the card's root `system_prompt`).
