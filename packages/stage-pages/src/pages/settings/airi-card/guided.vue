@@ -76,6 +76,7 @@ const voiceForm = ref({
 const speechProviders = computed(() => {
   const list = [
     { value: 'kokoro-local', label: 'Kokoro TTS (Local)' },
+    { value: 'virtual-audio-studio', label: 'Audio Studio (Saved Profiles)' },
   ]
   providersStore.configuredSpeechProvidersMetadata.forEach((meta) => {
     if (meta.id !== 'kokoro-local' && meta.id !== 'virtual-audio-studio' && meta.id !== 'speech-noop') {
@@ -93,6 +94,22 @@ watch(() => voiceForm.value.baseProvider, async (newProvider) => {
   if (!newProvider || newProvider === 'kokoro-local') {
     selectedProviderVoices.value = []
     selectedProviderModels.value = []
+    return
+  }
+
+  if (newProvider === 'virtual-audio-studio') {
+    selectedProviderModels.value = []
+    selectedProviderVoices.value = speechStore.savedVoiceProfiles.map(p => ({
+      id: p.id,
+      name: p.name,
+      gender: 'saved profile',
+    }))
+    if (selectedProviderVoices.value.length > 0) {
+      voiceForm.value.baseVoice = selectedProviderVoices.value[0].id
+    }
+    else {
+      voiceForm.value.baseVoice = ''
+    }
     return
   }
 
@@ -171,6 +188,13 @@ function saveCustomVoiceProfile() {
   if (!voiceTargetCharacterId.value)
     return
 
+  if (voiceForm.value.baseProvider === 'virtual-audio-studio') {
+    wizardStore.bindVoiceToCharacter(voiceTargetCharacterId.value, voiceForm.value.baseVoice)
+    toast.success('Voice profile bound successfully!')
+    voiceCreatorOpen.value = false
+    return
+  }
+
   const profileId = `voice_profile_${voiceForm.value.name}`
   const newProfile = {
     id: profileId,
@@ -210,6 +234,28 @@ function saveCustomVoiceProfile() {
 async function playVoicePreview() {
   try {
     toast.info('Synthesizing audio preview...')
+    if (voiceForm.value.baseProvider === 'virtual-audio-studio') {
+      const profile = speechStore.savedVoiceProfiles.find(p => p.id === voiceForm.value.baseVoice)
+      if (!profile) {
+        throw new Error('Selected voice profile not found.')
+      }
+      const provider = await providersStore.getProviderInstance(profile.baseProvider)
+      if (!provider) {
+        throw new Error(`The base provider "${profile.baseProvider}" for this profile is not active.`)
+      }
+      const audioData = await speechStore.speech(
+        provider as any,
+        profile.baseModel || '',
+        voiceForm.value.testText,
+        profile.baseVoice,
+        profile.effects,
+      )
+      const audioUrl = URL.createObjectURL(new Blob([audioData]))
+      const audio = new Audio(audioUrl)
+      audio.play()
+      return
+    }
+
     const provider = await providersStore.getProviderInstance(voiceForm.value.baseProvider)
     if (!provider) {
       throw new Error(`Provider "${voiceForm.value.baseProvider}" is not active or configured. Please enable it in Settings > Providers.`)
