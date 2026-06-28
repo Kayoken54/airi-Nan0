@@ -749,34 +749,28 @@ JSON Schema format:
               </div>
 
               <!-- Center Column: Visual Model Selector -->
-              <div class="min-w-[240px] flex flex-col gap-2">
-                <label class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase">Visual Model / Avatar</label>
+              <div class="flex flex-col items-center gap-1.5">
+                <label class="text-[9px] text-neutral-500 font-bold tracking-wider uppercase">Visual Avatar</label>
                 <div
-                  class="flex cursor-pointer items-center justify-between border border-neutral-800 rounded-xl bg-neutral-950/40 p-2.5 transition-colors hover:border-neutral-700"
+                  class="relative cursor-pointer transition-transform hover:scale-105"
+                  title="Select Model / Avatar"
                   @click="openModelSelector(char.id)"
                 >
-                  <div class="flex items-center gap-3 overflow-hidden">
-                    <div class="h-10 w-10 flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900">
-                      <img
-                        v-if="getBoundModel(char.id)?.previewImage"
-                        :src="getBoundModel(char.id)?.previewImage"
-                        class="h-full w-full object-cover"
-                      >
-                      <div v-else class="i-solar:gallery-bold text-lg text-neutral-600" />
-                    </div>
-                    <div class="min-w-0 flex flex-col">
-                      <span class="truncate text-xs text-neutral-200 font-semibold">
-                        {{ getBoundModel(char.id)?.name || 'LLM Only (No Avatar)' }}
-                      </span>
-                      <span
-                        v-if="getBoundModel(char.id)"
-                        class="mt-0.5 self-start rounded bg-primary-500/10 px-1.5 py-0.2 text-[8px] text-primary-500 font-bold uppercase"
-                      >
-                        {{ getBoundModel(char.id)?.format.toLowerCase().includes('live2d') ? 'Live2D' : 'VRM' }}
-                      </span>
-                    </div>
+                  <div class="h-14 w-14 flex items-center justify-center overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
+                    <img
+                      v-if="getBoundModel(char.id)?.previewImage"
+                      :src="getBoundModel(char.id)?.previewImage"
+                      class="h-full w-full object-cover"
+                    >
+                    <div v-else class="i-solar:gallery-bold text-xl text-neutral-600" />
                   </div>
-                  <div i-solar:gallery-send-bold-duotone class="mr-1 text-sm text-neutral-500" />
+                  <!-- Format Badge overlaid on bottom of avatar -->
+                  <span
+                    v-if="getBoundModel(char.id)"
+                    class="absolute left-1/2 rounded bg-primary-500 px-1 py-0.2 text-[8px] text-neutral-950 font-black tracking-wide uppercase shadow-md -bottom-1 -translate-x-1/2"
+                  >
+                    {{ getBoundModel(char.id)?.format.toLowerCase().includes('live2d') ? 'L2D' : 'VRM' }}
+                  </span>
                 </div>
               </div>
 
