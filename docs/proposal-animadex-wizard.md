@@ -9,7 +9,7 @@ This proposal details the design of an AI-driven, multi-character onboarding and
 Instead of mapping a single character from the catalog to a flat, static card, this wizard enables users to assemble a custom "World" containing one or more characters, configuring a personalized scenario that is synthesized by the LLM.
 
 ```
-[Browse 36k Catalogue] ──> [Add Characters to Basket] ──> [Configure Story Prompts] ──> [LLM Synthesis] ──> [Multi-Actor Card]
+[Browse 36k Catalogue] ──> [Cast Selection (Step 1)] ──> [Roster Settings (Step 2)] ──> [Story Prompts (Step 3)] ──> [LLM Synthesis (Step 4)]
 ```
 
 ---
@@ -19,17 +19,26 @@ Instead of mapping a single character from the catalog to a flat, static card, t
 ### Step 1: Character Selection (The Basket)
 *   The user is presented with the AnimaDex character grid/list.
 *   The user can browse, search, and click "Add to World" on one or more characters.
-*   **Activation Condition**: The moment at least one character is added to the basket, the "Next" button lights up. However, the user can continue adding multiple characters (e.g., Hatsune Miku, Kagamine Rin, and Luka) to create a group scene.
+*   **Activation Condition**: The moment at least one character is added to the basket, the "Next" button lights up.
 
-### Step 2: Context & Story Prompts
-After selecting the cast, the user is presented with a streamlined form of three simple, open-ended questions to outline the scene:
+### Step 2: Roster Settings (Model & Voice Binding)
+A visual two-column layout mapped for each character in the selected cast list:
+*   **Left Column (The Character)**: Displays the round AnimaDex card avatar with the character's name underneath.
+*   **Center Column (Visual Model Selector)**:
+    *   An open-ended button that triggers the `ModelSelectorDialog`.
+    *   **If Unbound**: Displays `+ Bind Avatar (Optional)`. Tapping opens the model selector.
+    *   **If Bound**: Displays the cached `previewImage` of the bound Live2D/VRM model with a format badge (e.g. `VRM`, `Live2D`).
+    *   **Manifest Harvesting**: If bound, the system extracts the model's available expressions and motions lists (e.g. `relax`, `happy`, `idle`, `speak`) to build an acting capabilities whitelist.
+*   **Right Column (Audio Voice Selector)**:
+    *   Allows the user to bind a TTS voice to the character.
+    *   Provides a dropdown of existing voices, plus a quick **"Create Voice Clone / Preset"** button to quickly spawn a new Audio Studio entry on the fly.
+    *   **Skipping**: Users can skip bindings entirely, in which case characters remain "LLM-only" (no ACT tokens or voice configs are bound).
 
-1.  **Setting & Location**: *"Where do you want this story to take place?"*
-    *   *Placeholder*: "Leave blank to let the AI suggest a fitting location."
-2.  **User Nickname / Identity**: *"What do you want the characters to call you?"*
-    *   *Placeholder*: "Leave blank for the AI to make up a name."
-3.  **Lore & Behavior Rules**: *"Do you want the characters to follow canon lore/personality?"*
-    *   *Placeholder*: "Explain what you want instead (e.g., 'Make them tsundere', 'Set in a fantasy medieval AU')."
+### Step 3: Context & Story Prompts
+After selecting the cast and setting up roster alignments, the user outlines the scenario:
+1.  **Setting & Location**: *"Where do you want this story to take place?"* (e.g., 'A rainy cafe in Tokyo').
+2.  **User Nickname / Identity**: *"What do you want the characters to call you?"* (e.g., 'Manager').
+3.  **Lore & Behavior Rules**: *"Do you want the characters to follow canon lore/personality?"* (e.g. 'Make them tsundere', 'Set in a fantasy medieval AU').
 
 ---
 
@@ -39,8 +48,9 @@ When the user clicks "Generate", AIRI compiles the inputs and makes a structured
 
 ### The Ingestion Payload
 The system sends the following to the LLM:
-*   Names, **copyright/series**, trigger words, and core tags of all selected characters in the basket (crucial for helping the LLM guide the roleplay/thematic direction, especially for less-known characters).
+*   Names, **copyright/series**, trigger words, and core tags of all selected characters.
 *   The user's answers to the setting, user nickname, and lore configuration questions.
+*   **Bound Acting Capabilities**: For each character with a bound visual model, the whitelists of available facial expressions and motions (e.g., `["relaxed", "happy", "hehe"]`, `["idle", "speak", "think"]`). This instructs the LLM to write valid, pre-sanitized `<|ACT:emotion:...|>` and `<|ACT:motion:...|>` tokens into dialogue lines.
 
 ### The Naming Rule
 *   **Single Character**: If `selectedCharacters.length === 1`, the card's name is automatically assigned to that character's name (e.g., `name = selectedCharacters[0].name`).
@@ -60,7 +70,8 @@ The LLM returns a structured JSON containing modular card metadata. Visual asset
     *   `short_description`: A super brief, low-resolution visual prose description of the character's baseline appearance and current attire (used directly in `visual_assets[actor_key].description`).
     *   `long_prose`: A high-fidelity visual description of the character's detailed physical appearance and default outfit (concatenated into the card's root `description` field).
     *   `personality_prompt`: The character's specific personality traits, behavior blueprints, speech style, and rules (concatenated into the card's root `system_prompt`).
-    *   `greeting`: A single-actor in-character starting greeting prefixing dialogue with their respective `<|ACTOR:key|>` token. (During card assembly, the first character's greeting becomes the card's default `first_mes`, while other characters' greetings populate `alternate_greetings`).
+    *   `greeting`: A single-actor in-character starting greeting prefixing dialogue with their respective `<|ACTOR:key|>` token. Uses Whitelisted ACT tokens if acting capabilities were provided. (During card assembly, the first character's greeting becomes the card's default `first_mes`, while other characters' greetings populate `alternate_greetings`).
+    *   `acting_instructions`: Custom guidelines outlining how and when to trigger specific whitelist emotions and motions for this character (concatenated into the system prompt).
 
 ---
 
