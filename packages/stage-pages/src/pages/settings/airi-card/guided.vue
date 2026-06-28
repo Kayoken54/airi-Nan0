@@ -152,13 +152,16 @@ function saveCustomVoiceProfile() {
 async function playVoicePreview() {
   try {
     toast.info('Synthesizing audio preview...')
-    const provider = await providersStore.getProviderInstance('kokoro')
+    const provider = await providersStore.getProviderInstance('kokoro-local')
     if (!provider) {
-      throw new Error('Kokoro TTS provider not active or configured.')
+      throw new Error('Kokoro TTS (Local) provider is not active or configured. Please enable it in Settings > Providers.')
     }
+    const providerConfig = providersStore.getProviderConfig('kokoro-local')
+    const model = (providerConfig?.model as string) || 'q4'
+
     const audioData = await speechStore.speech(
       provider as any,
-      '',
+      model,
       voiceForm.value.testText,
       voiceForm.value.baseVoice,
     )
