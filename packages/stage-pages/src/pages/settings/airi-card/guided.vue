@@ -422,8 +422,22 @@ async function fetchStoryIdeas(guidance = '') {
     }).join('\n')
     const systemMsg = `You are a creative roleplay scenario designer for an anime companion platform.
 Based on the provided character cast, generate exactly 3 distinct and creative story scenario ideas.
+
+Follow these rules for generating the scenarios:
+1. UNIFIED WORLD: All selected characters must live in the same unified world, location, or timeline together. Do not split them into separate settings per character.
+2. DUPLICATE/OUTFIT VARIATIONS: If the cast contains different versions or outfits of the same base character:
+   - Mix up the approach across the 3 options.
+   - For one option, treat them as a clone paradox, parallel-timeline variants, or twins who can talk to each other.
+   - For another option, treat them as a single character who changes their outfits, roles, or personas contextually in the story.
+3. STORY ROLEPLAY STRUCTURE: Make the lore rules describe a fun dynamic (e.g. they represent elemental forces, rival cafe teams, or digital network nodes) and explain the user's role (nickname) in relation to them.
+
 Return ONLY a raw JSON array (no markdown, no wrapping text). Each element must match:
-{ "title": "short catchy scenario title", "location": "vivid 1-sentence setting description", "nickname": "what the characters call the user (1-2 words)", "lore": "1-2 sentence behavioral or world rules" }`
+{ 
+  "title": "short catchy scenario title", 
+  "location": "vivid 2-sentence setting description", 
+  "nickname": "what the characters call the user (1-2 words)", 
+  "lore": "rich 2-3 sentence behavioral or world rules" 
+}`
     const userMsg = `Cast:\n${castInfo}${guidance ? `\n\nUser guidance: ${guidance}` : ''}`
     const response = await llmStore.generate(activeModel, providerInstance as any, [
       { role: 'system', content: systemMsg },
