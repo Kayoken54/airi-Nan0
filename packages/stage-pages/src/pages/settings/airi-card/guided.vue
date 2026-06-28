@@ -947,17 +947,7 @@ JSON Schema format:
           </div>
 
           <div class="flex flex-col gap-5">
-            <div class="grid grid-cols-2 gap-4">
-              <!-- Voice Profile Name -->
-              <div class="flex flex-col gap-1.5">
-                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Profile Name</label>
-                <input
-                  v-model="voiceForm.name"
-                  type="text"
-                  class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-sm text-neutral-200 outline-none focus:border-primary-500"
-                >
-              </div>
-
+            <div>
               <!-- Voice Provider Dropdown -->
               <div class="flex flex-col gap-1.5">
                 <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Provider</label>
@@ -971,6 +961,16 @@ JSON Schema format:
 
             <!-- Kokoro-Local Specialized UI -->
             <div v-if="voiceForm.baseProvider === 'kokoro-local'" class="flex flex-col gap-5">
+              <!-- Voice Profile Name (Only for Kokoro new voices) -->
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Profile Name</label>
+                <input
+                  v-model="voiceForm.name"
+                  type="text"
+                  class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-sm text-neutral-200 outline-none focus:border-primary-500"
+                >
+              </div>
+
               <!-- Kokoro Voice Presets Selector Grid -->
               <div class="flex flex-col gap-2">
                 <div class="flex items-center justify-between">
@@ -1053,6 +1053,16 @@ JSON Schema format:
 
             <!-- Standard Providers Options (Searchable Dropdowns) -->
             <div v-else class="flex flex-col gap-4">
+              <!-- Voice Profile Name (Only when creating/saving a new voice profile, hidden for Audio Studio bind) -->
+              <div v-if="voiceForm.baseProvider !== 'virtual-audio-studio'" class="flex flex-col gap-1.5">
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Voice Profile Name</label>
+                <input
+                  v-model="voiceForm.name"
+                  type="text"
+                  class="w-full border border-neutral-800 rounded-xl bg-neutral-950/60 px-4 py-2 text-sm text-neutral-200 outline-none focus:border-primary-500"
+                >
+              </div>
+
               <!-- Speech Model Select (Hidden for Audio Studio) -->
               <div v-if="voiceForm.baseProvider !== 'virtual-audio-studio'" class="flex flex-col gap-1.5">
                 <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Speech Model</label>

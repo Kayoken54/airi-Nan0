@@ -31,13 +31,17 @@ A visual two-column layout mapped for each character in the selected cast list:
     *   **Manifest Harvesting**: If bound, the system extracts the model's available expressions and motions lists (e.g. `relax`, `happy`, `idle`, `speak`) to build an acting capabilities whitelist.
 *   **Right Column (Audio Voice Selector)**:
     *   Allows the user to bind a TTS voice to the character.
-    *   **Existing Voices**: Dropdown of active virtual voice profiles saved in the system.
-    *   **Quick Audio Studio Creator Modal**: A button to quickly spawn a new Audio Studio entry on the fly:
-        *   *Default Provider*: Focuses automatically on **Kokoro** (built-in, local, zero-config).
-        *   *Smart Descriptive Selector*: For Kokoro, displays a card grid of voices auto-filtered by the character's gender (e.g. female voices like `af_heart` [warm/smiling], `af_bella` [polished/clear], `af_nicole` [intimate/ASMR/whisper]) with descriptive traits, plus a toggle to show all genders/accents.
-        *   *Dual Sliders*: Adjusts **Pitch Tuning** and **Speech Speed**.
-        *   *Default UST Rules*: Pre-configures `mode: "mute"` (mute asterisks `*` and brackets `[ ]` to strip actions during speech, but render them on screen).
-        *   *Sandbox Playground*: A small sandbox text box and **Play/Preview** button to instantly synthesize and test the current voice settings.
+    *   **Quick Audio Studio Creator Modal**: A button to configure, tune, or bind a voice profile:
+        *   **Voice Provider**: Dropdown selecting the speech engine (defaults to `kokoro-local`, lists configured providers, plus `virtual-audio-studio` to select existing saved voice profiles).
+        *   **Speech Model**: Select dropdown of the provider's models (hidden for `virtual-audio-studio`; falls back to a manual text input field if model listing is unsupported).
+        *   **Speech Voice ID / Profile**: Select dropdown of the provider's voices (lists saved custom profiles when `virtual-audio-studio` is selected; falls back to a manual text input field if voice listing is unsupported).
+        *   **Voice Profile Name**: A text field that is **only visible when `kokoro-local` is selected**. Tuning local Kokoro voices generates a *new* profile entry in Audio Studio (requiring a name). For other providers/profiles, this field is hidden since the user is simply binding an existing voice/profile.
+        *   **Dual Sliders**: Adjusts **Pitch Tuning** and **Speech Speed** (visible only for `kokoro-local`).
+        *   **Default UST Rules**: Pre-configures `mode: "mute"` (stripping asterisks `*` and brackets `[ ]` actions from speech while rendering them on screen).
+        *   **Sandbox Playground**: A text box and **Play** button to instantly synthesize and preview the current settings.
+    *   **Save Action**:
+        *   *For Kokoro Local*: Saves a *new* `VoiceProfile` with customized effects to the speech store (Audio Studio) and binds its ID.
+        *   *For All Other Options*: Directly binds the selected profile or voice ID to the character.
     *   **Skipping**: Users can skip bindings entirely, in which case characters remain "LLM-only" (no ACT tokens or voice configs are bound).
 
 
