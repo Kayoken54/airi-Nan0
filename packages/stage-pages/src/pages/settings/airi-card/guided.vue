@@ -413,6 +413,13 @@ function unbindModel(trigger: string) {
   }
 }
 
+// Computed count of characters that have model bindings on disk
+const boundCharactersCount = computed(() => {
+  const map = getBindingsMap()
+  const boundTriggers = new Set(Object.keys(map).filter(k => map[k].displayModelId))
+  return wizardStore.characters.filter(char => boundTriggers.has(char.trigger)).length
+})
+
 function getActorThumbUrl(actorKey: string) {
   const slug = actorKey.replace('actor_', '')
   const char = selectedCharacters.value.find((c) => {
@@ -1011,7 +1018,7 @@ async function confirmCreateCard() {
               class="h-[30px] flex items-center gap-1 border border-neutral-800 rounded-lg px-3.5 text-xs"
               @click="showOnlyModels = !showOnlyModels"
             >
-              <span>🎭 Has Model</span>
+              <span>🎭 Has Model ({{ boundCharactersCount }})</span>
             </Button>
           </div>
         </div>
@@ -1068,25 +1075,24 @@ async function confirmCreateCard() {
                       <div i-solar:trash-bin-trash-outline class="text-sm" />
                       Remove
                     </Button>
-
-                    <!-- Secondary Model Actions (Visible if a model is bound) -->
-                    <div v-if="hasBoundModel(char.trigger)" class="mt-1 w-full flex gap-1.5">
+                    <!-- Secondary Model Actions (Visible if a model is bound - stacked vertically to prevent horizontal overflow) -->
+                    <div v-if="hasBoundModel(char.trigger)" class="mt-1 w-full flex flex-col gap-1">
                       <Button
                         variant="secondary"
-                        class="h-[28px] flex flex-1 items-center justify-center gap-0.5 border border-neutral-800 rounded-lg text-[9px] font-semibold"
+                        class="h-[26px] w-full flex items-center justify-center gap-1 border border-neutral-800 rounded-lg text-[9px] font-semibold"
                         :class="[showModelPreviews[char.id] ? 'bg-primary-500/20 border-primary-500/40 text-primary-400' : '']"
                         @click="showModelPreviews[char.id] = !showModelPreviews[char.id]"
                       >
-                        <div i-solar:eye-bold-duotone class="text-xs" />
-                        Preview
+                        <div i-solar:eye-bold-duotone class="text-[10px]" />
+                        Preview Toggle
                       </Button>
                       <Button
                         variant="danger"
-                        class="h-[28px] flex flex-1 items-center justify-center gap-0.5 border border-red-900/30 rounded-lg bg-red-950/20 text-[9px] text-red-400 font-semibold hover:bg-red-900/40"
+                        class="h-[26px] w-full flex items-center justify-center gap-1 border border-red-900/30 rounded-lg bg-red-950/20 text-[9px] text-red-400 font-semibold hover:bg-red-900/40"
                         @click="unbindModel(char.trigger)"
                       >
-                        <div i-solar:broken-link-outline class="text-xs" />
-                        Unbind
+                        <div i-solar:broken-link-outline class="text-[10px]" />
+                        Unbind Model
                       </Button>
                     </div>
                   </div>
