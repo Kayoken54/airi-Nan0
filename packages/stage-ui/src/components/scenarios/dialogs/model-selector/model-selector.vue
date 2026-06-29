@@ -15,6 +15,7 @@ import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, Dr
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
+import catalogUrl from '../../../../../public/assets/animadex-catalog.json?url'
 import Live2DReportModal from './Live2DReportModal.vue'
 
 import { DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
@@ -575,7 +576,7 @@ async function testTagModel(mode: 'reindex' | 'fill-in' = 'reindex') {
 
 async function runAutoLinkCatalog() {
   try {
-    const res = await fetch('/assets/animadex-catalog.json')
+    const res = await fetch(catalogUrl)
     const data = await res.json()
     if (!data || !data.characters)
       return
