@@ -31,6 +31,9 @@ const { t } = useI18n()
 
 const artistryStore = useArtistryStore()
 const comfyuiWorkflows = computed(() => artistryStore.comfyuiSavedWorkflows || [])
+const isAnyWorkflowSelected = computed(() => {
+  return comfyuiWorkflows.value.some(wf => wf.id === selectedArtistryModel.value)
+})
 const spawnModeOptions = computed(() => [
   { value: 'bg', label: t('settings.pages.modules.artistry.spawn_mode.options.bg') },
   { value: 'inline', label: t('settings.pages.modules.artistry.spawn_mode.options.inline') },
@@ -57,40 +60,7 @@ function handleComfyWorkflowSelect(wf: any) {
 const pendingInstructionWf = ref<any>(null)
 
 function generateAgentInstructions(wf: any) {
-  let fieldsStr = ''
-  for (const [node, fields] of Object.entries(wf.exposedFields as Record<string, string[]>)) {
-    fieldsStr += `- **${node}**: ${fields.join(', ')}\n`
-  }
-
-  const exampleKey = Object.keys(wf.exposedFields)[0] || 'NodeTitle'
-  const exampleField = (wf.exposedFields[exampleKey] as string[])?.[0] || 'field'
-
-  return `## Instruction: Widget Spawning (ComfyUI)
-You have the ability to generate images using a custom ComfyUI workflow: **${wf.name}**.
-
-### How to Use
-**Step 1: Spawn a canvas (do this once)**
-- Component name: \`artistry\`
-- Give it a unique ID (e.g. \`art-01\`)
-
-**Step 2: Generate an image**
-Update the widget with \`status: "generating"\`, a \`prompt\`, and optional field overrides in the root of \`componentProps\`.
-
-**Exposed Fields you can override:**
-${fieldsStr}
-
-**Example Update:**
-\`\`\`json
-{
-  "status": "generating",
-  "prompt": "your description",
-  "template": "${wf.id}",
-  "${exampleKey}": {
-    "${exampleField}": "value"
-  }
-}
-\`\`\`
-`
+  return TOOL_CALL_TEMPLATE
 }
 
 function applyRecommendedInstructions() {
@@ -364,6 +334,15 @@ function applyTokenTemplate() {
             <span class="text-xs font-bold">{{ wf.name }}</span>
             <span class="mt-1 text-[10px] opacity-60">{{ getExposedFieldsCount(wf) }} exposed fields</span>
           </button>
+        </div>
+        <div
+          v-if="comfyuiWorkflows.length > 0 && !isAnyWorkflowSelected"
+          :class="['flex flex-row items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400']"
+        >
+          <div i-solar:info-circle-bold-duotone class="shrink-0 text-sm" />
+          <p>
+            No active workflow selected. Click on a workflow button above to select it as your active generator.
+          </p>
         </div>
       </div>
 

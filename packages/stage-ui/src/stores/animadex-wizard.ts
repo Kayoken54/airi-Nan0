@@ -80,6 +80,8 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
     }
   }
 
+  const showOnlyModels = ref(false)
+
   function removeChip(index: number) {
     selectedChips.value.splice(index, 1)
   }
@@ -129,6 +131,7 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
     selectedGender.value = null
     selectedChips.value = []
     searchQuery.value = ''
+    showOnlyModels.value = false
   }
 
   // Autocomplete suggestions generator
@@ -238,6 +241,25 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
           return false
       }
 
+      // 4. Model Binding Filter (Only show characters with associated model files)
+      if (showOnlyModels.value) {
+        const bindingsRaw = localStorage.getItem('settings/airi-card/character-bindings')
+        if (bindingsRaw) {
+          try {
+            const bindings = JSON.parse(bindingsRaw)
+            const binding = bindings[char.trigger]
+            if (!binding || !binding.displayModelId)
+              return false
+          }
+          catch (e) {
+            return false
+          }
+        }
+        else {
+          return false
+        }
+      }
+
       return true
     })
   })
@@ -256,6 +278,7 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
     searchQuery,
     boundModels,
     boundVoices,
+    showOnlyModels,
     loadCatalog,
     addChip,
     removeChip,
