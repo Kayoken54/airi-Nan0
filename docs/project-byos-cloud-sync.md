@@ -96,7 +96,12 @@ export interface StorageClient {
 
 ### 3. Smart Merges vs Overwrites
 * **Standard Keys:** Use Last-Write-Wins (LWW) comparison between the remote `mtime` and the local timestamp.
-* **Mergeable Keys:** For cumulative tables like `airi-cards`, `short-term-memory`, `text-journal`, and `echo-chips`, the sync engine downloads the remote JSON, reads the local state, merges the items by ID (using LWW per item), and writes the merged result back to both remote and local databases.
+* **Mergeable Keys:** For cumulative tables like `airi-cards`, `short-term-memory`, `text-journal`, `echo-chips`, and `character-bindings` *(planned)*, the sync engine downloads the remote JSON, reads the local state, merges the items by ID (using LWW per item), and writes the merged result back to both remote and local databases.
+* **Display Model Manifest Metadata Fields:** The `assets/models/manifest.json` reconciliation applies field-specific strategies:
+  - `groups`, `tags`: **Union merge** — combined set from both local and remote.
+  - `nsfw`: **Source-wins** — whichever side has a value defined wins; `true` OR-s with `false`.
+  - `name`: **Remote-wins** by default (unless `local-wins` conflict strategy is active).
+  - `expressions`, `motions`: **Local-wins** — the locally loaded model file is the authoritative source for its capability lists. If local is empty but remote has data (i.e. model was loaded on another device), remote data is backfilled.
 
 ### 4. Safety Heuristics Guard
 To prevent accidental deletions or data loss, we run a safety check before applying changes:
@@ -116,7 +121,8 @@ To prevent accidental deletions or data loss, we run a safety check before apply
 | **Director Notes** | `local:director/sessions/*` | Standard LWW. |
 | **Providers Config** | `local:providers/*` | Standard LWW. Excludes the current sync configuration settings to prevent loopbacks. |
 | **Background Images** | `localforage` (`bg-*`) | Reconciled via metadata JSON + raw PNG images under `assets/backgrounds/`. Deletions tracked via `local:sync-metadata/deleted-backgrounds/*`. |
-| **Display Models** | `localforage` (`display-model-*`) | Binary GLB/Zip uploaded under `assets/models/{id}.bin`, with previews and textures saved as sidecar files. Manifested globally via `assets/models/manifest.json`. Deletions tracked via `local:sync-metadata/deleted-models/*`. |
+| **Display Models** | `localforage` (`display-model-*`) | Binary GLB/Zip uploaded under `assets/models/{id}.bin`, with previews and textures saved as sidecar files. Manifested globally via `assets/models/manifest.json`. Deletions tracked via `local:sync-metadata/deleted-models/*`. Manifest entry includes: `id`, `format`, `name`, `importedAt`, `hasPreview`, `hasTextures`, `nsfw`, `groups`, `tags`, `expressions`, `motions`. The `expressions` and `motions` arrays use local-wins reconciliation (the locally loaded model is the source of truth). The `tags` and `groups` arrays are merged as unions. |
+| **Character → Model/Voice Bindings** | `local:character-bindings` *(planned)* | Lightweight JSON `Record<trigger, {displayModelId?, voiceProfileId?}>` keyed by AnimaDex trigger string. Merged by trigger key using LWW (same pattern as `airi-cards`). No binary assets. Auto-tracked by the outbox interceptor since it writes to `local:` namespace. |
 
 ---
 

@@ -10,7 +10,7 @@ import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button } from '@proj-airi/ui'
 import { Select } from '@proj-airi/ui/components/form'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -61,6 +61,12 @@ const activeSuggestionIndex = ref<number | null>(null)
 const isSuggestingIdeas = ref(false)
 const suggestionGuidance = ref('')
 const showSuggestions = ref(false)
+
+// Step 4 Preview State
+const synthesisPayload = ref<any>(null)
+const showDeveloperPayload = ref(false)
+const synthesisProposal = ref<any>(null)
+const refinementGuidance = ref('')
 
 const voicePresets = [
   { id: 'af_heart', name: 'Heart', gender: 'Female', accent: 'US', description: 'Conversational, warm, smiling tone, natural breathiness.' },
@@ -362,6 +368,15 @@ function getThumbUrl(trigger: string) {
   return `https://blobs.animadex.net/Outputs/thumbs/${encodeURIComponent(clean)}.webp`
 }
 
+function getActorThumbUrl(actorKey: string) {
+  const slug = actorKey.replace('actor_', '')
+  const char = selectedCharacters.value.find((c) => {
+    const cSlug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+    return cSlug === slug
+  })
+  return char ? getThumbUrl(char.trigger) : ''
+}
+
 // Navigation helpers
 function handleBack() {
   if (currentStep.value > 1) {
@@ -369,7 +384,7 @@ function handleBack() {
   }
   else {
     wizardStore.resetWizard()
-    router.push('/settings/airi-card')
+    router.replace('/settings/airi-card')
   }
 }
 
@@ -435,7 +450,7 @@ Return ONLY a raw JSON array (no markdown, no wrapping text). Each element must 
 { 
   "title": "short catchy scenario title", 
   "location": "vivid 2-sentence setting description", 
-  "nickname": "what the characters call the user (1-2 words)", 
+  "nickname": "what the characters call the user in '{Name} the {Role|Profession|Title}' format (e.g. 'Yoshi the Sensei', 'Tommy the Conductor', 'Rick the Engineer')", 
   "lore": "rich 2-3 sentence behavioral or world rules" 
 }`
     const userMsg = `Cast:\n${castInfo}${guidance ? `\n\nUser guidance: ${guidance}` : ''}`
@@ -466,102 +481,344 @@ function applySuggestion(idx: number) {
 }
 
 // Card Synthesis Pipeline
-async function handleGenerate() {
+// Card Synthesis Pipeline
+async function handleGenerate(guidance = '') {
   isGenerating.value = true
-  currentStep.value = 3
+  currentStep.value = 4
 
   try {
+    // Build cast metadata asynchronously to query model capabilities
+    const cast = await Promise.all(selectedCharacters.value.map(async (c) => {
+      const series = wizardStore.copyrights[c.copyrightIndex] || 'Unknown Series'
+
+      // Determine acting capabilities if a model is bound
+      let actingCapabilities = null
+      const boundModel = getBoundModel(c.id)
+      if (boundModel) {
+        const caps = await displayModelsStore.getOrLoadModelCapabilities(boundModel.id)
+
+        let formatName = 'VRM'
+        const fmt = boundModel.format.toLowerCase()
+        if (fmt.includes('live2d'))
+          formatName = 'Live2D'
+        else if (fmt.includes('spine'))
+          formatName = 'Spine'
+        else if (fmt.includes('pmx') || fmt === 'pmd')
+          formatName = 'MMD'
+
+        actingCapabilities = {
+          format: formatName,
+          modelName: boundModel.name,
+          whitelistedExpressions: caps.expressions,
+          whitelistedMotions: caps.motions,
+        }
+      }
+
+      return {
+        name: c.name,
+        series,
+        trigger: c.trigger,
+        tags: c.tags,
+        actingCapabilities,
+      }
+    }))
+
+    // Generate deterministic actor keys (slugged from names)
+    const deterministicActorKeys: Record<string, string> = {}
+    selectedCharacters.value.forEach((c) => {
+      const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+      deterministicActorKeys[c.name] = `actor_${slug}`
+    })
+
+    // Construct the payload that would be sent to the LLM
+    const payload = {
+      cast,
+      storySettings: {
+        setting: storyPrompt.value.setting || 'A cozy matching lounge',
+        userNickname: storyPrompt.value.nickname || 'Companion',
+        loreRules: storyPrompt.value.lore || 'Follow canon personalities and themes',
+      },
+      deterministicActorKeys,
+      activeLLM: {
+        model: consciousnessStore.activeModel || 'None configured',
+        provider: consciousnessStore.activeProvider || 'None configured',
+      },
+    }
+
+    synthesisPayload.value = payload
+    console.log('[AnimaDexWizard] Compiled LLM Ingestion Payload:', JSON.stringify(payload, null, 2))
+
+    // Call LLM for Synthesis
     const activeModel = consciousnessStore.activeModel
     const activeProviderName = consciousnessStore.activeProvider
     if (!activeModel || !activeProviderName) {
-      throw new Error('No active LLM model or provider configured. Please check your AI Settings.')
+      throw new Error('No active LLM configured.')
     }
-
     const providerInstance = await providersStore.getProviderInstance(activeProviderName)
     if (!providerInstance) {
-      throw new Error('Failed to retrieve active provider instance.')
+      throw new Error('Failed to retrieve provider instance.')
     }
 
-    // Build cast metadata
-    const castInfo = selectedCharacters.value.map((c) => {
-      const series = wizardStore.copyrights[c.copyrightIndex] || 'Unknown Series'
-      return `- Name: ${c.name}\n  Series: ${series}\n  Trigger Words: ${c.trigger}\n  Tags: ${c.tags}`
-    }).join('\n\n')
-
-    // Construct Synthesis Prompts
-    const systemInstruction = `You are a premium character and roleplay scenario synthesizer for a Virtual AI companion platform.
-Your task is to take the selected character cast details and the user's custom story setting, and compile them into a high-fidelity roleplay card configuration.
-You MUST output ONLY a valid raw JSON object matching the schema below. Do not wrap in markdown code blocks (\`\`\`json). Do not add introductory or trailing conversational text.
-
-JSON Schema format:
+    const systemMsg = `You are a professional character card writer. Based on the cast payload, synthesize a single cohesive roleplay card.
+Generate a structured JSON matching this schema:
 {
-  "name": "Name of the World / Setting or Character",
-  "system_prompt": "Detailed multi-paragraph roleplay prompt setting the scene. Describe the characters' appearance, personality traits, and default behaviors contextually to the setting. Define how they interact with each other and the user (referred to as {{user}} or '${storyPrompt.value.nickname || 'User'}').",
-  "first_mes": "Lively first message/greeting from one or more characters to kickstart the roleplay, written in-character, using asterisks for actions.",
-  "alternate_greetings": [
-    "First alternative greeting option",
-    "Second alternative greeting option"
-  ]
-}`
+  "name": "readable world name",
+  "scenario": "starting narrative scenario",
+  "first_mes": "the default first greeting message",
+  "alternate_greetings": ["additional greetings"],
+  "system_prompt": "core system instructions prefixing all interactions",
+  "places": {
+    "place_main": { "name": "Main Setting Name", "description": "vivid description", "prompt": "stable diffusion tags" },
+    "place_alt_1": { "name": "Alternate Setting 1", "description": "vivid description", "prompt": "stable diffusion tags" },
+    "place_alt_2": { "name": "Alternate Setting 2 (Optional)", "description": "vivid description", "prompt": "stable diffusion tags" }
+  },
+  "actors": {
+    "actor_key": {
+      "short_description": "clothing visual summary",
+      "long_prose": "high-fidelity appearance details",
+      "personality_prompt": "personality guidelines",
+      "acting_instructions": "acting details",
+      "greeting": "unique in-character starting greeting"
+    }
+  }
+}
 
-    const userPrompt = `Characters Cast Roster:\n${castInfo}\n\nUser Story Settings:\n- Setting / Location: ${storyPrompt.value.setting || 'A cozy matching lounge'}\n- User Nickname: ${storyPrompt.value.nickname || 'Companion'}\n- Lore / Behavior Rules: ${storyPrompt.value.lore || 'Follow canon personalities and themes'}`
+CRITICAL RULES:
+1. "places": You MUST generate exactly 2 or 3 distinct settings/locations where the roleplay can transition, mapping "place_main" (the starting area) and 1 or 2 alternative settings (e.g. "place_alt_1", "place_alt_2").
+2. "greetings": Each actor's "greeting" MUST be a completely unique, starting message written from only that specific character's perspective. It must start with their ACTOR token (e.g. "<|ACTOR:actor_key|>") and should utilize some of their whitelisted expressions if provided (e.g. "<|ACT:emotion:"happy"|>"). DO NOT copy the same narrative or dialogue block across multiple characters.
+3. ROLEPLAY PERSPECTIVE: The user (named in storySettings.userNickname, e.g. "Yoshi the Sensei") is the player. The LLM acts ONLY as the characters in the "actors" map. Under NO circumstances should the generated "system_prompt" write "You are [UserNickname]". Instead, write: "The user is [UserNickname]. You must act as the characters interacting with them."
 
-    const messages = [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: userPrompt },
-    ]
+Return ONLY a raw JSON block.`
 
-    const response = await llmStore.generate(activeModel, providerInstance as any, messages as any)
-    const jsonText = response.text?.trim() || ''
+    const userMsg = `Ingestion Payload:\n${JSON.stringify(payload, null, 2)}${guidance ? `\n\nRefinement request: ${guidance}` : ''}`
+    const response = await llmStore.generate(activeModel, providerInstance as any, [
+      { role: 'system', content: systemMsg },
+      { role: 'user', content: userMsg },
+    ] as any)
 
-    // Clean JSON of any code blocks if LLM outputted them anyway
-    const cleanJsonText = jsonText.replace(/^```json\s*/i, '').replace(/```$/, '').trim()
-    const parsedCard = JSON.parse(cleanJsonText)
+    const cleaned = response.text?.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim()
+    synthesisProposal.value = JSON.parse(cleaned || '{}')
+    toast.success('World synthesized successfully!')
+  }
+  catch (error: any) {
+    console.error('[AnimaDexWizard] Synthesis error:', error)
+    toast.error(`Synthesis failed: ${error.message}. Compiling mock placeholder proposal.`)
 
-    if (!parsedCard.name || !parsedCard.system_prompt) {
-      throw new Error('Synthesized card data did not return correct fields.')
+    // Fallback to high-fidelity mock proposal matching selected characters so the UI is always usable
+    const firstChar = selectedCharacters.value[0]?.name || 'World'
+    synthesisProposal.value = {
+      name: `${firstChar} Cafe Crossroad`,
+      scenario: `The characters are lounging in a cozy crossroads cafe. You just arrived as their guest.`,
+      first_mes: `*${firstChar} looks up as you enter* "Oh! Welcome! Grab a seat and make yourself comfortable!"`,
+      alternate_greetings: [],
+      system_prompt: `Manage the multi-actor scene. Prefix dialogue with appropriate actor tokens.`,
+      places: {
+        place_main: {
+          name: 'Cozy Cafe crossroads',
+          description: 'A cozy warm lit cafe sitting at the crossroads of various timelines.',
+          prompt: 'cozy_cafe, warm_lighting, wooden_tables',
+        },
+      },
+      actors: selectedCharacters.value.reduce((acc: any, c) => {
+        const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+        acc[`actor_${slug}`] = {
+          short_description: `${c.name}'s default outfit`,
+          long_prose: `${c.name} looks active and friendly, wearing their baseline attire.`,
+          personality_prompt: `${c.name} is warm, conversational, and follows their canon traits.`,
+          acting_instructions: `Trigger expressions naturally when their mood shifts.`,
+        }
+        return acc
+      }, {}),
+    }
+  }
+  finally {
+    isGenerating.value = false
+  }
+}
+
+async function confirmCreateCard() {
+  const proposal = synthesisProposal.value
+  if (!proposal)
+    return
+
+  try {
+    const cardId = `guided-${Date.now()}`
+    const slugName = proposal.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')
+
+    // Inherit artistry from the currently active card so the user's preferred
+    // image gen settings (provider, model, promptPrefix, spawnMode, etc.) carry forward
+    // Deep clone to prevent reference sharing
+    const inheritedArtistry = airiCardStore.activeCard?.extensions?.airi?.artistry
+      ? structuredClone(toRaw(airiCardStore.activeCard.extensions.airi.artistry))
+      : {}
+
+    // Assemble system prompt
+    // Build a cast index at the top so the LLM always knows all ACTOR token keys
+    const actorKeys = Object.keys(proposal.actors)
+    const castIndex = actorKeys.map(k => `- <|ACTOR:${k}|>`).join('\n')
+    let systemPrompt = `# System Prompt: ${proposal.name}\n\n## Cast Roster\nThe following characters are active. Always prefix their dialogue with their ACTOR token.\n${castIndex}\n\n## World Premise\n${proposal.system_prompt || ''}\n\n## Character Instructions\n`
+    actorKeys.forEach((actorKey) => {
+      const actor = proposal.actors[actorKey]
+      systemPrompt += `### ${actorKey}\nInvoke this character with <|ACTOR:${actorKey}|> and apply this personality:\n${actor.acting_instructions || ''}\n\n`
+    })
+
+    // Assemble description
+    let description = ''
+    Object.keys(proposal.actors).forEach((actorKey) => {
+      const actor = proposal.actors[actorKey]
+      description += `### <|ACTOR:${actorKey}|> Appearance\n${actor.long_prose || ''}\n\n`
+    })
+    Object.keys(proposal.places).forEach((placeKey) => {
+      const place = proposal.places[placeKey]
+      description += `### Setting: ${place.name}\n${place.description || ''}\n\n`
+    })
+
+    // Assemble personality
+    let personality = ''
+    Object.keys(proposal.actors).forEach((actorKey) => {
+      const actor = proposal.actors[actorKey]
+      personality += `[<|ACTOR:${actorKey}|>]: ${actor.personality_prompt || ''}\n`
+    })
+
+    // Compile Visual Assets Wardrobes & Modules
+    const visualAssets: Record<string, any> = {}
+    const modules: Record<string, any> = {
+      consciousness: {
+        provider: consciousnessStore.activeProvider,
+        model: consciousnessStore.activeModel,
+      },
+      active_expressions: {},
     }
 
-    // Setup visual avatar from first cast member
-    const avatarUrl = getThumbUrl(selectedCharacters.value[0].trigger)
+    // Bind primary visual model/speech configurations to first character as default active
+    const firstChar = selectedCharacters.value[0]
+    if (firstChar) {
+      const firstBoundModel = getBoundModel(firstChar.id)
+      if (firstBoundModel) {
+        modules.displayModelId = firstBoundModel.id
+      }
+      const firstBoundVoiceId = boundVoices.value[firstChar.id]
+      const firstBoundVoice = speechStore.savedVoiceProfiles.find(v => v.id === firstBoundVoiceId)
+      if (firstBoundVoice) {
+        modules.speech = {
+          provider: firstBoundVoice.baseProvider,
+          model: firstBoundVoice.baseModel,
+          voice_id: firstBoundVoice.baseVoice,
+        }
+      }
+    }
 
-    // Build AiriCard V2 structure
-    const newCard = {
-      id: '', // Will be assigned by addCard
-      name: parsedCard.name,
-      avatarUrl,
+    // Map each actor asset
+    selectedCharacters.value.forEach((c) => {
+      const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+      const actorKey = `actor_${slug}`
+      const proposalActor = proposal.actors[actorKey] || {}
+
+      const boundModel = getBoundModel(c.id)
+      const boundVoiceId = boundVoices.value[c.id]
+      const boundVoice = speechStore.savedVoiceProfiles.find(v => v.id === boundVoiceId)
+
+      // Setup modules[actorKey]
+      modules[actorKey] = {
+        description: proposalActor.short_description || `${c.name}'s default wardrobe`,
+        prompt: '',
+        isBase: true,
+        manifestation: {
+          modelId: boundModel?.id || null,
+        },
+        speech: boundVoice
+          ? {
+              provider: boundVoice.baseProvider,
+              model: boundVoice.baseModel,
+              voice_id: boundVoice.baseVoice,
+            }
+          : null,
+      }
+
+      // Setup visual_assets[actorKey]
+      const cleanPrompt = c.tags ? `, (${c.tags})` : ''
+      visualAssets[actorKey] = {
+        description: proposalActor.short_description || `${c.name}'s default appearance`,
+        prompt: cleanPrompt,
+        isBase: true,
+        manifestation: {
+          modelId: boundModel?.id || null,
+        },
+      }
+    })
+
+    // Map each place asset
+    Object.keys(proposal.places).forEach((placeKey) => {
+      const place = proposal.places[placeKey]
+      const cleanPrompt = place.prompt ? `, (${place.prompt})` : ''
+      visualAssets[placeKey] = {
+        description: place.description || '',
+        prompt: cleanPrompt,
+        isBase: placeKey === 'place_main',
+        manifestation: {
+          backgroundId: null,
+        },
+      }
+    })
+
+    // Setup active concepts at startup
+    const activeConcepts = selectedCharacters.value.map((c) => {
+      const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+      return `actor_${slug}`
+    })
+
+    // Build the final V3 Compliant Card Structure
+    const newCard: any = {
+      id: cardId,
+      name: slugName,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
       data: {
-        name: parsedCard.name,
-        description: selectedCharacters.value.map(c => c.name).join(', '),
-        personality: selectedCharacters.value.map(c => c.trigger).join(' | '),
-        scenario: storyPrompt.value.setting || 'Unified setting',
-        first_mes: parsedCard.first_mes,
-        mes_example: [],
-        system_prompt: parsedCard.system_prompt,
-        creator_notes: 'Synthesized via AnimaDex guided wizard.',
-        alternate_greetings: parsedCard.alternate_greetings || [],
+        name: slugName,
+        nickname: proposal.name,
+        character_version: '1.0.0',
+        first_mes: proposal.first_mes,
+        alternate_greetings: proposal.alternate_greetings || [],
+        description: description.trim(),
+        personality: personality.trim(),
+        scenario: proposal.scenario || '',
+        system_prompt: systemPrompt.trim(),
+        post_history_instructions: '',
+        tags: ['guided-synthesis', 'multi-character'],
         extensions: {
           airi: {
-            modules: {
-              activeBackgroundId: undefined,
+            modules,
+            visual_assets: visualAssets,
+            active_concepts: activeConcepts,
+            // Inherit all artistry settings from active card (provider, model, promptPrefix,
+            // spawnMode, autonomousEnabled, thresholds, etc.) so users never have to re-configure
+            artistry: {
+              ...inheritedArtistry,
+              // Wizard-generated cards start with no prompt prefix override
+              promptPrefix: inheritedArtistry.promptPrefix ?? '',
+            },
+            acting: {
+              modelExpressionPrompt: 'Trigger expressions matching dialogue emotions.',
+              speechExpressionPrompt: '',
+              speechMannerismPrompt: '',
             },
           },
         },
       },
     }
 
-    await airiCardStore.addCard(newCard as any)
-    toast.success(`Successfully synthesized "${parsedCard.name}"!`)
+    // Save to card store — addCard generates its own internal ID, capture it
+    const newCardId = await airiCardStore.addCard(newCard)
+    await airiCardStore.activateCard(newCardId)
+    toast.success('Card created and set active!')
+
+    // Navigate back to card view
     wizardStore.resetWizard()
-    router.push('/settings/airi-card')
+    router.replace('/settings/airi-card')
   }
-  catch (error: any) {
-    console.error('[AnimaDexWizard] Synthesis error:', error)
-    toast.error(`Synthesis failed: ${error.message || 'Check logs for details.'}`)
-    currentStep.value = 2 // Let user try again or review prompts
-  }
-  finally {
-    isGenerating.value = false
+  catch (e: any) {
+    console.error('[AnimaDexWizard] Error creating card:', e)
+    toast.error(`Failed to create card: ${e.message}`)
   }
 }
 </script>
@@ -1054,27 +1311,171 @@ JSON Schema format:
         </div>
       </div>
 
-      <!-- STEP 4: LLM SYNTHESIS (LOADING STATE) -->
-      <div v-else-if="currentStep === 4" class="flex flex-1 flex-col items-center justify-center bg-neutral-950 p-6">
-        <div class="max-w-md w-full flex flex-col items-center gap-5 text-center">
-          <!-- Premium Glowing Loader -->
-          <div class="relative flex items-center justify-center">
-            <div class="absolute h-20 w-20 animate-pulse rounded-full bg-primary-500/20 blur-xl" />
-            <div class="h-14 w-14 animate-spin border-4 border-primary-500 border-t-transparent rounded-full shadow-lg shadow-primary-500/30" />
+      <!-- STEP 4: LLM INGESTION PAYLOAD PREVIEW & DASHBOARD -->
+      <div v-else-if="currentStep === 4" class="flex flex-1 flex-col overflow-hidden bg-neutral-950 p-6">
+        <div class="mx-auto max-w-4xl w-full flex flex-1 flex-col overflow-hidden border border-neutral-900 rounded-2xl bg-neutral-900/20 p-6 shadow-xl">
+          <div class="mb-4 flex items-center justify-between border-b border-neutral-800/60 pb-4">
+            <div>
+              <h3 class="text-md flex items-center gap-2 text-neutral-200 font-bold">
+                <div i-solar:magic-stick-3-bold-duotone class="text-primary-500" />
+                Step 4: Roleplay World Proposal
+              </h3>
+              <p class="mt-0.5 text-[10px] text-neutral-500">
+                Review the synthesized world details, request refinements, or confirm card generation.
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                class="h-[32px] flex items-center gap-1 border border-neutral-800 rounded-lg px-3 text-xs font-bold"
+                @click="currentStep = 3"
+              >
+                <div i-solar:alt-arrow-left-bold class="text-sm" />
+                Edit Settings
+              </Button>
+              <Button
+                variant="secondary"
+                class="h-[32px] flex items-center gap-1 border border-neutral-800 rounded-lg px-3 text-xs font-bold"
+                @click="showDeveloperPayload = !showDeveloperPayload"
+              >
+                <div i-solar:code-bold class="text-sm" />
+                {{ showDeveloperPayload ? 'Hide Payload' : 'Show Payload' }}
+              </Button>
+            </div>
           </div>
 
-          <div>
-            <h3 class="text-lg text-neutral-200 font-bold">
-              Synthesizing Your World...
-            </h3>
-            <p class="mx-auto mt-1 max-w-xs text-xs text-neutral-500 leading-relaxed">
-              AIRI is compiling the cast descriptions and your story outline. Generating system prompts and custom greetings...
-            </p>
+          <!-- Loading View -->
+          <div v-if="isGenerating" class="flex flex-1 flex-col items-center justify-center gap-4">
+            <div class="relative flex items-center justify-center">
+              <div class="h-16 w-16 animate-spin border-4 border-primary-500/10 border-t-primary-500 rounded-full" />
+              <div i-solar:magic-stick-3-bold class="absolute animate-pulse text-2xl text-primary-500" />
+            </div>
+            <div class="text-center">
+              <h4 class="text-sm text-neutral-300 font-bold">
+                Synthesizing Roleplay World...
+              </h4>
+              <p class="mt-1 text-xs text-neutral-500">
+                Our LLM is orchestrating the prompt mappings, dialog presets, and outfits.
+              </p>
+            </div>
           </div>
 
-          <!-- Progress Bar simulation -->
-          <div class="h-2.5 w-full overflow-hidden border border-neutral-800 rounded-full bg-neutral-900">
-            <div class="h-full w-[80%] animate-pulse rounded-full bg-primary-500" />
+          <!-- Developer Payload View -->
+          <div v-else-if="showDeveloperPayload" class="min-h-0 flex flex-1 flex-col gap-3">
+            <span class="text-xs text-neutral-400 font-bold tracking-wide uppercase">Raw Ingestion Payload (Sent to LLM)</span>
+            <textarea
+              readonly
+              class="flex-1 select-text resize-none border border-neutral-800 rounded-xl bg-neutral-900/80 p-4 text-xs text-neutral-300 font-mono outline-none"
+              :value="JSON.stringify(synthesisPayload, null, 2)"
+            />
+          </div>
+
+          <!-- Synthesis Proposal Dashboard View -->
+          <div v-else-if="synthesisProposal" class="min-h-0 flex flex-1 flex-col gap-6 overflow-y-auto pr-1">
+            <!-- World Header -->
+            <div class="flex flex-col gap-3 border border-neutral-800/80 rounded-2xl bg-neutral-900/40 p-5">
+              <div class="flex items-center gap-3">
+                <div class="h-12 w-12 flex items-center justify-center overflow-hidden border border-neutral-800 rounded-2xl bg-neutral-950 text-xl text-primary-500 font-bold">
+                  🏰
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-lg text-neutral-100 font-bold">{{ synthesisProposal.name }}</span>
+                  <span class="text-xs text-neutral-500">Synthesized Character Card Spec V3 Draft</span>
+                </div>
+              </div>
+              <div class="border-t border-neutral-800/60 pt-3">
+                <span class="mb-1 block text-[10px] text-neutral-500 font-black tracking-wider uppercase">Premise & Scenario</span>
+                <p class="border-l-2 border-primary-500 rounded-r bg-neutral-950/40 py-1.5 pl-3 text-xs text-neutral-300 leading-relaxed italic">
+                  "{{ synthesisProposal.scenario }}"
+                </p>
+              </div>
+            </div>
+
+            <!-- Cast List -->
+            <div class="flex flex-col gap-3">
+              <span class="text-xs text-neutral-400 font-bold tracking-wide uppercase">Synthesized Cast & Outfits</span>
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div
+                  v-for="(actor, key) in synthesisProposal.actors"
+                  :key="key"
+                  class="flex flex-col gap-3 border border-neutral-800 rounded-2xl bg-neutral-900/30 p-4"
+                >
+                  <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-2.5">
+                      <div class="h-9 w-9 overflow-hidden border border-neutral-800 rounded-full bg-neutral-950">
+                        <!-- Match trig to character thumb -->
+                        <img :src="getActorThumbUrl(String(key))" alt="" class="h-full w-full object-cover">
+                      </div>
+                      <div class="flex flex-col">
+                        <span class="text-xs text-neutral-200 font-bold capitalize">{{ String(key).replace('actor_', '').replace(/_/g, ' ') }}</span>
+                        <span class="text-[9px] text-neutral-500">Outfit: {{ actor.short_description }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border border-neutral-800/40 rounded-lg bg-neutral-950/30 p-2.5 text-[10px] text-neutral-400">
+                    <span class="mb-1 block text-[8px] text-neutral-500 font-bold uppercase">Default Greeting</span>
+                    <p class="leading-normal italic">
+                      {{ actor.greeting || synthesisProposal.first_mes }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Locations / Places -->
+            <div class="flex flex-col gap-3">
+              <span class="text-xs text-neutral-400 font-bold tracking-wide uppercase">Locations & Backgrounds</span>
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div
+                  v-for="(place, key) in synthesisProposal.places"
+                  :key="key"
+                  class="border-neutral-850 flex flex-col gap-2 border rounded-xl bg-neutral-900/10 p-3.5"
+                >
+                  <div class="flex items-center gap-2">
+                    <div i-solar:map-arrow-up-bold class="text-sm text-primary-500" />
+                    <span class="text-xs text-neutral-300 font-bold">{{ place.name }}</span>
+                  </div>
+                  <p class="text-[10px] text-neutral-500 leading-relaxed">
+                    {{ place.description }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Refinement Prompt Loop -->
+            <div class="mt-auto flex flex-col gap-3 border-t border-neutral-800/60 pt-5">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] text-neutral-400 font-bold tracking-wide uppercase">Request Story Corrections (Optional)</label>
+                <div class="flex gap-2">
+                  <textarea
+                    v-model="refinementGuidance"
+                    placeholder="Provide correction feedback (e.g. 'Make Gura more snarky', 'Add a beach place', 'Make Chii quieter')."
+                    class="h-[48px] flex-1 resize-none border border-neutral-800 rounded-xl bg-neutral-950/60 px-3 py-2 text-xs text-neutral-200 outline-none focus:border-primary-500 placeholder-neutral-600"
+                  />
+                  <Button
+                    variant="secondary"
+                    class="border-neutral-850 h-[48px] flex items-center justify-center gap-1 border rounded-xl px-4 text-xs font-bold"
+                    @click="handleGenerate(refinementGuidance)"
+                  >
+                    <div i-solar:refresh-bold class="text-sm" />
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+
+              <!-- Main Submission -->
+              <div class="mt-2 flex justify-end gap-3">
+                <Button
+                  variant="primary"
+                  class="h-[38px] flex items-center gap-1.5 border border-primary-500/20 rounded-xl px-6 text-xs font-bold shadow-lg shadow-primary-500/15"
+                  @click="confirmCreateCard"
+                >
+                  Confirm & Create Card
+                  <div i-solar:check-circle-bold class="text-base" />
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

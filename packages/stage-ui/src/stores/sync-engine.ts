@@ -676,7 +676,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 2. Read remote manifest
       let manifest: {
-        models: Record<string, { id: string, format: string, name: string, importedAt: number, previewImage?: string, hasTextures: boolean, hasPreview?: boolean, nsfw?: boolean, groups?: string[] }>
+        models: Record<string, { id: string, format: string, name: string, importedAt: number, previewImage?: string, hasTextures: boolean, hasPreview?: boolean, nsfw?: boolean, groups?: string[], tags?: string[], expressions?: string[], motions?: string[] }>
         deleted?: string[]
       } = { models: {}, deleted: [] }
       let manifestExists = false
@@ -860,6 +860,9 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             hasTextures,
             nsfw: entry.nsfw,
             groups: entry.groups,
+            tags: entry.tags,
+            expressions: entry.expressions,
+            motions: entry.motions,
           }
           manifestModified = true
 
@@ -926,6 +929,39 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
               localEntry.name = remoteEntry.name
               localModified = true
             }
+          }
+
+          // 4. Merge tags (union)
+          const localTags = localEntry.tags || []
+          const remoteTags = remoteEntry.tags || []
+          if (JSON.stringify(localTags) !== JSON.stringify(remoteTags)) {
+            const mergedTags = Array.from(new Set([...localTags, ...remoteTags]))
+            remoteEntry.tags = mergedTags
+            localEntry.tags = mergedTags
+            manifestModified = true
+            localModified = true
+          }
+
+          // 5. Merge expressions (local-wins — source of truth is the locally loaded model)
+          if (localEntry.expressions && localEntry.expressions.length > 0
+            && JSON.stringify(localEntry.expressions) !== JSON.stringify(remoteEntry.expressions)) {
+            remoteEntry.expressions = localEntry.expressions
+            manifestModified = true
+          }
+          else if (remoteEntry.expressions && remoteEntry.expressions.length > 0 && !localEntry.expressions?.length) {
+            localEntry.expressions = remoteEntry.expressions
+            localModified = true
+          }
+
+          // 6. Merge motions (local-wins — source of truth is the locally loaded model)
+          if (localEntry.motions && localEntry.motions.length > 0
+            && JSON.stringify(localEntry.motions) !== JSON.stringify(remoteEntry.motions)) {
+            remoteEntry.motions = localEntry.motions
+            manifestModified = true
+          }
+          else if (remoteEntry.motions && remoteEntry.motions.length > 0 && !localEntry.motions?.length) {
+            localEntry.motions = remoteEntry.motions
+            localModified = true
           }
 
           if (localModified) {
