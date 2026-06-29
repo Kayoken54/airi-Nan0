@@ -711,6 +711,13 @@ export const useAiriCardStore = defineStore('airi-card', () => {
 
     const defaultArtistry = {
       widgetInstruction: DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT,
+      spawnMode: 'bg' as const,
+      autonomousEnabled: false,
+      autonomousThreshold: 49,
+      autonomousTarget: 'assistant' as const,
+      autonomousMonitorEnabled: true,
+      autonomousMonitorDiscordEnabled: false,
+      autonomousHistoryDepth: 3,
     }
 
     const defaultGeneration: CharacterGenerationConfig = {
@@ -831,10 +838,10 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       artistry: {
         ...existingExtension?.artistry,
         widgetInstruction: existingExtension?.artistry?.widgetInstruction ?? defaultArtistry.widgetInstruction,
-        spawnMode: existingExtension?.artistry?.spawnMode ?? 'bg_widget',
+        spawnMode: existingExtension?.artistry?.spawnMode ?? 'bg',
         autonomousEnabled: existingExtension?.artistry?.autonomousEnabled ?? false,
-        autonomousThreshold: existingExtension?.artistry?.autonomousThreshold ?? 70,
-        autonomousTarget: existingExtension?.artistry?.autonomousTarget ?? 'user',
+        autonomousThreshold: existingExtension?.artistry?.autonomousThreshold ?? 49,
+        autonomousTarget: existingExtension?.artistry?.autonomousTarget ?? 'assistant',
         autonomousMonitorEnabled: existingExtension?.artistry?.autonomousMonitorEnabled ?? true,
         autonomousMonitorDiscordEnabled: existingExtension?.artistry?.autonomousMonitorDiscordEnabled ?? false,
         autonomousHistoryDepth: existingExtension?.artistry?.autonomousHistoryDepth ?? 3,
