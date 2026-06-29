@@ -10,7 +10,7 @@ import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button } from '@proj-airi/ui'
 import { Select } from '@proj-airi/ui/components/form'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, toRaw, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
@@ -37,6 +37,7 @@ const {
   boundModels,
   boundVoices,
   copyrights,
+  showOnlyModels,
 } = storeToRefs(wizardStore)
 
 // Local UI state
@@ -647,9 +648,9 @@ async function confirmCreateCard() {
 
     // Inherit artistry from the currently active card so the user's preferred
     // image gen settings (provider, model, promptPrefix, spawnMode, etc.) carry forward
-    // Deep clone to prevent reference sharing
+    // Use JSON serialize-deserialize to safely deep-clone and strip Vue reactive proxy trees
     const inheritedArtistry = airiCardStore.activeCard?.extensions?.airi?.artistry
-      ? structuredClone(toRaw(airiCardStore.activeCard.extensions.airi.artistry))
+      ? JSON.parse(JSON.stringify(airiCardStore.activeCard.extensions.airi.artistry))
       : {}
 
     // Assemble system prompt
@@ -940,6 +941,14 @@ async function confirmCreateCard() {
               @click="wizardStore.setGender(g === 'All' ? null : g)"
             >
               {{ g }}
+            </Button>
+            <span class="mx-2 text-neutral-800">|</span>
+            <Button
+              :variant="showOnlyModels ? 'primary' : 'secondary'"
+              class="h-[30px] flex items-center gap-1 border border-neutral-800 rounded-lg px-3.5 text-xs"
+              @click="showOnlyModels = !showOnlyModels"
+            >
+              <span>🎭 Has Model</span>
             </Button>
           </div>
         </div>
