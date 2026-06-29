@@ -626,10 +626,15 @@ async function runAutoLinkCatalog() {
 
         // Extract series/copyright name from catalog index
         const seriesName = data.copyrights?.[bestCharCopyrightIdx]
+        // eslint-disable-next-line no-console
+        console.log(`[Auto-Link Debug] Model: ${model.name} matched Character: ${bestCharTrigger} (score: ${bestScore.toFixed(3)}) with Series: ${seriesName}`)
+
         if (seriesName) {
           const currentGroups = model.groups || []
           if (!currentGroups.includes(seriesName)) {
             const updatedGroups = [...currentGroups, seriesName]
+            // eslint-disable-next-line no-console
+            console.log(`[Auto-Link Debug] Upserting group "${seriesName}" to Model ${model.id} (current: ${currentGroups.join(', ')})`)
             await displayModelStore.updateDisplayModelMeta(model.id, { groups: updatedGroups })
             groupUpdateCount++
           }
