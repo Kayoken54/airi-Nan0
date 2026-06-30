@@ -6,6 +6,7 @@ import type {
   DiscordServiceStatus,
 } from '@proj-airi/stage-shared'
 
+import { getVoiceConnection, joinVoiceChannel } from '@discordjs/voice'
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
@@ -16,6 +17,7 @@ import { nanoid } from 'nanoid'
 import {
   discordServiceForceSync,
   discordServiceGetStatus,
+  discordServiceLeave,
   discordServiceRegisterCommands,
   discordServiceReplyInteraction,
   discordServiceSendMessage,
@@ -23,6 +25,7 @@ import {
   discordServiceSimulateEvent,
   discordServiceStart,
   discordServiceStop,
+  discordServiceSummon,
 } from '../../../../shared/eventa'
 
 const log = useLogg('discord-service').useGlobalConfig()
@@ -141,10 +144,13 @@ export function setupDiscordService() {
 
   const handleInteraction = async (interaction: any) => {
     const isButton = interaction.isButton()
-    if (!interaction.isChatInputCommand() && !isButton)
+    if (!interaction.isChatInputCommand() && !isButton) {
+      console.log('[DiscordService/Native] Ignoring interaction: not button or command.')
       return
+    }
 
     try {
+      console.log(`[DiscordService/Native] handleInteraction started. ID=${interaction.id}, Type=${isButton ? 'Button' : 'Command'}, User=${interaction.user.tag}`)
       if (isButton) {
         pushLog('INTERACTION', `Received button click "${interaction.customId}" from ${interaction.user.tag}`)
         // Defer update so we don't block and can edit the message components dynamically
@@ -153,11 +159,14 @@ export function setupDiscordService() {
       else {
         pushLog('INTERACTION', `Received /${interaction.commandName} from ${interaction.user.tag}`)
         // Defer reply for slash commands to prevent the 3s timeout
+        console.log(`[DiscordService/Native] Deferring reply for /${interaction.commandName}...`)
         await interaction.deferReply()
+        console.log('[DiscordService/Native] Defer reply successful.')
       }
 
       // 2. Cache the interaction so the renderer can reply to it later
       activeInteractions.set(interaction.id, interaction)
+      console.log(`[DiscordService/Native] Cached interaction ID=${interaction.id}. Active count: ${activeInteractions.size}`)
 
       let commandName = ''
       const options: Record<string, any> = {}
@@ -590,6 +599,96 @@ export function setupDiscordService() {
     }
     catch (err: any) {
       pushLog('ERROR', `Failed to reply to interaction: ${err.message}`)
+    }
+  })
+
+  defineInvokeHandler(context, discordServiceSummon, async (payload) => {
+    console.log('[DiscordService/Native] discordServiceSummon called with payload:', JSON.stringify(payload))
+    if (!discordClient?.isReady()) {
+      console.error('[DiscordService/Native] Summon failed: discordClient is not ready.')
+      return { success: false, error: 'Discord bot client is not active/ready.' }
+    }
+
+    const userId = payload.userId
+    let voiceChannel: any = null
+
+    console.log(`[DiscordService/Native] Searching for userId=${userId} in cached guilds... Guild count: ${discordClient.guilds.cache.size}`)
+
+    // Search for the user in any of the cached guild voice states
+    for (const guild of discordClient.guilds.cache.values()) {
+      const voiceState = guild.voiceStates.cache.get(userId)
+      console.log(`[DiscordService/Native] Guild "${guild.name}" (${guild.id}): Voice state cached for user:`, !!voiceState)
+      if (voiceState) {
+        console.log(`[DiscordService/Native] Voice state details: channelId=${voiceState.channelId}`)
+      }
+      if (voiceState?.channel) {
+        voiceChannel = voiceState.channel
+        console.log(`[DiscordService/Native] Found user voice channel: "${voiceChannel.name}" in guild "${guild.name}"`)
+        break
+      }
+    }
+
+    if (!voiceChannel) {
+      console.warn('[DiscordService/Native] Summon failed: User voice channel not found in cache.')
+      return { success: false, error: 'You must be in a voice channel to summon me!' }
+    }
+
+    try {
+      pushLog('VOICE', `Attempting to join voice channel: ${voiceChannel.name} in guild: ${voiceChannel.guild.name}`)
+      console.log(`[DiscordService/Native] Calling joinVoiceChannel with channelId=${voiceChannel.id}, guildId=${voiceChannel.guild.id}`)
+
+      const connection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: voiceChannel.guild.id,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+        selfDeaf: false,
+        selfMute: false,
+      })
+
+      console.log('[DiscordService/Native] joinVoiceChannel connection instance created:', !!connection)
+
+      pushLog('VOICE', `Successfully joined voice channel: ${voiceChannel.name}`)
+      return { success: true, channelName: voiceChannel.name }
+    }
+    catch (err: any) {
+      console.error('[DiscordService/Native] Error joining voice channel:', err)
+      pushLog('ERROR', `Failed to join voice channel: ${err.message || err}`)
+      return { success: false, error: err.message || String(err) }
+    }
+  })
+
+  defineInvokeHandler(context, discordServiceLeave, async (payload) => {
+    if (!discordClient?.isReady()) {
+      return { success: false, error: 'Discord bot client is not active/ready.' }
+    }
+
+    const targetGuildId = (payload as any)?.guildId
+    try {
+      if (targetGuildId) {
+        const connection = getVoiceConnection(targetGuildId)
+        if (connection) {
+          connection.destroy()
+          pushLog('VOICE', `Disconnected from voice channel in guild ${targetGuildId}`)
+          return { success: true }
+        }
+      }
+      else {
+        let disconnectedCount = 0
+        for (const guild of discordClient.guilds.cache.values()) {
+          const connection = getVoiceConnection(guild.id)
+          if (connection) {
+            connection.destroy()
+            disconnectedCount++
+          }
+        }
+        pushLog('VOICE', `Disconnected from all voice channels (${disconnectedCount} channel(s))`)
+        return { success: true }
+      }
+      return { success: false, error: 'No active voice connection found.' }
+    }
+    catch (err: any) {
+      pushLog('ERROR', `Failed to disconnect from voice channel: ${err.message || err}`)
+      return { success: false, error: err.message || String(err) }
     }
   })
 

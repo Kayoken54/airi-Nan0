@@ -4,6 +4,7 @@ import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import {
   discordServiceForceSync,
   discordServiceGetStatus,
+  discordServiceLeave,
   discordServiceRegisterCommands,
   discordServiceReplyInteraction,
   discordServiceSendImage,
@@ -12,6 +13,7 @@ import {
   discordServiceSimulateEvent,
   discordServiceStart,
   discordServiceStop,
+  discordServiceSummon,
 } from '@proj-airi/stage-shared'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
@@ -40,7 +42,7 @@ const MAX_EVENT_LOG_ENTRIES = 200
 
 // ── Slash Command Definitions ──────────────────────────────────────────────────
 
-const COMMANDS_VERSION = 8
+const COMMANDS_VERSION = 9
 const CORE_COMMANDS: DiscordCommandDefinition[] = [
   {
     name: 'status',
@@ -274,6 +276,8 @@ export const useDiscordStore = defineStore('discord', () => {
   const invokeRegisterCommands = isElectron ? useElectronEventaInvoke(discordServiceRegisterCommands) : null
   const invokeReplyInteraction = isElectron ? useElectronEventaInvoke(discordServiceReplyInteraction) : null
   const invokeSendImage = isElectron ? useElectronEventaInvoke(discordServiceSendImage) : null
+  const invokeSummon = isElectron ? useElectronEventaInvoke(discordServiceSummon) : null
+  const invokeLeave = isElectron ? useElectronEventaInvoke(discordServiceLeave) : null
 
   // ── Routing Cache ──────────────────────────────────────────────────────────
   const lastChannelId = ref<string | null>(null)
@@ -754,6 +758,56 @@ export const useDiscordStore = defineStore('discord', () => {
       // Keep channel context updated for things like image routing (e.g. /imagine)
       if (payload.channelId) {
         lastChannelId.value = payload.channelId
+      }
+
+      if (payload.commandName === 'summon') {
+        try {
+          const res = await invokeSummon?.({ userId: payload.userId })
+          if (res?.success) {
+            await invokeReplyInteraction?.({
+              interactionId: payload.interactionId,
+              content: `🟢 Joined voice channel **${res.channelName}**!`,
+            })
+          }
+          else {
+            await invokeReplyInteraction?.({
+              interactionId: payload.interactionId,
+              content: `❌ Failed to join voice channel: ${res?.error || 'Unknown error'}`,
+            })
+          }
+        }
+        catch (err: any) {
+          await invokeReplyInteraction?.({
+            interactionId: payload.interactionId,
+            content: `❌ Failed to join voice channel: ${err.message || err}`,
+          })
+        }
+        return
+      }
+
+      if (payload.commandName === 'leave') {
+        try {
+          const res = await invokeLeave?.()
+          if (res?.success) {
+            await invokeReplyInteraction?.({
+              interactionId: payload.interactionId,
+              content: '🛑 Disconnected from the voice channel.',
+            })
+          }
+          else {
+            await invokeReplyInteraction?.({
+              interactionId: payload.interactionId,
+              content: `❌ Failed to disconnect: ${res?.error || 'Unknown error'}`,
+            })
+          }
+        }
+        catch (err: any) {
+          await invokeReplyInteraction?.({
+            interactionId: payload.interactionId,
+            content: `❌ Failed to disconnect: ${err.message || err}`,
+          })
+        }
+        return
       }
 
       if (payload.commandName === 'history') {

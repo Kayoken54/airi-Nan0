@@ -313,6 +313,7 @@ export {
   discordServiceGetStatus,
   discordServiceInboundMessage,
   discordServiceInteraction,
+  discordServiceLeave,
   discordServiceRegisterCommands,
   discordServiceReplyInteraction,
   discordServiceSendMessage,
@@ -321,5 +322,6 @@ export {
   discordServiceStart,
   discordServiceStatusChanged,
   discordServiceStop,
+  discordServiceSummon,
 } from '@proj-airi/stage-shared'
 export * from '@proj-airi/stage-shared/shortcuts'

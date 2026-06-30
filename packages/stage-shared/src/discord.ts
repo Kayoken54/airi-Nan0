@@ -135,6 +135,16 @@ export const discordServiceReplyInteraction = defineInvokeEventa<void, DiscordIn
   'eventa:invoke:electron:discord:reply-interaction',
 )
 
+/** Summon the bot to join the voice channel of the calling user. */
+export const discordServiceSummon = defineInvokeEventa<{ success: boolean, channelName?: string, error?: string }, { userId: string }>(
+  'eventa:invoke:electron:discord:summon',
+)
+
+/** Disconnect the bot from the current voice channel. */
+export const discordServiceLeave = defineInvokeEventa<{ success: boolean, error?: string }, { guildId?: string } | void>(
+  'eventa:invoke:electron:discord:leave',
+)
+
 export interface DiscordOutboundImage {
   channelId: string
   content?: string
