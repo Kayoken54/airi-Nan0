@@ -637,7 +637,10 @@ export const useDiscordStore = defineStore('discord', () => {
       // NOTICE: Strip orchestration tokens (<|ACTOR:|>, <|ACT:|>, etc.) before sending
       // to Discord. The raw tokens are preserved in the DB for LLM context, but external
       // consumers should never see them.
-      let cleanedText = stripMarkers(typeof ttsText === 'string' ? ttsText : String(ttsText))
+      let rawText = typeof ttsText === 'string' ? ttsText : String(ttsText)
+      // Convert ACTOR tokens to bold bracketed format (e.g. <|ACTOR:Baelz|> -> **[Baelz]**:)
+      rawText = rawText.replace(/<\|ACTOR:([^|>]+)(?:\|>|>)/gi, '**[$1]**:')
+      let cleanedText = stripMarkers(rawText)
 
       const currentToolSlices = chat.output?.slices?.filter((s: any) => s.type === 'tool-call') || []
       if (currentToolSlices.length > 0) {
