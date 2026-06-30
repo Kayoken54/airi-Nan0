@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
+import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
+import { ref } from 'vue'
+import { toast } from 'vue-sonner'
+
 interface Choice {
   title: string
   message: string
@@ -16,6 +22,86 @@ const emit = defineEmits<{
   (e: 'retry'): void
   (e: 'delete'): void
 }>()
+
+const userProfileStore = useSettingsUserProfile()
+const speechStore = useSpeechStore()
+const providersStore = useProvidersStore()
+
+// Tracks which card index is currently loading TTS audio
+const loadingIndex = ref<number | null>(null)
+// Tracks which card index is currently playing audio
+const activePlayingIndex = ref<number | null>(null)
+// Holds the active Audio element so we can interrupt it
+const activeAudio = ref<HTMLAudioElement | null>(null)
+
+function stopActiveAudio() {
+  if (activeAudio.value) {
+    activeAudio.value.pause()
+    activeAudio.value.currentTime = 0
+    activeAudio.value = null
+  }
+  activePlayingIndex.value = null
+  loadingIndex.value = null
+}
+
+async function playChoiceSpeech(idx: number, text: string) {
+  const voiceId = userProfileStore.voiceProfileId
+  if (!voiceId) {
+    toast.error('No voice profile configured. Go to Settings > System > User Profile.')
+    return
+  }
+
+  // If clicking the currently playing card → pause and stop
+  if (activePlayingIndex.value === idx) {
+    stopActiveAudio()
+    return
+  }
+
+  // Interrupt any card currently loading or playing
+  stopActiveAudio()
+
+  loadingIndex.value = idx
+  try {
+    const profile = speechStore.savedVoiceProfiles.find(p => p.id === voiceId)
+    if (!profile) {
+      throw new Error('User voice profile not found in saved profiles.')
+    }
+    const provider = await providersStore.getProviderInstance(profile.baseProvider)
+    if (!provider) {
+      throw new Error(`The base provider "${profile.baseProvider}" is not active.`)
+    }
+    const audioData = await speechStore.speech(
+      provider as any,
+      profile.baseModel || '',
+      text,
+      profile.baseVoice,
+      profile.effects,
+    )
+    // Guard: user may have cancelled while we were fetching
+    if (loadingIndex.value !== idx)
+      return
+
+    const audioUrl = URL.createObjectURL(new Blob([audioData]))
+    const audio = new Audio(audioUrl)
+    audio.addEventListener('ended', () => {
+      if (activePlayingIndex.value === idx) {
+        activePlayingIndex.value = null
+        activeAudio.value = null
+      }
+    })
+    activeAudio.value = audio
+    loadingIndex.value = null
+    activePlayingIndex.value = idx
+    audio.play()
+  }
+  catch (error) {
+    console.error('[ProducerChoiceBubble] Speech synthesis failed:', error)
+    toast.error(error instanceof Error ? error.message : 'Speech synthesis failed.')
+    loadingIndex.value = null
+    activePlayingIndex.value = null
+    activeAudio.value = null
+  }
+}
 </script>
 
 <template>
@@ -72,18 +158,56 @@ const emit = defineEmits<{
         <button
           v-for="(choice, idx) in message.choices"
           :key="idx"
-          class="group border border-neutral-800 rounded-xl bg-neutral-900/20 p-3 text-left transition-all active:scale-[0.98] hover:border-primary-500/40 hover:bg-primary-950/10 hover:shadow-[0_2px_10px_rgba(var(--primary-rgb),0.05)]"
+          :class="[
+            'group relative border rounded-xl bg-neutral-900/20 p-3 text-left transition-all active:scale-[0.98]',
+            'hover:border-primary-500/40 hover:bg-primary-950/10 hover:shadow-[0_2px_10px_rgba(var(--primary-rgb),0.05)]',
+            activePlayingIndex === idx
+              ? 'border-primary-500/50 bg-primary-950/10'
+              : 'border-neutral-800',
+          ]"
           @click="emit('choose', choice)"
         >
-          <div class="flex items-start justify-between">
-            <span class="text-xs text-neutral-400 font-bold tracking-wider uppercase transition-colors group-hover:text-primary-300">
-              {{ choice.title }}
+          <div class="flex items-start gap-2.5">
+            <!-- Voice icon: left edge, own dedicated space -->
+            <!-- Uses a span (not a button) to avoid nested-button DOM issues inside the card <button> -->
+            <span
+              v-if="userProfileStore.voiceProfileId"
+              class="mt-0.5 cursor-pointer rounded p-0.5 transition-colors hover:bg-neutral-800/50"
+              :title="activePlayingIndex === idx ? 'Pause' : 'Preview with your voice'"
+              @click.stop.prevent="playChoiceSpeech(idx, choice.message)"
+            >
+              <!-- Loading state -->
+              <span
+                v-if="loadingIndex === idx"
+                class="i-solar:restart-square-outline block animate-spin text-sm text-primary-400"
+              />
+              <!-- Playing state -->
+              <span
+                v-else-if="activePlayingIndex === idx"
+                class="i-solar:pause-circle-bold-duotone block text-sm text-primary-500"
+              />
+              <!-- Idle state -->
+              <span
+                v-else
+                class="i-solar:user-speak-linear block text-sm text-neutral-500 transition-colors group-hover:text-neutral-300"
+              />
             </span>
-            <span class="i-solar:arrow-right-up-outline translate-y-1 transform text-xs text-neutral-600 opacity-0 transition-all group-hover:translate-y-0 group-hover:text-primary-400 group-hover:opacity-100" />
+            <!-- No voice profile: spacer to keep layout consistent -->
+            <span v-else class="mt-0.5 w-4 shrink-0" />
+
+            <!-- Card content -->
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between">
+                <span class="text-xs text-neutral-400 font-bold tracking-wider uppercase transition-colors group-hover:text-primary-300">
+                  {{ choice.title }}
+                </span>
+                <span class="i-solar:arrow-right-up-outline ml-1.5 shrink-0 translate-y-1 transform text-xs text-neutral-600 opacity-0 transition-all group-hover:translate-y-0 group-hover:text-primary-400 group-hover:opacity-100" />
+              </div>
+              <p class="line-clamp-2 mt-1 text-xs text-neutral-300 font-medium leading-relaxed">
+                {{ choice.message }}
+              </p>
+            </div>
           </div>
-          <p class="line-clamp-2 mt-1 text-xs text-neutral-300 font-medium leading-relaxed">
-            {{ choice.message }}
-          </p>
         </button>
       </div>
     </div>

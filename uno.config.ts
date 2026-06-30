@@ -167,6 +167,9 @@ export function sharedUnoConfig() {
     safelist: [
       ...'prose prose-sm m-auto text-left'.split(' '),
       ...safelistAllPrimaryBackgrounds(),
+      // Producer choice bubble voice playback icon states
+      'i-solar:user-speak-linear',
+      'i-solar:pause-circle-bold-duotone',
     ],
     // hyoban/unocss-preset-shadcn: Use shadcn ui with UnoCSS
     // https://github.com/hyoban/unocss-preset-shadcn
