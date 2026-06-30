@@ -1719,7 +1719,7 @@ export const useDiscordStore = defineStore('discord', () => {
             airiCard.setAutonomousArtistry(airiCard.activeCardId, !current)
           }
           else if (targetId === 'vision') {
-            visionStore.setWitnessEnabled(!visionStore.isWitnessEnabled)
+            visionStore.toggleWitness()
           }
         }
         else if (action === 'util' && targetId) {
