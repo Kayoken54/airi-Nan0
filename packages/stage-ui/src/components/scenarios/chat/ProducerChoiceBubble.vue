@@ -33,6 +33,8 @@ const loadingIndex = ref<number | null>(null)
 const activePlayingIndex = ref<number | null>(null)
 // Holds the active Audio element so we can interrupt it
 const activeAudio = ref<HTMLAudioElement | null>(null)
+// True while "Play All" is actively sequencing through choices
+const isPlayingAll = ref(false)
 
 function stopActiveAudio() {
   if (activeAudio.value) {
@@ -102,6 +104,37 @@ async function playChoiceSpeech(idx: number, text: string) {
     activeAudio.value = null
   }
 }
+
+async function playAllChoices() {
+  if (!props.message.choices.length || isPlayingAll.value)
+    return
+
+  stopActiveAudio()
+  isPlayingAll.value = true
+
+  for (const choice of props.message.choices) {
+    if (!isPlayingAll.value)
+      break
+    await playChoiceSpeech(props.message.choices.indexOf(choice), choice.message)
+    // Wait for the audio to finish before moving to the next one
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (activePlayingIndex.value === null || !isPlayingAll.value)
+          resolve()
+        else
+          requestAnimationFrame(check)
+      }
+      check()
+    })
+  }
+
+  isPlayingAll.value = false
+}
+
+function stopPlayAll() {
+  isPlayingAll.value = false
+  stopActiveAudio()
+}
 </script>
 
 <template>
@@ -119,6 +152,16 @@ async function playChoiceSpeech(idx: number, text: string) {
       </div>
 
       <div class="flex items-center gap-1.5 border border-primary-500/10 rounded-lg bg-black/40 p-0.5">
+        <button
+          v-if="!message.loading && message.choices.length > 0"
+          class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-400 font-semibold transition-colors hover:bg-blue-900/20 hover:text-blue-400"
+          :title="isPlayingAll ? 'Stop playing all' : 'Play all choices'"
+          @click="isPlayingAll ? stopPlayAll() : playAllChoices()"
+        >
+          <span :class="isPlayingAll ? 'i-solar:pause-circle-bold-duotone' : 'i-solar:play-stream-bold-duotone'" class="text-xs" />
+          <span>{{ isPlayingAll ? 'Stop' : 'Play All' }}</span>
+        </button>
+        <div v-if="!message.loading && message.choices.length > 0" class="h-2.5 w-[1px] bg-neutral-800" />
         <button
           class="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-400 font-semibold transition-colors hover:bg-neutral-800/50 hover:text-primary-300"
           title="Regenerate choices"
