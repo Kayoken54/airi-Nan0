@@ -658,6 +658,15 @@ export function setupDiscordService() {
 
       console.log('[DiscordService/Native] joinVoiceChannel connection instance created:', !!connection)
 
+      // Listen for voice connection state changes to handle auto-stop of Gemini session
+      connection.on('stateChange', (oldState, newState) => {
+        console.log(`[DiscordService/Voice] Connection state change: ${oldState.status} -> ${newState.status}`)
+        if (newState.status === 'destroyed' || newState.status === 'disconnected') {
+          console.log('[DiscordService/Voice] Voice channel disconnected or destroyed. Notifying renderer...')
+          broadcastToAllWindows('discord-voice-disconnected', {})
+        }
+      })
+
       // Create an AudioPlayer for piping Gemini responses back into the voice channel
       activeAudioPlayer = new AudioPlayer()
       connection.subscribe(activeAudioPlayer)
