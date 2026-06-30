@@ -10,6 +10,7 @@ import { useSettingsLive2d } from './live2d'
 import { useSettingsSpine } from './spine'
 import { useSettingsStageModel } from './stage-model'
 import { useSettingsTheme } from './theme'
+import { useSettingsUserProfile } from './user-profile'
 
 // Export sub-stores
 export * from './audio-device'
@@ -23,6 +24,7 @@ export * from './stage-model'
 export * from './theme'
 // Export constants
 export { DEFAULT_THEME_COLORS_HUE } from './theme'
+export * from './user-profile'
 
 /**
  * Unified settings store for backward compatibility.
@@ -42,6 +44,8 @@ export const useSettings = defineStore('settings', () => {
   const captions = useSettingsCaptions()
   const spine = useSettingsSpine()
 
+  const userProfile = useSettingsUserProfile()
+
   async function resetState() {
     await stageModel.resetState()
     chat.resetState()
@@ -52,6 +56,7 @@ export const useSettings = defineStore('settings', () => {
     controlStrip.resetState()
     captions.resetState()
     spine.resetState()
+    userProfile.resetState()
   }
 
   return {

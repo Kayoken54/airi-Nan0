@@ -5,6 +5,7 @@ import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
 import { Button, FieldInput, Select } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import {
@@ -59,6 +60,7 @@ const providersStore = useProvidersStore()
 const speechStore = useSpeechStore()
 const backgroundStore = useBackgroundStore()
 const airiCardStore = useAiriCardStore()
+const userProfileStore = useSettingsUserProfile()
 const selectedModelId = ref<string>('inherit')
 const selectedExpressions = ref<Record<string, number>>({})
 
@@ -133,6 +135,26 @@ function handleTagExtractorApply(tags: string) {
   }
   else {
     prompt.value = tags
+  }
+}
+
+const conceptIds = computed(() => {
+  return Object.keys(airiCardStore.activeCard?.extensions?.airi?.visual_assets || {})
+    .filter(id => id !== props.conceptId)
+})
+
+function appendPromptTag(tag: string) {
+  if (!tag)
+    return
+  const current = prompt.value.trim()
+  if (!current) {
+    prompt.value = tag
+  }
+  else if (current.endsWith(',')) {
+    prompt.value = `${current} ${tag}`
+  }
+  else {
+    prompt.value = `${current}, ${tag}`
   }
 }
 
@@ -439,6 +461,28 @@ function handleSave() {
                   </button>
                 </div>
               </label>
+              <!-- Quick Add Buttons -->
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  class="flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold transition-all dark:bg-neutral-800 hover:bg-primary-500 dark:text-neutral-300 hover:text-white dark:hover:bg-primary-500"
+                  title="Add global user prompt tags"
+                  @click.prevent="appendPromptTag(userProfileStore.prompt)"
+                >
+                  <span class="i-solar:user-bold" />
+                  + User Profile
+                </button>
+                <button
+                  v-for="cid in conceptIds"
+                  :key="cid"
+                  type="button"
+                  class="flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold transition-all dark:bg-neutral-800 hover:bg-primary-500 dark:text-neutral-300 hover:text-white dark:hover:bg-primary-500"
+                  @click.prevent="appendPromptTag(`(concept_${cid})`)"
+                >
+                  <span class="i-solar:stars-minimalistic-bold" />
+                  + {{ cid }}
+                </button>
+              </div>
             </div>
 
             <!-- Base vs Layer toggle -->

@@ -97,7 +97,7 @@ watch(() => voiceForm.value.baseProvider, async (newProvider) => {
     await providersStore.loadModelsForConfiguredProviders()
 
     selectedProviderVoices.value = speechStore.availableVoices[newProvider] || []
-    selectedProviderModels.value = speechStore.providerModels || []
+    selectedProviderModels.value = providersStore.getModelsForProvider(newProvider) || []
 
     if (selectedProviderVoices.value.length > 0) {
       voiceForm.value.baseVoice = selectedProviderVoices.value[0].id
@@ -260,7 +260,10 @@ async function playVoicePreview() {
   <DialogRoot :open="modelValue" @update:open="emit('update:modelValue', $event)">
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-120 bg-black/60 backdrop-blur-md data-[state=closed]:animate-fadeOut data-[state=open]:animate-fadeIn" />
-      <DialogContent class="fixed left-1/2 top-1/2 z-120 m-0 max-h-[90vh] max-w-xl w-[90vw] flex flex-col overflow-hidden border border-neutral-200 rounded-2xl bg-white shadow-2xl -translate-x-1/2 -translate-y-1/2 data-[state=closed]:animate-contentHide data-[state=open]:animate-contentShow dark:border-neutral-700 dark:bg-neutral-900">
+      <DialogContent
+        class="fixed left-1/2 top-1/2 z-120 m-0 max-h-[90vh] max-w-xl w-[90vw] flex flex-col overflow-hidden border border-neutral-200 rounded-2xl bg-white shadow-2xl -translate-x-1/2 -translate-y-1/2 data-[state=closed]:animate-contentHide data-[state=open]:animate-contentShow dark:border-neutral-700 dark:bg-neutral-900"
+        @pointer-down-outside.prevent
+      >
         <!-- Header -->
         <div class="border-b border-neutral-100 p-6 pb-4 dark:border-neutral-800 sm:p-8">
           <div class="flex items-center gap-2">
@@ -275,10 +278,14 @@ async function playVoicePreview() {
 
         <!-- Form fields -->
         <div class="flex flex-1 flex-col gap-5 overflow-y-auto p-6 sm:p-8">
-          <!-- Provider -->
           <div class="flex flex-col gap-1.5">
             <label class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase dark:text-neutral-500">Voice Provider</label>
             <Select v-model="voiceForm.baseProvider" :options="speechProviders" />
+          </div>
+          <!-- Loading indicator -->
+          <div v-if="isLoadingProviderData" class="flex items-center gap-2 border border-primary-500/20 rounded-xl bg-primary-500/5 px-4 py-2 text-xs text-primary-600 dark:text-primary-400">
+            <span class="i-solar:restart-square-outline animate-spin text-base" />
+            <span>Fetching speech voices and models details...</span>
           </div>
 
           <!-- Kokoro Specialized Controls -->

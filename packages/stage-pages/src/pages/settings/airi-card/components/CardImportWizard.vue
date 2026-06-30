@@ -9,6 +9,7 @@ import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consci
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
+import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
 import { Button } from '@proj-airi/ui'
 import { Select } from '@proj-airi/ui/components/form'
 import { storeToRefs } from 'pinia'
@@ -40,6 +41,7 @@ const speechStore = useSpeechStore()
 const providersStore = useProvidersStore()
 const displayModelsStore = useDisplayModelsStore()
 const stageModelStore = useSettingsStageModel()
+const userProfileStore = useSettingsUserProfile()
 
 const { activeProvider: consciousnessProvider, activeModel: defaultConsciousnessModel } = storeToRefs(consciousnessStore)
 const { activeSpeechProvider: speechProvider, activeSpeechModel: defaultSpeechModel, activeSpeechVoiceId: defaultSpeechVoiceId } = storeToRefs(speechStore)
@@ -168,7 +170,7 @@ watch(() => [props.modelValue, props.cardData], () => {
   if (props.modelValue && props.cardData) {
     currentStep.value = 1
     name.value = props.cardData.name || 'Imported Card'
-    userName.value = ''
+    userName.value = userProfileStore.name || ''
     selectedDisplayModelId.value = defaultDisplayModelId.value || ''
     selectedConsciousnessProvider.value = consciousnessProvider.value || ''
     selectedConsciousnessModel.value = defaultConsciousnessModel.value || ''

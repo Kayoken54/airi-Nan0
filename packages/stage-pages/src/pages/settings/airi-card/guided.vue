@@ -7,6 +7,7 @@ import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -23,6 +24,7 @@ const consciousnessStore = useConsciousnessStore()
 const providersStore = useProvidersStore()
 const displayModelsStore = useDisplayModelsStore()
 const speechStore = useSpeechStore()
+const userProfileStore = useSettingsUserProfile()
 
 const {
   catalogLoaded,
@@ -105,6 +107,9 @@ const activeBindingCharacterModel = computed(() => {
 
 onMounted(async () => {
   await wizardStore.loadCatalog()
+  if (!storyPrompt.value.nickname && userProfileStore.name) {
+    storyPrompt.value.nickname = userProfileStore.name
+  }
 })
 
 // Reset scroll pagination when search or chips change
@@ -437,6 +442,7 @@ async function handleGenerate(guidance = '') {
       storySettings: {
         setting: storyPrompt.value.setting || 'A cozy matching lounge',
         userNickname: storyPrompt.value.nickname || 'Companion',
+        userDescription: userProfileStore.description || '',
         loreRules: storyPrompt.value.lore || 'Follow canon personalities and themes',
       },
       deterministicActorKeys,

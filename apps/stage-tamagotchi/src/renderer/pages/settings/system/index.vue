@@ -7,6 +7,12 @@ const { t } = useI18n()
 
 const settings = computed(() => [
   {
+    title: 'User Profile',
+    description: 'Manage your global name, visual prompt tags, and personal TTS voice profile',
+    icon: 'i-solar:user-bold-duotone',
+    to: '/settings/system/user-profile',
+  },
+  {
     title: t('settings.pages.system.general.title'),
     description: t('settings.pages.system.general.description'),
     icon: 'i-solar:emoji-funny-square-bold-duotone',
