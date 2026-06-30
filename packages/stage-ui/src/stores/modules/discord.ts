@@ -40,7 +40,7 @@ const MAX_EVENT_LOG_ENTRIES = 200
 
 // ── Slash Command Definitions ──────────────────────────────────────────────────
 
-const COMMANDS_VERSION = 7
+const COMMANDS_VERSION = 8
 const CORE_COMMANDS: DiscordCommandDefinition[] = [
   {
     name: 'status',
@@ -161,6 +161,44 @@ const CORE_COMMANDS: DiscordCommandDefinition[] = [
       },
     ],
   },
+  {
+    name: 'voicemode',
+    description: 'Change the voice output mode (puppet, voicenote, or none)',
+    options: [
+      {
+        name: 'mode',
+        description: 'The mode to use (puppet, voicenote, or none)',
+        type: 3, // String
+        required: true,
+        choices: [
+          { name: 'puppet', value: 'puppet' },
+          { name: 'voicenote', value: 'voicenote' },
+          { name: 'none', value: 'none' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'voicecall',
+    description: 'Change the voice call technology (gemini, classic, or off)',
+    options: [
+      {
+        name: 'mode',
+        description: 'The mode to use (gemini, classic, or off)',
+        type: 3, // String
+        required: true,
+        choices: [
+          { name: 'gemini', value: 'gemini' },
+          { name: 'classic', value: 'classic' },
+          { name: 'off', value: 'off' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'manage',
+    description: 'Open the interactive session and modality control dashboard',
+  },
 ]
 
 export const useDiscordStore = defineStore('discord', () => {
@@ -178,6 +216,8 @@ export const useDiscordStore = defineStore('discord', () => {
   const token = useLocalStorageManualReset<string>('settings/discord/token', '')
   const lastRegisteredVersion = useLocalStorageManualReset<number>('settings/discord/lastRegisteredVersion', 0)
   const chatMode = useLocalStorageManualReset<'followup' | 'steer' | 'collect'>('settings/discord/chatMode', 'followup')
+  const voiceMode = useLocalStorageManualReset<'puppet' | 'voicenote' | 'none'>('settings/discord/voiceMode', 'puppet')
+  const voiceCall = useLocalStorageManualReset<'classic' | 'gemini' | 'off'>('settings/discord/voiceCall', 'off')
 
   const pendingCollectBatch = ref<{ formattedContent: string, attachments: any[], msg: DiscordInboundMessage }[]>([])
   let collectTimer: ReturnType<typeof setTimeout> | null = null
@@ -1207,43 +1247,46 @@ export const useDiscordStore = defineStore('discord', () => {
         }
       }
       else if (payload.commandName === 'status') {
-        const activeCardName = airiCard.activeCard?.name || 'None'
-        const turns = chatSession.messages.length
+        const buildStatusContent = () => {
+          const activeCardName = airiCard.activeCard?.name || 'None'
+          const turns = chatSession.messages.length
 
-        const llmProvider = consciousnessStore.activeProvider || 'Unknown'
-        const llmModel = consciousnessStore.activeModel || 'Unknown'
+          const llmProvider = consciousnessStore.activeProvider || 'Unknown'
+          const llmModel = consciousnessStore.activeModel || 'Unknown'
 
-        const ttsProvider = speechStore.activeSpeechProvider || 'Unknown'
-        const ttsVoice = speechStore.activeSpeechVoiceId || 'Unknown'
+          const ttsProvider = speechStore.activeSpeechProvider || 'Unknown'
+          const ttsVoice = speechStore.activeSpeechVoiceId || 'Unknown'
 
-        const artistryExt = airiCard.activeCard?.extensions?.airi?.artistry
-        const artProvider = artistryExt?.provider || artistryStore.activeProvider || 'Unknown'
-        const artModelId = artistryExt?.model || 'Unknown'
-        let artModelName = artModelId
+          const artistryExt = airiCard.activeCard?.extensions?.airi?.artistry
+          const artProvider = artistryExt?.provider || artistryStore.activeProvider || 'Unknown'
+          const artModelId = artistryExt?.model || 'Unknown'
+          let artModelName = artModelId
 
-        if (artProvider === 'comfyui') {
-          const wf = artistryStore.comfyuiSavedWorkflows?.find((w: any) => w.id === artModelId)
-          if (wf)
-            artModelName = wf.name
-        }
+          if (artProvider === 'comfyui') {
+            const wf = artistryStore.comfyuiSavedWorkflows?.find((w: any) => w.id === artModelId)
+            if (wf)
+              artModelName = wf.name
+          }
 
-        const sessionId = chatSession.activeSessionId
-        const sessionMeta = chatSession.getSessionMeta(sessionId)
-        const timelineName = sessionMeta?.title || 'Default Timeline'
-        const universeId = sessionMeta?.universeId || 'global'
+          const sessionId = chatSession.activeSessionId
+          const sessionMeta = chatSession.getSessionMeta(sessionId)
+          const timelineName = sessionMeta?.title || 'Default Timeline'
+          const universeId = sessionMeta?.universeId || 'global'
 
-        const vlmProvider = visionStore.activeProvider || 'None'
-        const vlmModel = visionStore.activeModel || 'None'
+          const vlmProvider = visionStore.activeProvider || 'None'
+          const vlmModel = visionStore.activeModel || 'None'
 
-        const visionEnabled = visionStore.isWitnessEnabled
-        const directorEnabled = artistryExt?.autonomousEnabled || false
-        const liveActive = liveSessionStore.isActive
+          const visionEnabled = visionStore.isWitnessEnabled
+          const directorEnabled = artistryExt?.autonomousEnabled || false
+          const liveActive = liveSessionStore.isActive
 
-        const content = `**AIRI System Status**
+          return `**AIRI System Status**
 -------------------------
 **Active Character:** ${activeCardName}
 **Conversation:** ${turns} turns (Timeline: "${timelineName}" | Universe: "${universeId}")
 **Chat Mode:** ${chatMode.value === 'followup' ? 'Follow-up' : chatMode.value.charAt(0).toUpperCase() + chatMode.value.slice(1)}
+**Discord Voice Mode:** ${voiceMode.value}
+**Discord Voice Call:** ${voiceCall.value}
 
 **🧠 Brains (LLM):** ${llmProvider} / ${llmModel}
 **👁️ Vision (VLM):** ${vlmProvider} / ${vlmModel}
@@ -1254,11 +1297,452 @@ export const useDiscordStore = defineStore('discord', () => {
 - [${visionEnabled ? 'ON' : 'OFF'}] 👁️ **Vision:** Witness Mode ${visionEnabled ? 'active' : 'disabled'}
 - [${directorEnabled ? 'ON' : 'OFF'}] 🎬 **Director:** Autonomous Artistry ${directorEnabled ? 'active' : 'disabled'}
 - [${liveActive ? 'ON' : 'OFF'}] 🧠 **Live API:** ${liveActive ? 'Active' : 'Offline'}`
+        }
 
         await invokeReplyInteraction?.({
           interactionId: payload.interactionId,
-          content,
+          content: buildStatusContent(),
         })
+      }
+      else if (payload.commandName === 'voicemode') {
+        const mode = payload.options.mode?.toString() as 'puppet' | 'voicenote' | 'none'
+        if (mode && ['puppet', 'voicenote', 'none'].includes(mode)) {
+          voiceMode.value = mode
+          await invokeReplyInteraction?.({
+            interactionId: payload.interactionId,
+            content: `🔊 Discord voice output mode set to **${mode.toUpperCase()}**.`,
+          })
+        }
+      }
+      else if (payload.commandName === 'voicecall') {
+        const mode = payload.options.mode?.toString() as 'gemini' | 'classic' | 'off'
+        if (mode && ['gemini', 'classic', 'off'].includes(mode)) {
+          voiceCall.value = mode
+          await invokeReplyInteraction?.({
+            interactionId: payload.interactionId,
+            content: `📞 Discord voice call mode set to **${mode.toUpperCase()}**.`,
+          })
+        }
+      }
+      else if (payload.commandName === 'selfie') {
+        await invokeReplyInteraction?.({
+          interactionId: payload.interactionId,
+          content: '📸 Capturing stage screenshot...',
+        })
+        await visionStore.heartbeat({ force: true })
+      }
+      else if (payload.commandName === 'manage') {
+        const buildStatusContent = () => {
+          const activeCardName = airiCard.activeCard?.name || 'None'
+          const turns = chatSession.messages.length
+
+          const llmProvider = consciousnessStore.activeProvider || 'Unknown'
+          const llmModel = consciousnessStore.activeModel || 'Unknown'
+
+          const ttsProvider = speechStore.activeSpeechProvider || 'Unknown'
+          const ttsVoice = speechStore.activeSpeechVoiceId || 'Unknown'
+
+          const artistryExt = airiCard.activeCard?.extensions?.airi?.artistry
+          const artProvider = artistryExt?.provider || artistryStore.activeProvider || 'Unknown'
+          const artModelId = artistryExt?.model || 'Unknown'
+          let artModelName = artModelId
+
+          if (artProvider === 'comfyui') {
+            const wf = artistryStore.comfyuiSavedWorkflows?.find((w: any) => w.id === artModelId)
+            if (wf)
+              artModelName = wf.name
+          }
+
+          const sessionId = chatSession.activeSessionId
+          const sessionMeta = chatSession.getSessionMeta(sessionId)
+          const timelineName = sessionMeta?.title || 'Default Timeline'
+          const universeId = sessionMeta?.universeId || 'global'
+
+          const vlmProvider = visionStore.activeProvider || 'None'
+          const vlmModel = visionStore.activeModel || 'None'
+
+          const visionEnabled = visionStore.isWitnessEnabled
+          const directorEnabled = artistryExt?.autonomousEnabled || false
+          const liveActive = liveSessionStore.isActive
+
+          return `**AIRI System Status**
+-------------------------
+**Active Character:** ${activeCardName}
+**Conversation:** ${turns} turns (Timeline: "${timelineName}" | Universe: "${universeId}")
+**Chat Mode:** ${chatMode.value === 'followup' ? 'Follow-up' : chatMode.value.charAt(0).toUpperCase() + chatMode.value.slice(1)}
+**Discord Voice Mode:** ${voiceMode.value}
+**Discord Voice Call:** ${voiceCall.value}
+
+**🧠 Brains (LLM):** ${llmProvider} / ${llmModel}
+**👁️ Vision (VLM):** ${vlmProvider} / ${vlmModel}
+**🗣️ Voice (TTS):** ${ttsProvider} / ${ttsVoice}
+**🎨 Artistry:** ${artProvider} / ${artProvider === 'comfyui' ? 'Workflow' : 'Model'}: \`${artModelName}\`
+
+**Active Modules:**
+- [${visionEnabled ? 'ON' : 'OFF'}] 👁️ **Vision:** Witness Mode ${visionEnabled ? 'active' : 'disabled'}
+- [${directorEnabled ? 'ON' : 'OFF'}] 🎬 **Director:** Autonomous Artistry ${directorEnabled ? 'active' : 'disabled'}
+- [${liveActive ? 'ON' : 'OFF'}] 🧠 **Live API:** ${liveActive ? 'Active' : 'Offline'}`
+        }
+
+        const renderManageWidget = async (interactionId: string) => {
+          const content = buildStatusContent()
+          const artistryExt = airiCard.activeCard?.extensions?.airi?.artistry
+
+          const components = [
+            // Row 1: Voice Mode
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: voiceMode.value === 'puppet' ? 3 : 2,
+                  label: '🔊 Puppet',
+                  customId: 'manage:voicemode:puppet',
+                },
+                {
+                  type: 2,
+                  style: voiceMode.value === 'voicenote' ? 3 : 2,
+                  label: '📝 Voice Note',
+                  customId: 'manage:voicemode:voicenote',
+                },
+                {
+                  type: 2,
+                  style: voiceMode.value === 'none' ? 4 : 2,
+                  label: '🔇 Mute',
+                  customId: 'manage:voicemode:none',
+                },
+              ],
+            },
+            // Row 2: Voice Call
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: voiceCall.value === 'gemini' ? 1 : 2,
+                  label: '📞 Gemini Live',
+                  customId: 'manage:voicecall:gemini',
+                },
+                {
+                  type: 2,
+                  style: voiceCall.value === 'classic' ? 1 : 2,
+                  label: '⚙️ Classic TTS',
+                  customId: 'manage:voicecall:classic',
+                },
+                {
+                  type: 2,
+                  style: voiceCall.value === 'off' ? 4 : 2,
+                  label: '🛑 Call Off',
+                  customId: 'manage:voicecall:off',
+                },
+              ],
+            },
+            // Row 3: Chat Mode
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: chatMode.value === 'followup' ? 3 : 2,
+                  label: '📥 Follow-up',
+                  customId: 'manage:chatmode:followup',
+                },
+                {
+                  type: 2,
+                  style: chatMode.value === 'steer' ? 3 : 2,
+                  label: '🎯 Steer',
+                  customId: 'manage:chatmode:steer',
+                },
+                {
+                  type: 2,
+                  style: chatMode.value === 'collect' ? 3 : 2,
+                  label: '🔋 Collect',
+                  customId: 'manage:chatmode:collect',
+                },
+              ],
+            },
+            // Row 4: Module Toggles
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: (artistryExt?.autonomousEnabled || false) ? 3 : 2,
+                  label: '🎬 Director',
+                  customId: 'manage:module:director',
+                },
+                {
+                  type: 2,
+                  style: visionStore.isWitnessEnabled ? 3 : 2,
+                  label: '👁️ Vision',
+                  customId: 'manage:module:vision',
+                },
+              ],
+            },
+            // Row 5: Utilities & Sync
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: 1,
+                  label: '📸 Selfie',
+                  customId: 'manage:util:selfie',
+                },
+                {
+                  type: 2,
+                  style: 1,
+                  label: '✍️ Journal Moment',
+                  customId: 'manage:util:journalmoment',
+                },
+                {
+                  type: 2,
+                  style: 2,
+                  label: '🔄 Refresh Status',
+                  customId: 'manage:util:refresh',
+                },
+              ],
+            },
+          ]
+
+          await invokeReplyInteraction?.({
+            interactionId,
+            content,
+            components,
+          })
+        }
+
+        await renderManageWidget(payload.interactionId)
+      }
+      else if (payload.commandName === 'button:manage') {
+        const action = payload.options.action
+        const targetId = payload.options.id
+
+        const buildStatusContent = () => {
+          const activeCardName = airiCard.activeCard?.name || 'None'
+          const turns = chatSession.messages.length
+
+          const llmProvider = consciousnessStore.activeProvider || 'Unknown'
+          const llmModel = consciousnessStore.activeModel || 'Unknown'
+
+          const ttsProvider = speechStore.activeSpeechProvider || 'Unknown'
+          const ttsVoice = speechStore.activeSpeechVoiceId || 'Unknown'
+
+          const artistryExt = airiCard.activeCard?.extensions?.airi?.artistry
+          const artProvider = artistryExt?.provider || artistryStore.activeProvider || 'Unknown'
+          const artModelId = artistryExt?.model || 'Unknown'
+          let artModelName = artModelId
+
+          if (artProvider === 'comfyui') {
+            const wf = artistryStore.comfyuiSavedWorkflows?.find((w: any) => w.id === artModelId)
+            if (wf)
+              artModelName = wf.name
+          }
+
+          const sessionId = chatSession.activeSessionId
+          const sessionMeta = chatSession.getSessionMeta(sessionId)
+          const timelineName = sessionMeta?.title || 'Default Timeline'
+          const universeId = sessionMeta?.universeId || 'global'
+
+          const vlmProvider = visionStore.activeProvider || 'None'
+          const vlmModel = visionStore.activeModel || 'None'
+
+          const visionEnabled = visionStore.isWitnessEnabled
+          const directorEnabled = artistryExt?.autonomousEnabled || false
+          const liveActive = liveSessionStore.isActive
+
+          return `**AIRI System Status**
+-------------------------
+**Active Character:** ${activeCardName}
+**Conversation:** ${turns} turns (Timeline: "${timelineName}" | Universe: "${universeId}")
+**Chat Mode:** ${chatMode.value === 'followup' ? 'Follow-up' : chatMode.value.charAt(0).toUpperCase() + chatMode.value.slice(1)}
+**Discord Voice Mode:** ${voiceMode.value}
+**Discord Voice Call:** ${voiceCall.value}
+
+**🧠 Brains (LLM):** ${llmProvider} / ${llmModel}
+**👁️ Vision (VLM):** ${vlmProvider} / ${vlmModel}
+**🗣️ Voice (TTS):** ${ttsProvider} / ${ttsVoice}
+**🎨 Artistry:** ${artProvider} / ${artProvider === 'comfyui' ? 'Workflow' : 'Model'}: \`${artModelName}\`
+
+**Active Modules:**
+- [${visionEnabled ? 'ON' : 'OFF'}] 👁️ **Vision:** Witness Mode ${visionEnabled ? 'active' : 'disabled'}
+- [${directorEnabled ? 'ON' : 'OFF'}] 🎬 **Director:** Autonomous Artistry ${directorEnabled ? 'active' : 'disabled'}
+- [${liveActive ? 'ON' : 'OFF'}] 🧠 **Live API:** ${liveActive ? 'Active' : 'Offline'}`
+        }
+
+        const renderManageWidget = async (interactionId: string) => {
+          const content = buildStatusContent()
+          const artistryExt = airiCard.activeCard?.extensions?.airi?.artistry
+
+          const components = [
+            // Row 1: Voice Mode
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: voiceMode.value === 'puppet' ? 3 : 2,
+                  label: '🔊 Puppet',
+                  customId: 'manage:voicemode:puppet',
+                },
+                {
+                  type: 2,
+                  style: voiceMode.value === 'voicenote' ? 3 : 2,
+                  label: '📝 Voice Note',
+                  customId: 'manage:voicemode:voicenote',
+                },
+                {
+                  type: 2,
+                  style: voiceMode.value === 'none' ? 4 : 2,
+                  label: '🔇 Mute',
+                  customId: 'manage:voicemode:none',
+                },
+              ],
+            },
+            // Row 2: Voice Call
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: voiceCall.value === 'gemini' ? 1 : 2,
+                  label: '📞 Gemini Live',
+                  customId: 'manage:voicecall:gemini',
+                },
+                {
+                  type: 2,
+                  style: voiceCall.value === 'classic' ? 1 : 2,
+                  label: '⚙️ Classic TTS',
+                  customId: 'manage:voicecall:classic',
+                },
+                {
+                  type: 2,
+                  style: voiceCall.value === 'off' ? 4 : 2,
+                  label: '🛑 Call Off',
+                  customId: 'manage:voicecall:off',
+                },
+              ],
+            },
+            // Row 3: Chat Mode
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: chatMode.value === 'followup' ? 3 : 2,
+                  label: '📥 Follow-up',
+                  customId: 'manage:chatmode:followup',
+                },
+                {
+                  type: 2,
+                  style: chatMode.value === 'steer' ? 3 : 2,
+                  label: '🎯 Steer',
+                  customId: 'manage:chatmode:steer',
+                },
+                {
+                  type: 2,
+                  style: chatMode.value === 'collect' ? 3 : 2,
+                  label: '🔋 Collect',
+                  customId: 'manage:chatmode:collect',
+                },
+              ],
+            },
+            // Row 4: Module Toggles
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: (artistryExt?.autonomousEnabled || false) ? 3 : 2,
+                  label: '🎬 Director',
+                  customId: 'manage:module:director',
+                },
+                {
+                  type: 2,
+                  style: visionStore.isWitnessEnabled ? 3 : 2,
+                  label: '👁️ Vision',
+                  customId: 'manage:module:vision',
+                },
+              ],
+            },
+            // Row 5: Utilities & Sync
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: 1,
+                  label: '📸 Selfie',
+                  customId: 'manage:util:selfie',
+                },
+                {
+                  type: 2,
+                  style: 1,
+                  label: '✍️ Journal Moment',
+                  customId: 'manage:util:journalmoment',
+                },
+                {
+                  type: 2,
+                  style: 2,
+                  label: '🔄 Refresh Status',
+                  customId: 'manage:util:refresh',
+                },
+              ],
+            },
+          ]
+
+          await invokeReplyInteraction?.({
+            interactionId,
+            content,
+            components,
+          })
+        }
+
+        if (action === 'voicemode' && targetId) {
+          if (['puppet', 'voicenote', 'none'].includes(targetId)) {
+            voiceMode.value = targetId as any
+          }
+        }
+        else if (action === 'voicecall' && targetId) {
+          if (['gemini', 'classic', 'off'].includes(targetId)) {
+            voiceCall.value = targetId as any
+          }
+        }
+        else if (action === 'chatmode' && targetId) {
+          if (['followup', 'steer', 'collect'].includes(targetId)) {
+            chatMode.value = targetId as any
+          }
+        }
+        else if (action === 'module' && targetId) {
+          if (targetId === 'director' && airiCard.activeCardId) {
+            const current = airiCard.activeCard?.extensions?.airi?.artistry?.autonomousEnabled || false
+            airiCard.setAutonomousArtistry(airiCard.activeCardId, !current)
+          }
+          else if (targetId === 'vision') {
+            visionStore.setWitnessEnabled(!visionStore.isWitnessEnabled)
+          }
+        }
+        else if (action === 'util' && targetId) {
+          if (targetId === 'selfie') {
+            await visionStore.heartbeat({ force: true })
+          }
+          else if (targetId === 'journalmoment') {
+            const llmProvider = consciousnessStore.activeProvider
+            const llmModel = consciousnessStore.activeModel
+            const messages = chatSession.messages || []
+            if (llmProvider && llmModel && messages.length > 0) {
+              const textJournalStore = (await import('../memory-text-journal')).useTextJournalStore()
+              await textJournalStore.createJournalMoment({
+                messages,
+                modelId: llmModel,
+                providerId: llmProvider,
+              })
+            }
+          }
+        }
+
+        // Re-render widget to show updated values
+        await renderManageWidget(payload.interactionId)
       }
       else if (payload.commandName === 'director') {
         const mode = payload.options.mode?.toString()
@@ -1547,6 +2031,9 @@ export const useDiscordStore = defineStore('discord', () => {
     enabled,
     token,
     configured,
+    chatMode,
+    voiceMode,
+    voiceCall,
 
     // Live State
     serviceStatus,
