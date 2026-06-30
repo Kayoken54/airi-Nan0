@@ -365,7 +365,9 @@ export const useDiscordStore = defineStore('discord', () => {
   async function sendMessageToDiscord(channelId: string, content: string) {
     try {
       lastChannelId.value = channelId
-      await invokeSendMessage?.({ channelId, content })
+      console.log(`[DiscordStore] sendMessageToDiscord called. channelId=${channelId}, content=`, JSON.stringify(content))
+      const result = await invokeSendMessage?.({ channelId, content })
+      console.log('[DiscordStore] sendMessageToDiscord IPC result:', result)
     }
     catch (err) {
       console.error('[DiscordStore] Send message failed:', err)
@@ -581,8 +583,10 @@ export const useDiscordStore = defineStore('discord', () => {
 
     const onChatTurnComplete = async (chat: any, context: any) => {
       const source = (context.message as any)?._discordSource
-      if (!source?.channelId)
+      if (!source?.channelId) {
+        console.log('[DiscordStore] onChatTurnComplete: No Discord source found in context.')
         return
+      }
 
       console.log(`[DiscordStore] Outbound response ready for ${source.username} in channel ${source.channelId.slice(-4)}`)
 
@@ -598,9 +602,10 @@ export const useDiscordStore = defineStore('discord', () => {
       const ttsText = chat.outputText || chat.output.content
       const error = chat.output.error
 
+      console.log('[DiscordStore] onChatTurnComplete - raw ttsText:', JSON.stringify(ttsText))
+
       if (error) {
         console.warn('[DiscordStore] Relaying error back to Discord:', error)
-        // ... (error handling)
         // Notify Discord about the technical failure so the user isn't left hanging
         const errorMsg = typeof error === 'string' ? error : (error.message || 'Unknown Error')
         const technicalFeedback = `⚠️ **AIRI encountered a technical problem.**\n*(Error: ${errorMsg})*`
@@ -623,8 +628,10 @@ export const useDiscordStore = defineStore('discord', () => {
         return
       }
 
-      if (!ttsText)
+      if (!ttsText) {
+        console.log('[DiscordStore] onChatTurnComplete: ttsText is empty/falsy, skipping.')
         return
+      }
 
       // Log the intent to send
       const logEntry: DiscordEventLogEntry = {
@@ -638,9 +645,14 @@ export const useDiscordStore = defineStore('discord', () => {
       // to Discord. The raw tokens are preserved in the DB for LLM context, but external
       // consumers should never see them.
       let rawText = typeof ttsText === 'string' ? ttsText : String(ttsText)
+      console.log('[DiscordStore] text before ACTOR replacement:', JSON.stringify(rawText))
+
       // Convert ACTOR tokens to bold bracketed format (e.g. <|ACTOR:Baelz|> -> **[Baelz]**:)
       rawText = rawText.replace(/<\|ACTOR:([^|>]+)(?:\|>|>)/gi, '**[$1]**:')
+      console.log('[DiscordStore] text after ACTOR replacement:', JSON.stringify(rawText))
+
       let cleanedText = stripMarkers(rawText)
+      console.log('[DiscordStore] text after stripMarkers:', JSON.stringify(cleanedText))
 
       const currentToolSlices = chat.output?.slices?.filter((s: any) => s.type === 'tool-call') || []
       if (currentToolSlices.length > 0) {
@@ -698,6 +710,7 @@ export const useDiscordStore = defineStore('discord', () => {
         cleanedText += formattedCalls
       }
 
+      console.log('[DiscordStore] calling sendMessageToDiscord with content:', JSON.stringify(cleanedText))
       await sendMessageToDiscord(source.channelId, cleanedText)
     }
 
