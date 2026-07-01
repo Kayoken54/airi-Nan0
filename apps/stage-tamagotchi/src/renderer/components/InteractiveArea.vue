@@ -321,7 +321,7 @@ function handleDeleteProducer() {
   producerSuggestion.value = null
 }
 
-function handleChooseOption(choice: { title: string, message: string }) {
+function handleChooseOption(choice: { title: string, message: string }, isPlaybackOnly = false) {
   messageInput.value = choice.message
 
   // Focus the textarea
@@ -330,10 +330,12 @@ function handleChooseOption(choice: { title: string, message: string }) {
     textarea.focus()
   }
 
-  // Auto-send if checked
-  const autoSend = localStorage.getItem('airi:producer:auto-send') === 'true'
-  if (autoSend) {
-    handleSend()
+  // Auto-send if checked (ONLY if NOT playback only)
+  if (!isPlaybackOnly) {
+    const autoSend = localStorage.getItem('airi:producer:auto-send') === 'true'
+    if (autoSend) {
+      handleSend()
+    }
   }
 }
 

@@ -21,6 +21,7 @@ const chatSessionStore = useChatSessionStore()
 const guidance = ref('')
 const contextDepth = useLocalStorage('airi:producer:context-depth', 6)
 const autoSend = useLocalStorage('airi:producer:auto-send', true)
+const autoPlayAll = useLocalStorage('airi:producer:auto-play-all', false)
 const suggestionCount = useLocalStorage('airi:producer:suggestion-count', 4)
 const shortReplies = useLocalStorage('airi:producer:short-replies', true)
 
@@ -216,6 +217,19 @@ function resetTemplate() {
               <div class="flex flex-col">
                 <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-300">Auto-send on click</span>
                 <span class="text-[10px] text-neutral-400 dark:text-neutral-500">Immediately send the choice upon clicking it</span>
+              </div>
+            </label>
+
+            <!-- Automatically Play All Checkbox -->
+            <label class="flex cursor-pointer select-none items-center gap-2.5 py-1">
+              <input
+                v-model="autoPlayAll"
+                type="checkbox"
+                class="h-4 w-4 border-neutral-300 rounded text-primary-500 accent-primary-500 focus:ring-primary-500"
+              >
+              <div class="flex flex-col">
+                <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-300">Automatically play all suggestions</span>
+                <span class="text-[10px] text-neutral-400 dark:text-neutral-500">Play voice previews for all choices sequentially when generated</span>
               </div>
             </label>
 

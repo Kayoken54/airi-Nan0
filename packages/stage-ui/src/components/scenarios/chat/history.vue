@@ -30,7 +30,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: 'choose', choice: { title: string, message: string }): void
+  (e: 'choose', choice: { title: string, message: string }, isPlaybackOnly?: boolean): void
   (e: 'retry-producer'): void
   (e: 'delete-producer'): void
 }>()
@@ -185,7 +185,7 @@ const renderMessages = computed<(ChatHistoryItem | DirectorNote)[]>(() => {
       <div v-else-if="'type' in message && (message as any).type === 'producer-suggestion'">
         <ProducerChoiceBubble
           :message="message as any"
-          @choose="emit('choose', $event)"
+          @choose="(choice, isPlaybackOnly) => emit('choose', choice, isPlaybackOnly)"
           @retry="emit('retry-producer')"
           @delete="emit('delete-producer')"
         />
