@@ -543,22 +543,25 @@ export const useLiveSessionStore = defineStore('live-session', () => {
           isActive.value = true
           isConnecting.value = false
 
-          // Flush any buffered Discord audio chunks
-          if (connectionQueue.length > 0) {
-            console.log(`[LiveSession] 🚀 Flushing ${connectionQueue.length} buffered Discord chunks to Gemini...`)
-            connectionQueue.forEach((chunk) => {
-              sendRealtimeAudio(chunk, 'discord')
-            })
-            connectionQueue = []
-          }
-
-          // Inject historical turns if present (Gemini Live context restoration)
+          // 1. Inject historical turns FIRST (Gemini Live context restoration)
           const history = chatSession.messages.filter(m => m.role === 'user' || m.role === 'assistant')
           if (history.length > 0) {
-            const turns = history.map(m => ({
+            const rawTurns = history.map(m => ({
               role: m.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: m.content }],
+              parts: [{ text: m.content || '' }],
             }))
+
+            // Strict role alternation: merge consecutive turns of the same role
+            const turns: typeof rawTurns = []
+            for (const turn of rawTurns) {
+              const last = turns[turns.length - 1]
+              if (last && last.role === turn.role) {
+                last.parts[0].text = `${last.parts[0].text}\n\n${turn.parts[0].text}`
+              }
+              else {
+                turns.push(turn)
+              }
+            }
 
             ws.send(JSON.stringify({
               clientContent: {
@@ -566,7 +569,16 @@ export const useLiveSessionStore = defineStore('live-session', () => {
                 turnComplete: true,
               },
             }))
-            console.log(`[LiveSession] Injected ${turns.length} historical turns into Bidi session`)
+            console.log(`[LiveSession] Injected ${turns.length} historical turns into Bidi session (raw: ${rawTurns.length})`)
+          }
+
+          // 2. Flush any buffered Discord audio chunks AFTER context is restored
+          if (connectionQueue.length > 0) {
+            console.log(`[LiveSession] 🚀 Flushing ${connectionQueue.length} buffered Discord chunks to Gemini...`)
+            connectionQueue.forEach((chunk) => {
+              sendRealtimeAudio(chunk, 'discord')
+            })
+            connectionQueue = []
           }
         }
 

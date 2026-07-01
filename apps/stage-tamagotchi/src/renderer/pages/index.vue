@@ -19,6 +19,7 @@ import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { useLLM } from '@proj-airi/stage-ui/stores/llm'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
+import { useDiscordStore } from '@proj-airi/stage-ui/stores/modules/discord'
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useLiveSessionStore } from '@proj-airi/stage-ui/stores/modules/live-session'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
@@ -769,6 +770,15 @@ onMounted(async () => {
 
   if (window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('toggle-mic-from-shortcut', () => {
+      const liveSessionStore = useLiveSessionStore()
+      const discordStore = useDiscordStore()
+
+      // If we are actively in a Discord Gemini voice call, ignore the local mic toggle hotkey
+      if (discordStore.voiceCall === 'gemini' && liveSessionStore.activeInputSource === 'discord' && liveSessionStore.isActive) {
+        console.log('[Shortcut] Ignoring local mic toggle shortcut because Discord Gemini voice call is active.')
+        return
+      }
+
       settingsAudioDeviceStore.enabled = !settingsAudioDeviceStore.enabled
     })
     window.electron.ipcRenderer.on('chat-window-state', (_, isOpen: boolean) => {
