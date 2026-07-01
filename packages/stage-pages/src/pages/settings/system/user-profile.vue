@@ -15,9 +15,11 @@ const voiceOptions = computed(() => {
   const list = [
     { value: '', label: 'No Vocal Profile' },
   ]
-  speechStore.savedVoiceProfiles.forEach((p) => {
-    list.push({ value: p.id, label: p.name })
-  })
+  speechStore.savedVoiceProfiles
+    .filter(p => p.id !== 'voice_profile_auto_preview')
+    .forEach((p) => {
+      list.push({ value: p.id, label: p.name })
+    })
   return list
 })
 </script>

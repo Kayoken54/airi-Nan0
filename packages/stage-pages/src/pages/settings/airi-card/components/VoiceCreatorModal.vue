@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { voicePresets } from '@proj-airi/stage-ui/constants/voices'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button, Select } from '@proj-airi/ui'
@@ -26,19 +27,6 @@ const emit = defineEmits<{
 
 const providersStore = useProvidersStore()
 const speechStore = useSpeechStore()
-
-const voicePresets = [
-  { id: 'af_heart', name: 'Heart', gender: 'Female', accent: 'US', description: 'Conversational, warm, smiling tone, natural breathiness.' },
-  { id: 'af_bella', name: 'Bella', gender: 'Female', accent: 'US', description: 'Polished, articulate, professional narration.' },
-  { id: 'af_nicole', name: 'Nicole', gender: 'Female', accent: 'US', description: 'Soothing, whisper-soft, ASMR-style, noticeable vocal fry.' },
-  { id: 'af_sky', name: 'Sky', gender: 'Female', accent: 'US', description: 'Youthful energy, clear, helpful assistant tone.' },
-  { id: 'af_sarah', name: 'Sarah', gender: 'Female', accent: 'US', description: 'Standard narrator voice, balanced and neutral.' },
-  { id: 'am_adam', name: 'Adam', gender: 'Male', accent: 'US', description: 'Clear, low-pitched, general-purpose male narrator.' },
-  { id: 'am_echo', name: 'Echo', gender: 'Male', accent: 'US', description: 'Distinct, clear American male voice.' },
-  { id: 'am_eric', name: 'Eric', gender: 'Male', accent: 'US', description: 'Polished corporate voice, excellent for instructions.' },
-  { id: 'bf_emma', name: 'Emma', gender: 'Female', accent: 'UK', description: 'Gentle, friendly British female speaker.' },
-  { id: 'bm_george', name: 'George', gender: 'Male', accent: 'UK', description: 'Rich, deep, professional British male voice.' },
-]
 
 const voiceForm = ref({
   name: '',
@@ -77,11 +65,13 @@ watch(() => voiceForm.value.baseProvider, async (newProvider) => {
 
   if (newProvider === 'virtual-audio-studio') {
     selectedProviderModels.value = []
-    selectedProviderVoices.value = speechStore.savedVoiceProfiles.map(p => ({
-      id: p.id,
-      name: p.name,
-      gender: 'saved profile',
-    }))
+    selectedProviderVoices.value = speechStore.savedVoiceProfiles
+      .filter(p => p.id !== 'voice_profile_auto_preview')
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        gender: 'saved profile',
+      }))
     if (selectedProviderVoices.value.length > 0) {
       voiceForm.value.baseVoice = selectedProviderVoices.value[0].id
     }

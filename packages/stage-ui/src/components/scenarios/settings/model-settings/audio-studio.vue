@@ -127,10 +127,11 @@ watch(activeProfile, (newProfile) => {
 
 // Initialize list
 onMounted(async () => {
-  if (savedVoiceProfiles.value.length > 0 && !activeProfileId.value) {
-    activeProfileId.value = savedVoiceProfiles.value[0].id
+  const firstReal = savedVoiceProfiles.value.find(p => p.id !== 'voice_profile_auto_preview')
+  if (firstReal && !activeProfileId.value) {
+    activeProfileId.value = firstReal.id
   }
-  else if (savedVoiceProfiles.value.length === 0) {
+  else if (!firstReal) {
     createNewProfile()
   }
 })
@@ -204,10 +205,11 @@ function saveProfile() {
 
 function deleteProfile(id: string) {
   speechStore.deleteVoiceProfile(id)
+  const remaining = savedVoiceProfiles.value.filter(p => p.id !== 'voice_profile_auto_preview')
   if (activeProfileId.value === id) {
-    activeProfileId.value = savedVoiceProfiles.value[0]?.id || ''
+    activeProfileId.value = remaining[0]?.id || ''
   }
-  if (savedVoiceProfiles.value.length === 0) {
+  if (remaining.length === 0) {
     createNewProfile()
   }
 }
@@ -339,7 +341,7 @@ onUnmounted(() => {
 
       <div class="max-h-[350px] flex flex-col gap-2 overflow-y-auto lg:max-h-[500px]">
         <div
-          v-for="profile in savedVoiceProfiles"
+          v-for="profile in savedVoiceProfiles.filter(p => p.id !== 'voice_profile_auto_preview')"
           :key="profile.id"
           class="group flex cursor-pointer items-center justify-between border rounded-xl p-3 transition-all duration-200"
           :class="[

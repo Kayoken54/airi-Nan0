@@ -204,14 +204,16 @@ export const useProvidersStore = defineStore('providers', () => {
           try {
             const { useSpeechStore } = await import('./modules/speech')
             const speechStore = useSpeechStore()
-            return (speechStore.savedVoiceProfiles || []).map(profile => ({
-              id: profile.id,
-              name: profile.name,
-              provider: 'virtual-audio-studio',
-              languages: [{ code: 'en', title: 'English' }],
-              compatibleModels: ['virtual'],
-              description: `Virtual voice mapping to ${profile.baseProvider}`,
-            }))
+            return (speechStore.savedVoiceProfiles || [])
+              .filter(p => p.id !== 'voice_profile_auto_preview')
+              .map(profile => ({
+                id: profile.id,
+                name: profile.name,
+                provider: 'virtual-audio-studio',
+                languages: [{ code: 'en', title: 'English' }],
+                compatibleModels: ['virtual'],
+                description: `Virtual voice mapping to ${profile.baseProvider}`,
+              }))
           }
           catch (e) {
             console.error('Failed to load virtual voices:', e)

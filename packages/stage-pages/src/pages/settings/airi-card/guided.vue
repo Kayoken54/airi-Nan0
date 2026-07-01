@@ -14,6 +14,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 
+import AutoVoiceConfigModal from './components/AutoVoiceConfigModal.vue'
 import VoiceCreatorModal from './components/VoiceCreatorModal.vue'
 
 const router = useRouter()
@@ -52,6 +53,7 @@ const activeBindingCharacterId = ref<string | null>(null)
 const modelSelectorOpen = ref(false)
 const voiceCreatorOpen = ref(false)
 const voiceTargetCharacterId = ref<string | null>(null)
+const autoVoiceModalOpen = ref(false)
 
 // AI Story Idea Suggester state
 interface StoryIdea {
@@ -95,6 +97,13 @@ function writeBackVoiceBinding(characterId: string, voice: { baseProvider: strin
     catch (e) {
       console.error('Failed to write back voice-binding:', e)
     }
+  }
+}
+
+function handleApplyAutoVoices(payload: Record<string, { baseProvider: string, baseModel: string, baseVoice: string }>) {
+  for (const [charId, voice] of Object.entries(payload)) {
+    wizardStore.bindVoiceToCharacter(charId, voice)
+    writeBackVoiceBinding(charId, voice)
   }
 }
 
@@ -1023,10 +1032,22 @@ async function confirmCreateCard() {
       <!-- STEP 2: ROSTER SETTINGS (MODEL & VOICE BINDING) -->
       <div v-else-if="currentStep === 2" class="flex flex-1 flex-col items-center overflow-y-auto bg-neutral-950 p-6">
         <div class="max-w-4xl w-full border border-neutral-900 rounded-2xl bg-neutral-900/20 p-8 shadow-xl">
-          <h3 class="mb-6 flex items-center gap-2 text-lg text-neutral-200 font-bold">
-            <div i-solar:user-circle-bold-duotone class="text-primary-500" />
-            Actor Alignment (Visual & Audio Settings)
-          </h3>
+          <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <h3 class="flex items-center gap-2 text-lg text-neutral-200 font-bold">
+              <div i-solar:user-circle-bold-duotone class="text-primary-500" />
+              Actor Alignment (Visual & Audio Settings)
+            </h3>
+
+            <Button
+              v-if="selectedCharacters.length > 0"
+              variant="secondary"
+              class="h-8 flex items-center gap-1.5 border border-primary-500/30 rounded-xl bg-primary-500/10 px-3 text-xs text-primary-400 font-bold hover:bg-primary-500/20"
+              @click="autoVoiceModalOpen = true"
+            >
+              <div i-solar:magic-stick-3-bold-duotone class="text-sm" />
+              Auto-Assign Voices
+            </Button>
+          </div>
 
           <!-- Contextual hint strip -->
           <div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 border border-neutral-800/50 rounded-xl bg-neutral-900/60 px-4 py-2.5">
@@ -1484,6 +1505,14 @@ async function confirmCreateCard() {
             writeBackVoiceBinding(voiceTargetCharacterId, payload)
           }
         }"
+      />
+
+      <AutoVoiceConfigModal
+        v-model="autoVoiceModalOpen"
+        :selected-characters="selectedCharacters"
+        :copyrights="wizardStore.copyrights"
+        :genders="wizardStore.facets.gender"
+        @apply="handleApplyAutoVoices"
       />
     </main>
   </div>
