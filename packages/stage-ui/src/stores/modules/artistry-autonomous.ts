@@ -714,6 +714,25 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
         createdAt: Date.now(),
       })
 
+      // Immediately set the active concept stack, display model, and expressions resolved by the director
+      const immediateModuleUpdates: Record<string, any> = {
+        ...activeCard.extensions.airi.modules,
+        active_expressions: folded.activeExpressions,
+      }
+      if (folded.modelId) {
+        immediateModuleUpdates.displayModelId = folded.modelId
+      }
+      cardStore.updateCard(cardId, {
+        extensions: {
+          ...activeCard.extensions,
+          airi: {
+            ...activeCard.extensions.airi,
+            active_concepts: nextConceptStack,
+            modules: immediateModuleUpdates,
+          },
+        },
+      } as any)
+
       // 3. Evaluate Threshold
       if (analysis.intensity >= threshold) {
         artistLog(`Threshold met (${analysis.intensity} >= ${threshold}). Triggering generation...`)
@@ -789,25 +808,23 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
 
           switch (spawnMode) {
             case 'bg': {
-              // Update character's active background + concept stack + manifestation
-              const bgModuleUpdates: Record<string, any> = {
-                ...activeCard.extensions.airi.modules,
-                activeBackgroundId: entryId,
-                active_expressions: folded.activeExpressions,
-              }
-              if (folded.modelId) {
-                bgModuleUpdates.displayModelId = folded.modelId
-              }
-              cardStore.updateCard(cardId, {
-                extensions: {
-                  ...activeCard.extensions,
-                  airi: {
-                    ...activeCard.extensions.airi,
-                    active_concepts: nextConceptStack,
-                    modules: bgModuleUpdates,
+              const currentCard = cardStore.activeCard
+              if (currentCard && currentCard.extensions?.airi) {
+                // Update character's active background only
+                const bgModuleUpdates: Record<string, any> = {
+                  ...currentCard.extensions.airi.modules,
+                  activeBackgroundId: entryId,
+                }
+                cardStore.updateCard(cardId, {
+                  extensions: {
+                    ...currentCard.extensions,
+                    airi: {
+                      ...currentCard.extensions.airi,
+                      modules: bgModuleUpdates,
+                    },
                   },
-                },
-              } as any)
+                } as any)
+              }
               break
             }
 
@@ -849,39 +866,30 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
             default:
               // Both: Update background, stack, AND spawn widget
               {
-                if (!activeCard || !activeCard.extensions?.airi) {
+                const currentCard = cardStore.activeCard
+                if (!currentCard || !currentCard.extensions?.airi) {
                   artistLog('Director Bridge: Aborting card update - active card or airi extension is missing.')
                   break
                 }
 
-                // 1. Use the pre-computed nextConceptStack from the Stack Folding phase
-                artistLog('Director Bridge: Applying resolved concept stack:', nextConceptStack)
-
-                // 2. Build the surgical update payload
+                // 2. Build the surgical update payload containing ONLY the background update
                 const moduleUpdates: Record<string, any> = {
-                  ...activeCard.extensions.airi.modules,
+                  ...currentCard.extensions.airi.modules,
                   activeBackgroundId: entryId,
                 }
 
-                // 3. Manifestation Bridge: If the stack fold resolved a new modelId, apply it
-                if (folded.modelId) {
-                  artistLog(`Manifestation Bridge: Updating displayModelId to "${folded.modelId}"`)
-                  moduleUpdates.displayModelId = folded.modelId
-                }
-
-                // 4. Perform a SURGICAL update to avoid shredding the modules (TTS/Brain)
+                // 3. Perform a SURGICAL update to avoid shredding the modules (TTS/Brain)
                 cardStore.updateCard(cardId, {
                   extensions: {
-                    ...activeCard.extensions,
+                    ...currentCard.extensions,
                     airi: {
-                      ...activeCard.extensions.airi,
-                      active_concepts: nextConceptStack,
+                      ...currentCard.extensions.airi,
                       modules: moduleUpdates,
                     },
                   },
                 } as any)
 
-                artistLog('Director Bridge: Card updated successfully with new concept stack:', nextConceptStack)
+                artistLog('Director Bridge: Card background updated successfully')
               }
 
               try {
