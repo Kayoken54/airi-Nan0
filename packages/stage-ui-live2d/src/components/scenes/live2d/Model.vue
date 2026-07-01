@@ -1384,7 +1384,7 @@ watch([modelSrcRef, () => props.modelId, () => props.modelFile], async () => awa
 watch(dark, updateDropShadowFilter, { immediate: true })
 watch([model, themeColorsHue], updateDropShadowFilter)
 watch(live2dShadowEnabled, updateDropShadowFilter)
-watch([offset, () => props.scale, () => props.xOffset, () => props.yOffset], setScaleAndPosition)
+watch([model, offset, () => props.scale, () => props.xOffset, () => props.yOffset], setScaleAndPosition)
 
 let dropShadowFrameCounter = 0
 // TODO: This is hacky!

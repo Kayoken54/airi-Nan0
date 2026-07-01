@@ -105,6 +105,8 @@ interface AiriExtension {
     isBase?: boolean
     artistry?: { provider?: string, model?: string, options?: Record<string, any> }
     manifestation?: { modelId?: string, mood?: string, backgroundId?: string, active_expressions?: Record<string, number> }
+    idleAnimations?: string[]
+    speech?: { provider: string, model: string, voice_id: string }
   }>
   eternal_record?: { relational_milestones?: string[], lore_bits?: string[] }
   proactivity_metrics?: { ttsCount: number, sttCount: number, chatCount: number, totalTurns: number }
@@ -114,7 +116,14 @@ interface AiriExtension {
     activeBackgroundId?: string | null
     active_expressions?: Record<string, number>
   }
+}
 
+interface ActingConfig {
+  modelExpressionPrompt: string
+  speechExpressionPrompt: string
+  speechMannerismPrompt: string
+  idleAnimations?: string[]
+}
 ```
 
 ### 1.1.2 Base Card properties (Character Card Spec V2/V3)

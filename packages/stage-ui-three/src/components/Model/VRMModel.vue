@@ -805,7 +805,7 @@ onMounted(async () => {
     }
   }, { immediate: true })
   // update model position
-  watch(modelOffset, () => {
+  watch([modelOffset, vrmGroup], () => {
     if (vrmGroup.value) {
       vrmGroup.value.position.set(
         modelOffset.value.x,
@@ -815,9 +815,9 @@ onMounted(async () => {
     }
   }, { immediate: true, deep: true })
   // update model rotation
-  watch(modelRotationY, (newRotationY) => {
+  watch([modelRotationY, vrmGroup], () => {
     if (vrmGroup.value) {
-      vrmGroup.value.rotation.y = MathUtils.degToRad(newRotationY)
+      vrmGroup.value.rotation.y = MathUtils.degToRad(modelRotationY.value)
     }
   }, { immediate: true })
   // update NPR sky box
