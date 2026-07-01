@@ -117,7 +117,7 @@ Each actor receives a dedicated configuration block under the modules namespace 
 ```typescript
 "extensions.airi.modules.[actor_key]": {
   "description": string,             // Text description (e.g. "Gura's default shark outfit")
-  "prompt": string,                  // Visual generation tags formatted as ", (${prompt})"
+  "prompt": string,                  // Visual generation prompt combining trigger and tags: trigger, (tags)
   "isBase": boolean,                 // Set to true
   "manifestation": {
     "modelId": string                // The bound displayModelId (e.g. "display-model-...")
@@ -137,7 +137,7 @@ The asset parameters are mirrored under the root `visual_assets` configuration t
 ```typescript
 "extensions.airi.visual_assets.[actor_key]": {
   "description": string,             // Short visual summary of character clothing
-  "prompt": string,                  // Prompt tags generated as ", (${prompt})"
+  "prompt": string,                  // Visual generation prompt combining trigger and tags: trigger, (tags)
   "isBase": boolean,                 // Set to true
   "manifestation": {
     "modelId": string                // Bound displayModelId

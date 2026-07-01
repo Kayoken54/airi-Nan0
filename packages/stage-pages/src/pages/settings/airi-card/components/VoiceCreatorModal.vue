@@ -232,6 +232,7 @@ async function playVoicePreview() {
         voiceForm.value.testText,
         profile.baseVoice,
         profile.effects,
+        profile.id,
       )
       const audioUrl = URL.createObjectURL(new Blob([audioData]))
       const audio = new Audio(audioUrl)

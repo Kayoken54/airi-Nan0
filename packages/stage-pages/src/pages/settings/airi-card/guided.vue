@@ -654,7 +654,7 @@ async function confirmCreateCard() {
       const boundModel = getBoundModel(c.id)
       const boundVoice = boundVoices.value[c.id]
 
-      const cleanPrompt = c.tags ? `, (${c.tags})` : ''
+      const cleanPrompt = `${c.trigger}${c.tags ? `, (${c.tags})` : ''}`
 
       // Setup modules[actorKey]
       modules[actorKey] = {
