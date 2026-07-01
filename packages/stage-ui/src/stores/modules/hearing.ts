@@ -546,7 +546,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
 
     try {
       const liveSessionStore = useLiveSessionStore()
-      if (liveSessionStore.isActive && liveSessionStore.outputMode === 'gemini') {
+      if (liveSessionStore.isActive && liveSessionStore.activeInputSource !== 'discord' && liveSessionStore.outputMode === 'gemini') {
         console.info('[Hearing Pipeline] Intercepting mic for Gemini Live Bidi API')
 
         const abortController = new AbortController()
