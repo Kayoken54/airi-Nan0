@@ -376,7 +376,7 @@ function handleApply() {
 
   emit('apply', payload)
   emit('update:modelValue', false)
-  toast.success('Successfully applied automatic voice profiles!')
+  toast.success('Successfully applied character voice & motion configurations!')
 }
 </script>
 
