@@ -58,18 +58,24 @@ ZipLoader.createSettings = async (reader: JSZip) => {
     }
 
     // Find and collect expression files
-    const expPaths = filePaths.filter(f => f.toLowerCase().endsWith('.exp3.json'))
-    if (expPaths.length > 0) {
-      const expFiles: Array<{ name: string, fileName: string, data: any }> = []
-      for (const expPath of expPaths) {
-        const expText = await reader.file(expPath)!.async('text')
-        const baseName = expPath.split('/').pop()?.replace('.exp3.json', '') || expPath
-        expFiles.push({
-          name: baseName,
-          fileName: expPath,
-          data: JSON.parse(expText),
-        })
+    const jsonPaths = filePaths.filter(f => f.toLowerCase().endsWith('.json'))
+    const expFiles: Array<{ name: string, fileName: string, data: any }> = []
+    for (const jsonPath of jsonPaths) {
+      try {
+        const text = await reader.file(jsonPath)!.async('text')
+        const parsed = JSON.parse(text)
+        if (parsed && (parsed.Type === 'Live2D Expression' || parsed.type === 'Live2D Expression')) {
+          const baseName = jsonPath.split('/').pop()?.replace(/\.exp3?\.json$/i, '') || jsonPath
+          expFiles.push({
+            name: baseName,
+            fileName: jsonPath,
+            data: parsed,
+          })
+        }
       }
+      catch {}
+    }
+    if (expFiles.length > 0) {
       ;(settings as any)._expFiles = expFiles
       console.info('[ZipLoader] Extracted', expFiles.length, 'expression files')
     }

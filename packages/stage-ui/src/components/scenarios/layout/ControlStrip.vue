@@ -300,9 +300,16 @@ const charFavEntries = computed(() =>
 
 const sortedCharacters = computed(() => {
   const query = characterSearch.value.toLowerCase().trim()
-  return [...cards.value.entries()].filter(
-    ([, card]) => !query || card.name.toLowerCase().includes(query),
+  const entries = [...cards.value.entries()].map(([id, card], idx) => ({ id, card, idx }))
+  const filtered = entries.filter(
+    ({ card }) => !query || card.name.toLowerCase().includes(query),
   )
+  filtered.sort((a, b) => {
+    if (a.card.createdAt !== undefined && b.card.createdAt !== undefined)
+      return b.card.createdAt - a.card.createdAt
+    return b.idx - a.idx
+  })
+  return filtered.map(({ id, card }) => [id, card] as [string, typeof card])
 })
 
 function isCharFav(id: string) {

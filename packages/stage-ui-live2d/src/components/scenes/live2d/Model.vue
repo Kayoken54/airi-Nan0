@@ -445,15 +445,21 @@ async function resolveMetadata() {
         cdiData = JSON.parse(text)
       }
 
-      const expPaths = filePaths.filter((f: string) => f.toLowerCase().endsWith('.exp3.json'))
-      for (const expPath of expPaths) {
-        const text = await zip.file(expPath)!.async('text')
-        const baseName = expPath.split('/').pop()?.replace('.exp3.json', '') || expPath
-        expFiles.push({
-          name: baseName,
-          fileName: expPath,
-          data: JSON.parse(text),
-        })
+      const jsonPaths = filePaths.filter((f: string) => f.toLowerCase().endsWith('.json'))
+      for (const jsonPath of jsonPaths) {
+        const text = await zip.file(jsonPath)!.async('text')
+        try {
+          const parsed = JSON.parse(text)
+          if (parsed && (parsed.Type === 'Live2D Expression' || parsed.type === 'Live2D Expression')) {
+            const baseName = jsonPath.split('/').pop()?.replace(/\.exp3?\.json$/i, '') || jsonPath
+            expFiles.push({
+              name: baseName,
+              fileName: jsonPath,
+              data: parsed,
+            })
+          }
+        }
+        catch {}
       }
 
       const vtubePath = filePaths.find((f: string) => f.toLowerCase().endsWith('.vtube.json'))
@@ -496,15 +502,21 @@ async function resolveMetadata() {
             cdiData = JSON.parse(text)
           }
 
-          const expPaths = filePaths.filter((f: string) => f.toLowerCase().endsWith('.exp3.json'))
-          for (const expPath of expPaths) {
-            const text = await zip.file(expPath)!.async('text')
-            const baseName = expPath.split('/').pop()?.replace('.exp3.json', '') || expPath
-            expFiles.push({
-              name: baseName,
-              fileName: expPath,
-              data: JSON.parse(text),
-            })
+          const jsonPaths = filePaths.filter((f: string) => f.toLowerCase().endsWith('.json'))
+          for (const jsonPath of jsonPaths) {
+            const text = await zip.file(jsonPath)!.async('text')
+            try {
+              const parsed = JSON.parse(text)
+              if (parsed && (parsed.Type === 'Live2D Expression' || parsed.type === 'Live2D Expression')) {
+                const baseName = jsonPath.split('/').pop()?.replace(/\.exp3?\.json$/i, '') || jsonPath
+                expFiles.push({
+                  name: baseName,
+                  fileName: jsonPath,
+                  data: parsed,
+                })
+              }
+            }
+            catch {}
           }
 
           const vtubePath = filePaths.find((f: string) => f.toLowerCase().endsWith('.vtube.json'))
@@ -528,15 +540,21 @@ async function resolveMetadata() {
             cdiData = JSON.parse(text)
           }
 
-          const cachedExpFiles = cachedFiles.filter((f: File) => f.name.toLowerCase().endsWith('.exp3.json'))
-          for (const expFile of cachedExpFiles) {
-            const text = await expFile.text()
-            const baseName = expFile.name.split('/').pop()?.replace('.exp3.json', '') || expFile.name
-            expFiles.push({
-              name: baseName,
-              fileName: expFile.webkitRelativePath || expFile.name,
-              data: JSON.parse(text),
-            })
+          const cachedJsonFiles = cachedFiles.filter((f: File) => f.name.toLowerCase().endsWith('.json'))
+          for (const jsonFile of cachedJsonFiles) {
+            const text = await jsonFile.text()
+            try {
+              const parsed = JSON.parse(text)
+              if (parsed && (parsed.Type === 'Live2D Expression' || parsed.type === 'Live2D Expression')) {
+                const baseName = jsonFile.name.split('/').pop()?.replace(/\.exp3?\.json$/i, '') || jsonFile.name
+                expFiles.push({
+                  name: baseName,
+                  fileName: jsonFile.webkitRelativePath || jsonFile.name,
+                  data: parsed,
+                })
+              }
+            }
+            catch {}
           }
 
           const vtubeFile = cachedFiles.find((f: File) => f.name.toLowerCase().endsWith('.vtube.json'))

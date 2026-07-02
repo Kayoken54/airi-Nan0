@@ -165,7 +165,7 @@ watch(isSearchExpanded, (expanded) => {
 })
 
 // Sort option
-const sortOption = ref('nameAsc')
+const sortOption = ref('recent')
 
 const inputFiles = ref<File[]>([])
 
@@ -232,6 +232,9 @@ interface CardItem {
   description?: string
   deprecated?: boolean
   customizable?: boolean
+  createdAt?: number
+  updatedAt?: number
+  index: number
 }
 
 type ImportedCardPayload = Card | ccv3.CharacterCardV3
@@ -485,10 +488,13 @@ function addCardPreviewNormalize(card: any) {
 
 // Transform cards Map to array for display
 const cardsArray = computed<CardItem[]>(() => {
-  return Array.from(cards.value.entries()).map(([id, card]) => ({
+  return Array.from(cards.value.entries()).map(([id, card], index) => ({
     id,
     name: card.name || '',
     description: card.description || '',
+    createdAt: card.createdAt,
+    updatedAt: card.updatedAt,
+    index,
   }))
 })
 
@@ -509,12 +515,19 @@ const sortedFilteredCards = computed<CardItem[]>(() => {
   // Create a new array to avoid mutating the source
   const sorted = [...filteredCards.value]
 
-  if (sortOption.value === 'nameAsc')
+  if (sortOption.value === 'nameAsc') {
     sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-  else if (sortOption.value === 'nameDesc')
+  }
+  else if (sortOption.value === 'nameDesc') {
     sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''))
-  else if (sortOption.value === 'recent')
-    sorted.sort((a, b) => (b.id || '').localeCompare(a.id || ''))
+  }
+  else if (sortOption.value === 'recent') {
+    sorted.sort((a, b) => {
+      if (a.createdAt !== undefined && b.createdAt !== undefined)
+        return b.createdAt - a.createdAt
+      return b.index - a.index
+    })
+  }
 
   // Always bring the active card to the front
   if (activeCardId.value) {
