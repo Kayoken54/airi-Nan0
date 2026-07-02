@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+const rootRequire = createRequire(path.resolve(import.meta.dirname, '..', '..', 'package.json'))
 const targetNodeModules = path.resolve('node_modules')
 
 const packages = [
@@ -36,7 +37,7 @@ function copyRecursiveSync(src: string, dest: string) {
 
 for (const pkg of packages) {
   try {
-    const entryPath = require.resolve(pkg)
+    const entryPath = rootRequire.resolve(pkg)
     const realEntryPath = fs.realpathSync(entryPath)
 
     let dir = path.dirname(realEntryPath)
