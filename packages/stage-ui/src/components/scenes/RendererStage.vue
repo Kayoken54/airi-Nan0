@@ -221,22 +221,22 @@ async function cropScreenshot(screenshotBlob: Blob, cropLeft: number, cropTop: n
   return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => {
+      const dpr = img.width / window.innerWidth
       const canvas = document.createElement('canvas')
-      canvas.width = cropSize
-      canvas.height = cropSize
+      canvas.width = cropSize * dpr
+      canvas.height = cropSize * dpr
       const ctx = canvas.getContext('2d')
       if (!ctx) {
         resolve(null)
         return
       }
 
-      const dpr = img.width / window.innerWidth
       const sX = cropLeft * dpr
       const sY = cropTop * dpr
       const sWidth = cropSize * dpr
       const sHeight = cropSize * dpr
 
-      ctx.drawImage(img, sX, sY, sWidth, sHeight, 0, 0, cropSize, cropSize)
+      ctx.drawImage(img, sX, sY, sWidth, sHeight, 0, 0, cropSize * dpr, cropSize * dpr)
       canvas.toBlob(resolve, 'image/png')
     }
     img.onerror = () => {
