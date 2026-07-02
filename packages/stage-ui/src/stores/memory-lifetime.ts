@@ -364,14 +364,37 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
     const index = await chatSessionsRepo.getIndex(currentUserId)
     const characterIndex = index?.characters?.[characterId]
     if (characterIndex) {
-      for (const sessionId of Object.keys(characterIndex.sessions)) {
-        const meta = characterIndex.sessions[sessionId]
-        if ((meta.universeId || 'global') !== universeId)
-          continue
+      // Get all sessions in the active universe
+      const activeSessions: { sessionId: string, title: string, messageCount: number }[] = []
+      for (const [sessionId, meta] of Object.entries(characterIndex.sessions)) {
+        if ((meta.universeId || 'global') === universeId) {
+          activeSessions.push({
+            sessionId,
+            title: meta.title || 'Untitled Timeline',
+            messageCount: meta.messageCount || 0,
+          })
+        }
+      }
 
-        const record = await chatSessionsRepo.getSession(sessionId)
+      // Sort by messageCount descending so the longest session is treated as the Canonical Timeline
+      activeSessions.sort((a, b) => b.messageCount - a.messageCount)
+
+      const uniqueContents = new Set<string>()
+
+      for (let i = 0; i < activeSessions.length; i++) {
+        const sessionInfo = activeSessions[i]
+        const record = await chatSessionsRepo.getSession(sessionInfo.sessionId)
         if (!record)
           continue
+
+        const isCanonical = i === 0
+        const headerText = isCanonical
+          ? `# Canonical Timeline: ${sessionInfo.title}\n`
+          : `# Timeline Branch: ${sessionInfo.title} (Alternative Path)\n`
+
+        let branchHasNewMessages = false
+        const branchDocs: SourceDoc[] = []
+
         record.messages.forEach((msg, idx) => {
           if (msg.role === 'system' || !msg.content)
             return
@@ -388,16 +411,35 @@ export const useMemoryLifetimeStore = defineStore('memory-lifetime', () => {
               .join('\n')
           }
 
-          if (!text.trim())
+          const trimmed = text.trim()
+          if (!trimmed)
             return
 
-          docs.push({
-            id: `raw:${sessionId}:${idx}`,
+          const dedupKey = `${msg.role}:${trimmed}`
+
+          // Deduplicate across all timeline sessions
+          if (uniqueContents.has(dedupKey))
+            return
+
+          uniqueContents.add(dedupKey)
+          branchHasNewMessages = true
+
+          branchDocs.push({
+            id: `raw:${sessionInfo.sessionId}:${idx}`,
             layer: 'raw',
             timestamp: new Date(msg.createdAt || record.meta.createdAt).toISOString(),
             text: `${msg.role}: ${text}`,
           })
         })
+
+        // If the branch contains new unique turns, append them preceded by the timeline header
+        if (branchHasNewMessages) {
+          // Prepend the section header to the first unique message of this group
+          if (branchDocs.length > 0) {
+            branchDocs[0].text = `${headerText}${branchDocs[0].text}`
+          }
+          docs.push(...branchDocs)
+        }
       }
     }
 
