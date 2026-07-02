@@ -4,6 +4,7 @@ import type { AiriCard } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
+import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
 import { computed, ref } from 'vue'
 
 import ConceptBuilderModal from '../ConceptBuilderModal.vue'
@@ -16,6 +17,7 @@ const props = defineProps<{
 const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const autonomousArtistryStore = useAutonomousArtistryStore()
+const userProfileStore = useSettingsUserProfile()
 
 const showBuilder = ref(false)
 const editingConceptId = ref<string>()
@@ -25,6 +27,16 @@ function handleAddConcept() {
   editingConceptId.value = undefined
   editingConceptData.value = undefined
   showBuilder.value = true
+}
+
+function handleAddUserProfileConcept() {
+  const nextAssets = { ...visualAssets.value }
+  nextAssets.concept_user = {
+    description: userProfileStore.description || 'An observer/manager of this stage.',
+    prompt: userProfileStore.prompt || '',
+    isBase: false,
+  }
+  saveAssets(nextAssets)
 }
 
 function handleEditConcept(id: string, data: any) {
@@ -158,12 +170,21 @@ async function toggleConcept(conceptId: string) {
             <div class="i-solar:box-minimalistic-bold-duotone text-primary-500" />
             Concept Registry
           </h3>
-          <button
-            class="text-[10px] text-primary-500 font-bold hover:underline"
-            @click="handleAddConcept"
-          >
-            + New Concept
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              class="text-[10px] text-primary-500 font-bold hover:underline"
+              @click="handleAddUserProfileConcept"
+            >
+              + Add User
+            </button>
+            <span class="text-xs text-neutral-300 dark:text-neutral-700">|</span>
+            <button
+              class="text-[10px] text-primary-500 font-bold hover:underline"
+              @click="handleAddConcept"
+            >
+              + New Concept
+            </button>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

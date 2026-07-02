@@ -59,12 +59,8 @@ Extract multiple frames and compose them into a single "tiled" image (like a fil
 
 While discussing modalities, a few other UX improvements were identified for the roadmap:
 
-### A. Inline Message Editing
+### A. Inline Message Editing [Completed]
 The ability to edit a previous message in the chat history.
 - **Desired Behavior**: Editing a message should clear anything after it in that session and resend the prompt to take the conversation in a new direction from that point.
 - **Current Workaround**: Deleting the assistant reply, copying the user message, deleting it, and sending it again.
 
-### B. Session Branching (History Splitting)
-A "split" icon to take the current history and fork it into a new session.
-- **Desired Behavior**: Allows users to try taking the conversation in an experimental direction without ruining the main thread.
-- **Implementation**: Leverage the existing `forkSession` capabilities in `session-store.ts`.

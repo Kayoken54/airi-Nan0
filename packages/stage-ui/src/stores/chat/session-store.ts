@@ -465,7 +465,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     // 5. Broadcast session-refreshed if any previous messages were removed
     const removedAny = prev.some(m => m.id && !nextWithIds.some(n => n.id === m.id))
     if (removedAny) {
-      broadcastStreamEvent({ type: 'session-refreshed', sessionId })
+      broadcastStreamEvent({ type: 'session-refreshed', sessionId, messages: JSON.parse(JSON.stringify(nextWithIds)) })
     }
   }
 
@@ -1015,7 +1015,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     if (next.length !== current.length) {
       sessionMessages.value[sessionId] = next
       await persistSession(sessionId)
-      broadcastStreamEvent({ type: 'session-refreshed', sessionId })
+      broadcastStreamEvent({ type: 'session-refreshed', sessionId, messages: JSON.parse(JSON.stringify(next)) })
       void layeredMemory.removeDocument(messageId)
     }
   }
@@ -1030,7 +1030,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       const next = current.slice(0, index + 1)
       sessionMessages.value[sessionId] = next
       await persistSession(sessionId)
-      broadcastStreamEvent({ type: 'session-refreshed', sessionId })
+      broadcastStreamEvent({ type: 'session-refreshed', sessionId, messages: JSON.parse(JSON.stringify(next)) })
       for (const msg of deleted) {
         if (msg.id) {
           void layeredMemory.removeDocument(msg.id)
@@ -1176,7 +1176,15 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     if (!event)
       return
     if (event.type === 'session-refreshed') {
-      console.info('[ChatSession] Cross-window session-refreshed, reloading session', { sessionId: event.sessionId })
+      console.info('[ChatSession] Cross-window session-refreshed, reloading session', { sessionId: event.sessionId, hasMessages: !!event.messages })
+      if (event.messages) {
+        sessionMessages.value[event.sessionId] = event.messages
+        const meta = sessionMetas.value[event.sessionId]
+        if (meta) {
+          meta.messageCount = event.messages.length
+          meta.updatedAt = Date.now()
+        }
+      }
       void loadSession(event.sessionId, true)
       return
     }

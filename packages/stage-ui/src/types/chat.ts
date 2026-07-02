@@ -92,7 +92,7 @@ export type ChatStreamEvent
     | { type: 'assistant-end', message: string, sessionId: string, context: ChatStreamEventContext }
     | { type: 'assistant-message', message: ChatAssistantMessage, sessionId: string, messageText: string, context: ChatStreamEventContext }
     | { type: 'session-updated', sessionId: string, message: ChatHistoryItem }
-    | { type: 'session-refreshed', sessionId: string }
+    | { type: 'session-refreshed', sessionId: string, messages?: ChatHistoryItem[] }
     | { type: 'session-deleted', sessionId: string }
     | { type: 'index-refreshed', userId: string }
     | { type: 'journal-refreshed', userId: string }

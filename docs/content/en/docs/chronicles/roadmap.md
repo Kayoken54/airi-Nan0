@@ -137,8 +137,6 @@ This document tracks all active pending items, architectural roadmaps, and featu
 *   **STT Pre-Transcription Chooser**: Implement a choice dialog upon attaching audio to run local Whisper pre-transcription (STT Scribe) before sending.
 *   **Smart Video Frame Sampling**: Frontend Canvas/WebCodecs frame extraction allowing users to select sampling rates (e.g. 1 frame per X seconds).
 *   **Tiled Contact Sheets**: Combine extracted video frames into a single image to send visual context to standard vision models.
-*   **Inline Message Editing**: Editing a previous message in chat history clears all subsequent turns in that session and resends the prompt.
-*   **Session Branching**: Add a "split" timeline icon in the chat view to fork history into a new session using `forkSession`.
 
 ---
 
@@ -151,9 +149,6 @@ This document tracks all active pending items, architectural roadmaps, and featu
 *   **Preset Expression Configuration**: Map active manifestations to VRM blendshapes or Live2D parameters, binding the outfit to the visual state setting.
 *   **"Bases for Places" Concept Packs**: Preload location sets (bedroom, kitchen, etc.) as Base concepts to cleanly reset/wipe the active modifier stack on room changes, with actors and moods layered as Additive layers.
 *   **"Add Character as Concept" Creator**: Implement a QoL button to query active model, voice, and artistry parameters to dynamically output a decoupled `actor_{name}` concept.
-*   **Quick Add Action Buttons in Image Studio**:
-    *   Expose quick-add buttons in the prompt crafting panel to dynamically inject bound `visual_assets` character actor concepts (e.g. `actor_gura`, `actor_lain`) into the generative prompt.
-    *   Add a **`+ Add User`** prompt button that resolves and injects the global user visual concept tags.
 *   **Director Dynamic Mood/Expression Pipeline**: Introduce an emotional output field to the Director to emit 1 of 6 possible core emotions, dynamically mapping it to VRM blendshapes or Live2D parameters in a zero-awareness actor environment.
 
 ### Dynamic Item Manifestation (TRELLIS)

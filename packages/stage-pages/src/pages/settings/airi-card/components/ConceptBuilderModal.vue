@@ -159,6 +159,16 @@ function appendPromptTag(tag: string) {
   }
 }
 
+function handleLoadUserProfile() {
+  if (!id.value) {
+    id.value = 'concept_user'
+  }
+  if (!description.value) {
+    description.value = userProfileStore.description || ''
+  }
+  appendPromptTag(userProfileStore.prompt || '')
+}
+
 // Concept Type
 const isBase = ref(false)
 
@@ -556,8 +566,8 @@ function handleSave() {
                 <button
                   type="button"
                   class="flex items-center gap-1 rounded-lg bg-neutral-100 px-2 py-1 text-[10px] text-neutral-600 font-bold transition-all dark:bg-neutral-800 hover:bg-primary-500 dark:text-neutral-300 hover:text-white dark:hover:bg-primary-500"
-                  title="Add global user prompt tags"
-                  @click.prevent="appendPromptTag(userProfileStore.prompt)"
+                  title="Autofill with global user profile description and prompt tags"
+                  @click.prevent="handleLoadUserProfile"
                 >
                   <span class="i-solar:user-bold" />
                   + User Profile
