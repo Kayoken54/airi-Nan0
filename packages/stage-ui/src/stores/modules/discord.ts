@@ -16,6 +16,8 @@ import {
   discordServiceSummon,
 } from '@proj-airi/stage-shared'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { useLive2d } from '@proj-airi/stage-ui-live2d'
+import { useModelStore } from '@proj-airi/stage-ui-three'
 import { useBroadcastChannel } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, toRaw, watch } from 'vue'
@@ -24,6 +26,7 @@ import { stripMarkers } from '../../composables/response-categoriser'
 import { useBackgroundStore } from '../background'
 import { useChatOrchestratorStore } from '../chat'
 import { useChatSessionStore } from '../chat/session-store'
+import { useSettings } from '../settings'
 import { useAiriCardStore } from './airi-card'
 import { useArtistryStore } from './artistry'
 import { useAutonomousArtistryStore } from './artistry-autonomous'
@@ -43,7 +46,7 @@ const MAX_EVENT_LOG_ENTRIES = 200
 
 // ── Slash Command Definitions ──────────────────────────────────────────────────
 
-const COMMANDS_VERSION = 10
+const COMMANDS_VERSION = 11
 const CORE_COMMANDS: DiscordCommandDefinition[] = [
   {
     name: 'status',
@@ -218,6 +221,18 @@ const CORE_COMMANDS: DiscordCommandDefinition[] = [
     name: 'manage',
     description: 'Open the interactive session and modality control dashboard',
   },
+  {
+    name: 'selfie',
+    description: 'Capture a stage selfie of the active character',
+    options: [
+      {
+        name: 'emotion',
+        description: 'Optional expression/emotion to pose the character with before capturing',
+        type: 3, // String
+        required: false,
+      },
+    ],
+  },
 ]
 
 export const useDiscordStore = defineStore('discord', () => {
@@ -230,6 +245,7 @@ export const useDiscordStore = defineStore('discord', () => {
   const liveSessionStore = useLiveSessionStore()
   const speechStore = useSpeechStore()
   const visionStore = useVisionStore()
+  const settingsStore = useSettings()
   const { post: postCapture } = useBroadcastChannel<{ characterId: string, includeBg: boolean, channelId?: string }, { characterId: string, includeBg: boolean, channelId?: string }>({ name: 'airi:stage-capture' })
   // ── Persisted Config ───────────────────────────────────────────────────────
   const enabled = useLocalStorageManualReset<boolean>('settings/discord/enabled', false)
@@ -1436,6 +1452,19 @@ export const useDiscordStore = defineStore('discord', () => {
         }
       }
       else if (payload.commandName === 'selfie') {
+        const emotion = payload.options.emotion?.toString()
+        if (emotion) {
+          if (settingsStore.stageModelRenderer === 'live2d') {
+            const live2dStore = useLive2d()
+            live2dStore.triggerEmotion(emotion)
+          }
+          else if (settingsStore.stageModelRenderer === 'vrm') {
+            const vrmStore = useModelStore()
+            vrmStore.triggerEmotion(emotion, 1)
+          }
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+
         await invokeReplyInteraction?.({
           interactionId: payload.interactionId,
           content: '📸 Capturing stage selfie...',
