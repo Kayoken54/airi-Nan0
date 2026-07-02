@@ -141,6 +141,7 @@ const generationAdvancedJson = ref<string>('{\n  \n}')
 const generationReasoningFallback = ref<boolean>(true)
 const compactionStrategy = ref<string>('none')
 const compactionMinKeepTurns = ref<number | undefined>(15)
+const generationAllowedTools = ref<string[] | undefined>(undefined)
 const selectedActingModelExpressionPrompt = ref<string>('')
 const selectedActingSpeechExpressionPrompt = ref<string>('')
 const selectedActingSpeechMannerismPrompt = ref<string>('')
@@ -766,6 +767,7 @@ async function saveCard(card: Card): Promise<boolean> {
     topP: normalizeOptionalNumber(generationTopP.value),
     contextWidth: normalizeOptionalNumber(generationContextWidth.value),
     reasoningFallback: generationReasoningFallback.value,
+    allowedTools: toRaw(generationAllowedTools.value),
   }
   let generationAdvanced: Record<string, any> | undefined
 
@@ -930,7 +932,7 @@ function initializeCard(): Card {
   selectedArtistryProvider.value = airiExt?.artistry?.provider || defaultArtistryProvider.value
   selectedArtistryModel.value = airiExt?.artistry?.model || ''
   selectedArtistryPromptPrefix.value = airiExt?.artistry?.promptPrefix || ''
-  selectedArtistryWidgetInstruction.value = airiExt?.artistry?.widgetInstruction || DEFAULT_ARTISTRY_WIDGET_INSTRUCTION
+  selectedArtistryWidgetInstruction.value = airiExt?.artistry?.widgetInstruction ?? DEFAULT_ARTISTRY_WIDGET_INSTRUCTION
   selectedArtistryAutonomousEnabled.value = airiExt?.artistry?.autonomousEnabled ?? false
   selectedArtistryAutonomousThreshold.value = airiExt?.artistry?.autonomousThreshold ?? 49
   selectedArtistryAutonomousMonitorEnabled.value = airiExt?.artistry?.autonomousMonitorEnabled ?? true
@@ -946,10 +948,11 @@ function initializeCard(): Card {
   generationTopP.value = normalizeOptionalNumber(airiExt?.generation?.known?.topP)
   generationContextWidth.value = normalizeOptionalNumber(airiExt?.generation?.known?.contextWidth)
   generationReasoningFallback.value = airiExt?.generation?.known?.reasoningFallback ?? true
+  generationAllowedTools.value = airiExt?.generation?.known?.allowedTools
   generationAdvancedJson.value = airiExt?.generation?.advanced ? JSON.stringify(airiExt.generation.advanced, null, 2) : '{\n  \n}'
-  selectedActingModelExpressionPrompt.value = airiExt?.acting?.modelExpressionPrompt || DEFAULT_ACTING_MODEL_PROMPT
-  selectedActingSpeechExpressionPrompt.value = airiExt?.acting?.speechExpressionPrompt || DEFAULT_ACTING_SPEECH_EXPRESSION_PROMPT
-  selectedActingSpeechMannerismPrompt.value = airiExt?.acting?.speechMannerismPrompt || DEFAULT_ACTING_SPEECH_MANNERISM_PROMPT
+  selectedActingModelExpressionPrompt.value = airiExt?.acting?.modelExpressionPrompt ?? DEFAULT_ACTING_MODEL_PROMPT
+  selectedActingSpeechExpressionPrompt.value = airiExt?.acting?.speechExpressionPrompt ?? DEFAULT_ACTING_SPEECH_EXPRESSION_PROMPT
+  selectedActingSpeechMannerismPrompt.value = airiExt?.acting?.speechMannerismPrompt ?? DEFAULT_ACTING_SPEECH_MANNERISM_PROMPT
   // Context-aware idle animation initialization:
   // Check if the current stage model matches an actor with custom idleAnimations override.
   const visualAssets = airiExt?.visual_assets || {}
@@ -1303,6 +1306,7 @@ function handleGeneratorSave(newValue: string) {
             v-model:generation-context-width="generationContextWidth"
             v-model:generation-advanced-json="generationAdvancedJson"
             v-model:generation-reasoning-fallback="generationReasoningFallback"
+            v-model:generation-allowed-tools="generationAllowedTools"
             v-model:card-post-history-instructions="cardPostHistoryInstructions"
             v-model:compaction-strategy="compactionStrategy"
             v-model:compaction-min-keep-turns="compactionMinKeepTurns"

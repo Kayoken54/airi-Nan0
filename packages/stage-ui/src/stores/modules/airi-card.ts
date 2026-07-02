@@ -97,6 +97,7 @@ export interface CharacterGenerationConfig {
     topP?: number
     contextWidth?: number
     reasoningFallback?: boolean
+    allowedTools?: string[]
   }
   advanced?: Record<string, any>
   compaction?: {
@@ -727,6 +728,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       known: {
         contextWidth: undefined,
         reasoningFallback: true,
+        allowedTools: undefined,
       },
       advanced: undefined,
       importedPresetMeta: undefined,
@@ -1325,16 +1327,25 @@ export function buildSystemPrompt(card: AiriCard | undefined) {
 
   const acting = card.extensions?.airi?.acting
   if (acting) {
-    components.push(
-      acting.modelExpressionPrompt,
-      acting.speechExpressionPrompt,
-      acting.speechMannerismPrompt,
-    )
+    if (acting.modelExpressionPrompt && acting.modelExpressionPrompt.trim() !== '') {
+      components.push(acting.modelExpressionPrompt)
+    }
+    if (acting.speechExpressionPrompt && acting.speechExpressionPrompt.trim() !== '') {
+      components.push(acting.speechExpressionPrompt)
+    }
+    if (acting.speechMannerismPrompt && acting.speechMannerismPrompt.trim() !== '') {
+      components.push(acting.speechMannerismPrompt)
+    }
   }
 
   const artistry = card.extensions?.airi?.artistry
-  if (artistry?.provider && artistry.provider !== 'none' && artistry.widgetInstruction && !artistry.autonomousEnabled) {
-    components.push(artistry.widgetInstruction)
+  const generation = card.extensions?.airi?.generation
+  const isImageJournalAllowed = !generation?.known?.allowedTools || generation.known.allowedTools.includes('image_journal')
+
+  if (isImageJournalAllowed && artistry?.provider && artistry.provider !== 'none' && artistry.widgetInstruction && !artistry.autonomousEnabled) {
+    if (artistry.widgetInstruction && artistry.widgetInstruction.trim() !== '') {
+      components.push(artistry.widgetInstruction)
+    }
   }
 
   if (isDatingSimActive && story) {

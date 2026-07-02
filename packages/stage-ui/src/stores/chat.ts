@@ -313,7 +313,13 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     chatContext.ingestContextMessage(createDatetimeContext())
     chatContext.ingestContextMessage(createStickersContext())
     chatContext.ingestContextMessage(createScenesContext())
-    chatContext.ingestContextMessage(createExpressionsContext())
+
+    // Skip expressions context if user cleared expression acting prompts
+    const acting = activeCard.value?.extensions?.airi?.acting
+    const hasExpressionPrompts = !acting || (acting.modelExpressionPrompt !== '' && acting.speechExpressionPrompt !== '')
+    if (hasExpressionPrompts) {
+      chatContext.ingestContextMessage(createExpressionsContext())
+    }
 
     const eternalRecordContext = createEternalRecordContext(activeCard.value?.extensions?.airi?.eternal_record)
     if (eternalRecordContext) {
@@ -1018,7 +1024,12 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
           let contextContent = ''
           if (Object.keys(contextsSnapshot).length > 0) {
             contextContent += 'These are the contextual information retrieved or on-demand updated from other modules:\n'
-              + `${Object.entries(contextsSnapshot).map(([key, value]) => `Module ${key}: ${JSON.stringify(value)}`).join('\n')}\n`
+              + `${Object.entries(contextsSnapshot).map(([key, messages]) => {
+                const messageTexts = messages
+                  .map(m => m && typeof m === 'object' && 'text' in m ? m.text : String(m))
+                  .filter(Boolean)
+                return `Module ${key}:\n${messageTexts.map(t => `- ${t}`).join('\n')}`
+              }).join('\n')}\n`
           }
 
           if (sensorPayload) {

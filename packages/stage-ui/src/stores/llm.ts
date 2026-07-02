@@ -8,6 +8,7 @@ import { streamText } from '@xsai/stream-text'
 import { defineStore } from 'pinia'
 import { toRaw } from 'vue'
 
+import { useAiriCardStore } from './modules/airi-card'
 import { useSettingsChat } from './settings/chat'
 
 export type StreamEvent
@@ -287,6 +288,36 @@ function sanitizeTools(tools?: Tool[]): Tool[] | undefined {
   return cloned
 }
 
+function filterToolsByAllowedTools(tools: Tool[] | undefined): Tool[] | undefined {
+  if (!tools)
+    return undefined
+
+  const cardStore = useAiriCardStore()
+  const activeCard = cardStore.activeCard
+  const allowedTools = activeCard?.extensions?.airi?.generation?.known?.allowedTools
+
+  // Default to allowing all tools if character-specific settings are disabled,
+  // or if allowedTools array is not specifically set (backward compatibility).
+  if (!activeCard?.extensions?.airi?.generation?.enabled || !allowedTools) {
+    return tools
+  }
+
+  return tools.filter((t: any) => {
+    const name = t.function?.name || t.name || ''
+    if (name.includes('text_journal')) {
+      return allowedTools.includes('text_journal')
+    }
+    if (name.includes('image_journal')) {
+      return allowedTools.includes('image_journal')
+    }
+    if (name.includes('mcp_') || name.startsWith('mcp')) {
+      return allowedTools.includes('mcp')
+    }
+    // Allow other custom/unmapped tools by default
+    return true
+  })
+}
+
 async function streamFrom(model: string, chatProvider: ChatProvider, messages: Message[], options?: StreamOptions) {
   const headers = options?.headers
   const chatConfig = getChatConfig(model, chatProvider)
@@ -304,7 +335,12 @@ async function streamFrom(model: string, chatProvider: ChatProvider, messages: M
 
   const supportedTools = streamOptionsToolsCompatibilityOk(model, chatProvider, messages, options)
   const rawResolvedTools = supportedTools ? await resolveTools() : undefined
-  const tools = sanitizeTools(rawResolvedTools)
+  const sanitizedTools = sanitizeTools(rawResolvedTools)
+
+  if (sanitizedTools && sanitizedTools.length > 0) {
+    console.log('[llmStore] Resolved system tools before filtering:', sanitizedTools.map((t: any) => t.function?.name || t.name))
+  }
+  const tools = filterToolsByAllowedTools(sanitizedTools)
 
   if (tools && tools.length > 0) {
     console.log('Calling LLM with tools', tools.map((t: any) => t.function?.name || t.name))
@@ -413,7 +449,12 @@ async function generateFrom(model: string, chatProvider: ChatProvider, messages:
 
   const supportedTools = streamOptionsToolsCompatibilityOk(model, chatProvider, messages, options)
   const rawResolvedTools = supportedTools ? await resolveTools() : undefined
-  const tools = sanitizeTools(rawResolvedTools)
+  const sanitizedTools = sanitizeTools(rawResolvedTools)
+
+  if (sanitizedTools && sanitizedTools.length > 0) {
+    console.log('[llmStore] Resolved system tools before filtering:', sanitizedTools.map((t: any) => t.function?.name || t.name))
+  }
+  const tools = filterToolsByAllowedTools(sanitizedTools)
 
   if (tools && tools.length > 0) {
     console.log('Calling LLM with tools', tools.map((t: any) => t.function?.name || t.name))
