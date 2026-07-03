@@ -653,13 +653,17 @@ function handleControlStripAction(e: Event) {
   }
   else if (action === 'gemini-session') {
     if (!liveSessionStore.isActive) {
-      void requestNotice({
-        id: 'gemini-onboarding',
-        route: '/notice/gemini',
-        type: 'gemini-onboarding',
-      }).catch((err) => {
-        console.error('Failed to open Gemini onboarding notice:', err)
-      })
+      const creds = providersStore.getProviderConfig('google-generative-ai')
+      const hasGeminiKey = !!(typeof creds?.apiKey === 'string' && creds.apiKey.trim())
+      if (!hasGeminiKey) {
+        void requestNotice({
+          id: 'gemini-onboarding',
+          route: '/notice/gemini',
+          type: 'gemini-onboarding',
+        }).catch((err) => {
+          console.error('Failed to open Gemini onboarding notice:', err)
+        })
+      }
     }
     liveSessionStore.toggle()
   }
