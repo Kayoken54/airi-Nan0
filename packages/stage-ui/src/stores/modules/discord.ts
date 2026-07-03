@@ -31,6 +31,7 @@ import { useAiriCardStore } from './airi-card'
 import { useArtistryStore } from './artistry'
 import { useAutonomousArtistryStore } from './artistry-autonomous'
 import { useConsciousnessStore } from './consciousness'
+import { useHearingSpeechInputPipeline } from './hearing'
 import { useLiveSessionStore } from './live-session'
 import { useSpeechStore } from './speech'
 import { useVisionStore } from './vision'
@@ -802,8 +803,8 @@ export const useDiscordStore = defineStore('discord', () => {
           const res = await invokeSummon?.({ userId: payload.userId })
           if (res?.success) {
             let warning = ''
-            if (voiceCall.value !== 'gemini') {
-              warning = '\n\n⚠️ *Note: The voicecall engine is currently not set to Gemini Live. To talk with me in real-time, run `/voicecall mode: gemini`!*'
+            if (voiceCall.value === 'off') {
+              warning = '\n\n⚠️ *Note: Voice call mode is currently **off**. To enable voice chat, run `/voicecall mode: gemini` or `/voicecall mode: classic`!*'
             }
             await invokeReplyInteraction?.({
               interactionId: payload.interactionId,
@@ -1984,10 +1985,95 @@ export const useDiscordStore = defineStore('discord', () => {
       }
     }
 
+    const onClassicSpeechCaptured = async (_event: any, payload: { userId: string, username: string, pcmBase64: string }) => {
+      // Leadership election: only the Stage window should run transcription.
+      // Multiple renderer windows (Stage, Settings, etc.) all receive the IPC broadcast;
+      // without this guard we'd get N parallel transcription jobs fighting over the Whisper worker.
+      const hash = window.location.hash || '#/'
+      const isStage = hash === '#/' || hash.startsWith('#/stage')
+      if (!isStage)
+        return
+
+      // Minimum viable audio: 16kHz mono 16-bit = 32000 bytes/sec.
+      // Anything under ~300ms (~9600 bytes) is almost certainly trailing silence
+      // that Whisper will hallucinate on (producing ">>" or "you" artifacts).
+      const MIN_PCM_BYTES = 9600
+      const pcmByteLength = Math.floor(payload.pcmBase64.length * 3 / 4)
+      if (pcmByteLength < MIN_PCM_BYTES) {
+        console.log(`[DiscordStore/Classic] ⏭ Skipping micro-clip (${pcmByteLength} bytes < ${MIN_PCM_BYTES} minimum).`)
+        return
+      }
+
+      const initLog = `[DiscordStore/Classic] 🎙️ IPC Captured speech from ${payload.username}. Length: ${payload.pcmBase64.length} chars.`
+      console.log(initLog)
+      if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+        (window as any).electron.ipcRenderer.send('logger:write', 'info', initLog)
+      }
+
+      try {
+        const hearingPipeline = useHearingSpeechInputPipeline()
+
+        // Convert PCM base64 string to binary array
+        const binaryString = atob(payload.pcmBase64)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+
+        // Construct 44-byte WAV header
+        const wavHeader = new ArrayBuffer(44)
+        const view = new DataView(wavHeader)
+
+        const writeString = (offset: number, str: string) => {
+          for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i))
+          }
+        }
+
+        writeString(0, 'RIFF')
+        view.setUint32(4, 36 + bytes.length, true)
+        writeString(8, 'WAVE')
+        writeString(12, 'fmt ')
+        view.setUint32(16, 16, true)
+        view.setUint16(20, 1, true)
+        view.setUint16(22, 1, true)
+        view.setUint32(24, 16000, true)
+        view.setUint32(28, 32000, true)
+        view.setUint16(32, 2, true)
+        view.setUint16(34, 16, true)
+        writeString(36, 'data')
+        view.setUint32(40, bytes.length, true)
+
+        const wavBlob = new Blob([wavHeader, bytes], { type: 'audio/wav' })
+
+        const procLog = `[DiscordStore/Classic] 🎙️ Processing transcription for ${payload.username} (${wavBlob.size} bytes)...`
+        console.info(procLog)
+        if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+          (window as any).electron.ipcRenderer.send('logger:write', 'info', procLog)
+        }
+
+        const text = await hearingPipeline.transcribeForRecording(wavBlob)
+
+        const resultLog = `[Discord Classic STT Verification] User Said: "${text}"`
+        console.log(resultLog)
+        if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+          (window as any).electron.ipcRenderer.send('logger:write', 'info', resultLog)
+        }
+      }
+      catch (err: any) {
+        const errLog = `[DiscordStore/Classic] Failed to transcribe classic speech: ${err.message}`
+        console.error(errLog)
+        if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+          (window as any).electron.ipcRenderer.send('logger:write', 'error', errLog)
+        }
+      }
+    }
+
     ipcRenderer.on(STATUS_CHANGED_CHANNEL, onStatusChanged)
     ipcRenderer.on(EVENT_LOG_CHANNEL, onEventLog)
     ipcRenderer.on(INBOUND_MESSAGE_CHANNEL, onInboundMessage)
     ipcRenderer.on(INTERACTION_CHANNEL, onInteraction)
+    ipcRenderer.on('discord-classic-speech-captured', onClassicSpeechCaptured)
 
     const onBeforeSend = async (_message: string, options: any) => {
       // ── VERIFICATION LOGS ──
@@ -2128,6 +2214,7 @@ export const useDiscordStore = defineStore('discord', () => {
       ipcRenderer.removeListener(EVENT_LOG_CHANNEL, onEventLog)
       ipcRenderer.removeListener(INBOUND_MESSAGE_CHANNEL, onInboundMessage)
       ipcRenderer.removeListener(INTERACTION_CHANNEL, onInteraction)
+      ipcRenderer.removeListener('discord-classic-speech-captured', onClassicSpeechCaptured)
       cleanupChatHooks.forEach(cleanup => cleanup())
       cleanupBackgroundHook()
     }

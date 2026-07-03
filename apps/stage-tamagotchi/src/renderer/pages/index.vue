@@ -660,7 +660,7 @@ function handleControlStripAction(e: Event) {
           id: 'gemini-onboarding',
           route: '/notice/gemini',
           type: 'gemini-onboarding',
-        }).catch((err) => {
+        }).catch((err: any) => {
           console.error('Failed to open Gemini onboarding notice:', err)
         })
       }

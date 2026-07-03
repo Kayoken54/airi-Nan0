@@ -734,6 +734,7 @@ export function setupDiscordService() {
           console.log(`[DiscordService/Voice] 🔀 Path B: Setting up pure JS 48kHz stereo → 16kHz mono downsampler...`)
 
           let ipcChunkCount = 0
+          const classicAudioChunks: Buffer[] = []
 
           decoder.on('data', (chunk: Buffer) => {
             try {
@@ -756,6 +757,7 @@ export function setupDiscordService() {
               }
 
               ipcChunkCount++
+              classicAudioChunks.push(resampledBuffer)
               const base64 = resampledBuffer.toString('base64')
               if (ipcChunkCount === 1) {
                 console.log(`[DiscordService/Voice] 📡 First resampled chunk for ${username}. Input: ${chunk.length} bytes -> Output: ${resampledBuffer.length} bytes. Sending to renderer...`)
@@ -771,6 +773,17 @@ export function setupDiscordService() {
             console.log(`[DiscordService/Voice] ✅ Decoder ended for ${username}. Total decoder output: ${decoderChunkCount} chunks (${decoderTotalBytes} bytes). Total IPC chunks sent: ${ipcChunkCount}.`)
             pushLog('VOICE_RECORD_END', `Speech segment complete. Decoder: ${decoderChunkCount} chunks, IPC: ${ipcChunkCount} chunks`)
             broadcastToAllWindows('discord-audio-end', { userId: targetUserId })
+
+            // Assemble complete PCM buffer and broadcast for classic STT
+            const completePcmBuffer = Buffer.concat(classicAudioChunks)
+            if (completePcmBuffer.length > 0) {
+              console.log(`[DiscordService/Voice] 📣 Broadcasting complete speech buffer to renderer for Classic TTS: ${completePcmBuffer.length} bytes.`)
+              broadcastToAllWindows('discord-classic-speech-captured', {
+                userId: targetUserId,
+                username,
+                pcmBase64: completePcmBuffer.toString('base64'),
+              })
+            }
           })
 
           audioStream.on('end', () => {
