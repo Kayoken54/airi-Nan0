@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { Button, Checkbox } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -8,13 +9,14 @@ import { useRoute } from 'vue-router'
 
 import GeminiGraphic from '../../assets/onboarding/gemini-graphic.png'
 
-import { noticeWindowEventa } from '../../../shared/eventa'
+import { electronOpenSettings, noticeWindowEventa } from '../../../shared/eventa'
 import { useControlsIslandStore } from '../../stores/controls-island'
 
 const context = useElectronEventaContext()
 const sendAction = useElectronEventaInvoke(noticeWindowEventa.windowAction, context.value)
 const notifyMounted = useElectronEventaInvoke(noticeWindowEventa.pageMounted, context.value)
 const notifyUnmounted = useElectronEventaInvoke(noticeWindowEventa.pageUnmounted, context.value)
+const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const route = useRoute()
 const { t } = useI18n()
 
@@ -52,6 +54,13 @@ onBeforeUnmount(async () => {
   }
 })
 
+const providersStore = useProvidersStore()
+
+const hasGeminiKey = computed(() => {
+  const creds = providersStore.getProviderConfig('google-generative-ai')
+  return !!(typeof creds?.apiKey === 'string' && creds.apiKey.trim())
+})
+
 async function handleAction(action: 'confirm' | 'cancel' | 'close') {
   const id = requestId.value
   if (!id) {
@@ -60,8 +69,9 @@ async function handleAction(action: 'confirm' | 'cancel' | 'close') {
   }
 
   try {
-    if (action === 'confirm')
+    if (action === 'confirm') {
       dontShowGeminiOnboarding.value = dontShowGeminiOnboardingPending.value
+    }
 
     await sendAction({ id, action })
   }
@@ -70,6 +80,15 @@ async function handleAction(action: 'confirm' | 'cancel' | 'close') {
   }
   finally {
     window.close()
+  }
+}
+
+async function handleButtonClick() {
+  if (!hasGeminiKey.value) {
+    await openSettings({ route: '/settings/providers/chat/google-generative-ai' })
+  }
+  else {
+    await handleAction('confirm')
   }
 }
 </script>
@@ -191,11 +210,11 @@ async function handleAction(action: 'confirm' | 'cancel' | 'close') {
               variant="primary"
               size="lg"
               block
-              :label="t('tamagotchi.stage.notice.gemini-onboarding.confirm')"
+              :label="hasGeminiKey ? 'Begin Session' : 'Add Gemini Key'"
               :disabled="waitingForRequest"
               :loading="waitingForRequest"
               class="h-14 from-sky-600 to-purple-600 bg-gradient-to-r font-bold shadow-purple-900/20 shadow-xl transition-all active:scale-95 border-none! hover:shadow-sky-500/20!"
-              @click="handleAction('confirm')"
+              @click="handleButtonClick"
             />
 
             <div class="flex shrink-0 items-center gap-3 border-neutral-800 px-4 sm:border-l">

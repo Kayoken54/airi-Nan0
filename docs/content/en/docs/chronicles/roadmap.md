@@ -29,8 +29,6 @@ This document tracks all active pending items, architectural roadmaps, and featu
 
 ### Infrastructure & UI Health
 *   **Model Selector Stability (Research & Design - Needs Retesting)**: Investigate and resolve the "reactive reset" bug where selecting a temporary preview model in the Model Selector is overridden by the active character's stored model configuration.
-*   **Gemini Onboarding Modal Restore**: Move the onboarding dialog window trigger to `ControlStrip` activation: if Gemini Live is activated and there is no Google API key configured, trigger this modal.
-
 ### AnimaDex Character Creator Wizard
 *Reference: [proposal-animadex-wizard.md](../../../../proposal-animadex-wizard.md)*
 *   **AnimaDex Dataset Integration**: Evaluate Route A (offline bundling of the 46MB database) vs Route B (CDN web-hosted directory).
