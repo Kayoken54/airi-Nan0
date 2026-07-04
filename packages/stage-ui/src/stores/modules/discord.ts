@@ -414,41 +414,33 @@ export const useDiscordStore = defineStore('discord', () => {
     }
   }
 
-  let classicVoiceSentAnyChunk = false
-
   function addAudioToTurn(buffer: ArrayBuffer) {
     if (buffer.byteLength === 0)
       return
-
-    const isClassicVoiceCallActive = voiceCall.value === 'classic' && serviceStatus.value.activeChannelId
-    if (isClassicVoiceCallActive) {
-      console.log(`[DiscordStore] Streaming audio chunk in real-time to voice connection: ${Math.round(buffer.byteLength / 1024)}KB`)
-      classicVoiceSentAnyChunk = true
-      window.electron?.ipcRenderer?.send('eventa:invoke:electron:discord:send-classic-audio-chunk', new Uint8Array(buffer))
-    }
-    else {
-      console.log(`[DiscordStore] Aggregating audio chunk for local storage: ${Math.round(buffer.byteLength / 1024)}KB`)
-      audioTurnBuffer.value.push(buffer)
-    }
+    console.log(`[DiscordStore] Aggregating audio chunk: ${Math.round(buffer.byteLength / 1024)}KB`)
+    audioTurnBuffer.value.push(buffer)
   }
 
   async function flushAudioTurn(content?: string) {
-    const isClassicVoiceCallActive = voiceCall.value === 'classic' && serviceStatus.value.activeChannelId
-    const hasBuffered = audioTurnBuffer.value.length > 0
-    const hasStreamed = isClassicVoiceCallActive && classicVoiceSentAnyChunk
-
-    if ((!hasBuffered && !hasStreamed) || !lastChannelId.value) {
-      console.log('[DiscordStore] Flush skipped: Bucket empty and no real-time stream sent.')
+    if (audioTurnBuffer.value.length === 0 || !lastChannelId.value) {
+      console.log('[DiscordStore] Flush skipped: Bucket empty.')
       return
     }
 
     const channelId = lastChannelId.value
-    console.log(`[DiscordStore] FLUSHING Voice Note: buffered=${audioTurnBuffer.value.length}, streamed=${hasStreamed} to ${channelId}`)
+    console.log(`[DiscordStore] FLUSHING Voice Note: ${audioTurnBuffer.value.length} chunks to ${channelId}`)
 
     try {
+      // Signal the end of the voice stream to clear passthrough players
+      window.electron?.ipcRenderer?.send('gemini-audio-end')
+
       const channelName = 'eventa:invoke:electron:discord:send-voice-note'
+
+      // Explicitly convert buffers to Uint8Arrays to ensure they are cloneable via IPC
+      // and strip any Vue reactivity proxies.
       const buffers = audioTurnBuffer.value.map(buf => new Uint8Array(buf))
 
+      // We send the array of buffers to the main process for merging and delivery
       const result = await (window as any).electron?.ipcRenderer?.invoke(
         channelName,
         {
@@ -466,15 +458,13 @@ export const useDiscordStore = defineStore('discord', () => {
     }
     finally {
       audioTurnBuffer.value = []
-      classicVoiceSentAnyChunk = false
     }
   }
 
   function clearAudioTurn() {
-    console.log('[DiscordStore] Clearing audio turn bucket and signaling main process.')
+    console.log('[DiscordStore] Clearing audio turn bucket.')
     audioTurnBuffer.value = []
-    classicVoiceSentAnyChunk = false
-    window.electron?.ipcRenderer?.send('eventa:invoke:electron:discord:clear-classic-audio')
+    window.electron?.ipcRenderer?.send('gemini-audio-end')
   }
 
   async function sendImageToDiscord(channelId: string, base64: string, content?: string, filename?: string) {

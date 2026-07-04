@@ -485,6 +485,46 @@ if (typeof window !== 'undefined') {
   }
 }
 
+async function resampleAudioBuffer(audioBuffer: AudioBuffer, targetSampleRate: number): Promise<AudioBuffer> {
+  const offlineCtx = new OfflineAudioContext(
+    audioBuffer.numberOfChannels,
+    Math.round(audioBuffer.duration * targetSampleRate),
+    targetSampleRate,
+  )
+  const bufferSource = offlineCtx.createBufferSource()
+  bufferSource.buffer = audioBuffer
+  bufferSource.connect(offlineCtx.destination)
+  bufferSource.start()
+  return await offlineCtx.startRendering()
+}
+
+function float32ToPcm16(float32Array: Float32Array): Int16Array {
+  const pcm16 = new Int16Array(float32Array.length)
+  for (let i = 0; i < float32Array.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32Array[i]))
+    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+  }
+  return pcm16
+}
+
+async function streamAudioToDiscordVoice(audioBuffer: AudioBuffer) {
+  try {
+    const resampled = await resampleAudioBuffer(audioBuffer, 24000)
+    const float32 = resampled.getChannelData(0)
+    const pcm16 = float32ToPcm16(float32)
+    const bytes = new Uint8Array(pcm16.buffer)
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    const base64 = btoa(binary)
+    window.electron?.ipcRenderer?.send('gemini-audio-chunk', base64)
+  }
+  catch (err) {
+    console.error('[Stage:Playback] Failed to stream audio to Discord voice channel:', err)
+  }
+}
+
 async function playFunction(item: Parameters<Parameters<typeof createPlaybackManager<AudioBuffer>>[0]['play']>[0], signal: AbortSignal): Promise<void> {
   if (!audioContext)
     return
@@ -604,6 +644,7 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
   // Ensure final audio is connected to output destination and analyser
   if (isPlaybackSuppressed.value) {
     console.info('[Stage:Playback] Local speaker playback is suppressed (active Discord voice call).')
+    void streamAudioToDiscordVoice(item.audio)
   }
   else {
     lastNode.connect(audioContext.destination)
