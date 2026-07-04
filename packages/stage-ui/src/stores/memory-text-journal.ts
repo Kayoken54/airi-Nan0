@@ -16,6 +16,7 @@ import { textJournalRepo } from '../database/repos/text-journal.repo'
 import { layeredMemory } from '../libs/search/layered-memory'
 import { useAuthStore } from './auth'
 import { CHAT_STREAM_CHANNEL_NAME } from './chat/constants'
+import { stageJournalIntrusion } from './chat/intrusion-staging'
 import { useChatSessionStore } from './chat/session-store'
 import { useLLM } from './llm'
 import { useAiriCardStore } from './modules/airi-card'
@@ -60,6 +61,12 @@ export const useTextJournalStore = defineStore('text-journal', () => {
   const { activeCard, activeCardId, cards } = storeToRefs(useAiriCardStore())
 
   const { post: broadcastStreamEvent, data: incomingStreamEvent } = useBroadcastChannel<ChatStreamEvent, ChatStreamEvent>({ name: CHAT_STREAM_CHANNEL_NAME })
+
+  // BroadcastChannel for cross-window intrusion staging
+  const { post: postIntrusionStaging } = useBroadcastChannel<
+    { type: 'journal' | 'artistry', data: any },
+    { type: 'journal' | 'artistry', data: any }
+  >({ name: 'airi-intrusion-staging' })
 
   const entries = ref<TextJournalEntry[]>([])
   const loading = ref(false)
@@ -311,6 +318,21 @@ export const useTextJournalStore = defineStore('text-journal', () => {
 
     if (!nextEntry.characterId)
       throw new Error('Active character could not be resolved for text journal entry creation.')
+
+    // Hook: If journal intrusion is enabled, stage the pending journal entry via BroadcastChannel + local call
+    const injectJournalContext = targetCard.extensions?.airi?.textJournal?.injectJournalContext
+    console.warn('[TextJournal Debug] injectJournalContext value:', injectJournalContext)
+    if (injectJournalContext) {
+      const stagingData = {
+        entryText: nextEntry.content,
+        timestamp: nextEntry.createdAt,
+      }
+      // Stage locally (works if createEntry runs in the same window as performSend, e.g. in-band tool call)
+      stageJournalIntrusion(stagingData)
+      // Broadcast to all windows (works if createEntry runs in a different window, e.g. out-of-band journal moment)
+      postIntrusionStaging({ type: 'journal' as const, data: stagingData })
+      console.warn('[TextJournal Debug] Staged pendingJournalMoment via local + broadcast:', nextEntry.content.substring(0, 50))
+    }
 
     const nextEntries = [nextEntry, ...entries.value]
     try {

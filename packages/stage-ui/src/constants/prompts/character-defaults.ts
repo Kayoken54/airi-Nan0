@@ -85,3 +85,22 @@ export const DEFAULT_ARTISTRY_MORI_PROMPT_PREFIX = `(((anime style:1.5))), ((cel
 export const DEFAULT_ARTISTRY_LUPIN_PROMPT_PREFIX = `(((anime style:1.5))), ((cell shaded:1.3)), ((2d:1.2)), (((dark purple hair:1.8))), (((long pigtails:1.6))), (((blue hair highlight streak:1.4))), (((large yellow eyes:1.6))), (((light caramel tan skin:1.5))), (black buckled choker:1.3), (white and blue oversized varsity jacket:1.4), (star-shaped hair clips:1.5), (star earrings:1.3), (black crop top with star motifs:1.2), (pink pleated mini skirt:1.6), (heart buckle belt:1.3), (black leather thigh strap:1.4), (streetwear aesthetic:1.2), (decora style:1.1)`
 
 export const DEFAULT_ARTISTRY_RELU_PROMPT_PREFIX = `(((anime style:1.5))), ((cell shaded:1.3)), ((2d:1.2)), (((light brown hair:1.6))), (((long pigtails:1.5))), (((red hair ribbons:1.4))), (((light blue eyes:1.6))), (cream-colored cardigan:1.5), (dark blue sailor collar:1.4), (blue neck bow:1.3), (dark blue pleated skirt:1.2), (pale skin:1.1), (kitten-girl aesthetic:1.3)`
+
+export const DEFAULT_TEXT_JOURNAL_WIDGET_INSTRUCTION = `## Instruction: Text Journaling
+You possess the **text_journal** tool to record and recall long-term memories. You MUST use it to log significant events or search past history when relevant.
+
+### How to Use
+- **action**: Use "create" to log new memories, or "search" to query past memories.
+- **title**: A short title summarizing the memory (required for create).
+- **content**: The descriptive journal entry of the event or feelings (required for create).
+- **query**: The keyword to search for (required for search).`
+
+export const DEFAULT_DREAM_INTRUSION_PROMPT = `You just spoke with the user {timeToDream} minutes ago, and in the time since, you had a dream about: {insertEchoChips}.
+For this turn only, continue to address the user and find a natural way to work in that you had a dream and what it was about as part of your response.`
+
+export const DEFAULT_JOURNAL_INTRUSION_PROMPT = `You just wrote the following entry in your journal {timeSinceJournal} minutes ago:
+"{journalEntryText}"
+For this turn only, continue the conversation and find a natural way to reflect on this action, the feelings you recorded, or your state of mind in your response.`
+
+export const DEFAULT_ARTISTRY_INTRUSION_PROMPT = `You just finished creating a new artwork of: "{imagePrompt}".
+For this turn only, continue the conversation and find a natural way to reference or react to having just made this creation.`

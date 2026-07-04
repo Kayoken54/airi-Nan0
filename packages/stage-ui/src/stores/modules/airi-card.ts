@@ -22,6 +22,7 @@ import {
   DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT,
   DEFAULT_HEARTBEATS_PROMPT,
   DEFAULT_POST_HISTORY_INSTRUCTIONS,
+  DEFAULT_TEXT_JOURNAL_WIDGET_INSTRUCTION,
 } from '../../constants/prompts/character-defaults'
 import { storage } from '../../database/storage'
 import { AiriCardSchema } from '../../types/card.schema'
@@ -1345,6 +1346,15 @@ export function buildSystemPrompt(card: AiriCard | undefined) {
   if (isImageJournalAllowed && artistry?.provider && artistry.provider !== 'none' && artistry.widgetInstruction && !artistry.autonomousEnabled) {
     if (artistry.widgetInstruction && artistry.widgetInstruction.trim() !== '') {
       components.push(artistry.widgetInstruction)
+    }
+  }
+
+  const textJournal = card.extensions?.airi?.textJournal
+  const isTextJournalAllowed = !generation?.known?.allowedTools || generation.known.allowedTools.includes('text_journal')
+  if (isTextJournalAllowed) {
+    const textJournalInstruction = textJournal?.widgetInstruction || DEFAULT_TEXT_JOURNAL_WIDGET_INSTRUCTION
+    if (textJournalInstruction && textJournalInstruction.trim() !== '') {
+      components.push(textJournalInstruction)
     }
   }
 

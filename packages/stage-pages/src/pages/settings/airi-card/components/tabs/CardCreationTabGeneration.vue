@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FieldCheckbox, FieldInput, FieldTextArea, Select } from '@proj-airi/ui'
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 defineProps<{
@@ -26,57 +26,7 @@ const generationReasoningFallback = defineModel<boolean>('generationReasoningFal
 const cardPostHistoryInstructions = defineModel<string>('cardPostHistoryInstructions', { required: true })
 const compactionStrategy = defineModel<string>('compactionStrategy', { required: true })
 const compactionMinKeepTurns = defineModel<number | undefined>('compactionMinKeepTurns', { required: true })
-const generationAllowedTools = defineModel<string[] | undefined>('generationAllowedTools', { required: true })
 const { t } = useI18n()
-
-// Helper computed properties to map allowedTools array to FieldCheckbox boolean values
-const hasTextJournal = computed({
-  get() {
-    return generationAllowedTools.value === undefined || generationAllowedTools.value.includes('text_journal')
-  },
-  set(checked) {
-    const current = generationAllowedTools.value ?? ['text_journal', 'image_journal', 'mcp']
-    if (checked) {
-      if (!current.includes('text_journal'))
-        generationAllowedTools.value = [...current, 'text_journal']
-    }
-    else {
-      generationAllowedTools.value = current.filter(t => t !== 'text_journal')
-    }
-  },
-})
-
-const hasImageJournal = computed({
-  get() {
-    return generationAllowedTools.value === undefined || generationAllowedTools.value.includes('image_journal')
-  },
-  set(checked) {
-    const current = generationAllowedTools.value ?? ['text_journal', 'image_journal', 'mcp']
-    if (checked) {
-      if (!current.includes('image_journal'))
-        generationAllowedTools.value = [...current, 'image_journal']
-    }
-    else {
-      generationAllowedTools.value = current.filter(t => t !== 'image_journal')
-    }
-  },
-})
-
-const hasMcp = computed({
-  get() {
-    return generationAllowedTools.value === undefined || generationAllowedTools.value.includes('mcp')
-  },
-  set(checked) {
-    const current = generationAllowedTools.value ?? ['text_journal', 'image_journal', 'mcp']
-    if (checked) {
-      if (!current.includes('mcp'))
-        generationAllowedTools.value = [...current, 'mcp']
-    }
-    else {
-      generationAllowedTools.value = current.filter(t => t !== 'mcp')
-    }
-  },
-})
 
 function updateGlobalContextMap() {
   if (!generationContextWidth.value || !generationProvider.value || !generationModel.value)
@@ -125,36 +75,6 @@ watch([generationContextWidth, generationProvider, generationModel], () => {
         description="If the model outputs everything inside reasoning tags (leaving speech empty), use the reasoning text as the spoken content."
         :disabled="!generationEnabled"
       />
-
-      <!-- Allowed Tools Selection -->
-      <div class="mt-2 border-t border-neutral-200 pt-4 dark:border-neutral-800" :class="[!generationEnabled ? 'pointer-events-none opacity-50' : '']">
-        <label class="mb-2 block text-sm text-neutral-700 font-medium dark:text-neutral-300">
-          Allowed Tools & Capabilities
-        </label>
-        <p class="mb-4 text-xs text-neutral-500 dark:text-neutral-400">
-          Toggle which system capabilities this character is allowed to use. Disabling tools prevents context pollution on smaller local models.
-        </p>
-        <div class="flex flex-col gap-3">
-          <FieldCheckbox
-            v-model="hasTextJournal"
-            label="Text Journal"
-            description="Allows the character to write, search, and recall text journal entries (text_journal)."
-            :disabled="!generationEnabled"
-          />
-          <FieldCheckbox
-            v-model="hasImageJournal"
-            label="Image/Artistry Journal"
-            description="Allows the character to trigger ComfyUI/Replicate image generations and update the background (image_journal)."
-            :disabled="!generationEnabled"
-          />
-          <FieldCheckbox
-            v-model="hasMcp"
-            label="External Tools (MCP)"
-            description="Allows the character to call connected Model Context Protocol (MCP) servers/APIs."
-            :disabled="!generationEnabled"
-          />
-        </div>
-      </div>
     </div>
 
     <div class="input-list ml-auto mr-auto w-90% flex flex-row flex-wrap justify-start gap-8" :class="[!generationEnabled ? 'pointer-events-none opacity-50' : '']">

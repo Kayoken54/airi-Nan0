@@ -11,7 +11,7 @@ import { useSpine } from '@proj-airi/stage-ui-spine'
 import { useCustomVrmAnimationsStore, useModelStore } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
-import { DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT, DEFAULT_ACTING_SPEECH_EXPRESSION_PROMPT, DEFAULT_ACTING_SPEECH_MANNERISM_PROMPT, DEFAULT_HEARTBEATS_PROMPT, DEFAULT_POST_HISTORY_INSTRUCTIONS } from '@proj-airi/stage-ui/constants/prompts/character-defaults'
+import { DEFAULT_ACTING_MODEL_EXPRESSION_PROMPT, DEFAULT_ACTING_SPEECH_EXPRESSION_PROMPT, DEFAULT_ACTING_SPEECH_MANNERISM_PROMPT, DEFAULT_ARTISTRY_INTRUSION_PROMPT, DEFAULT_DREAM_INTRUSION_PROMPT, DEFAULT_HEARTBEATS_PROMPT, DEFAULT_JOURNAL_INTRUSION_PROMPT, DEFAULT_POST_HISTORY_INSTRUCTIONS, DEFAULT_TEXT_JOURNAL_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/character-defaults'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { DisplayModelFormat, useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -42,6 +42,7 @@ import CardCreationTabGeneration from './tabs/CardCreationTabGeneration.vue'
 import CardCreationTabIdentity from './tabs/CardCreationTabIdentity.vue'
 import CardCreationTabModules from './tabs/CardCreationTabModules.vue'
 import CardCreationTabProactivity from './tabs/CardCreationTabProactivity.vue'
+import CardCreationTabTools from './tabs/CardCreationTabTools.vue'
 
 interface Props {
   modelValue: boolean
@@ -146,6 +147,15 @@ const selectedActingModelExpressionPrompt = ref<string>('')
 const selectedActingSpeechExpressionPrompt = ref<string>('')
 const selectedActingSpeechMannerismPrompt = ref<string>('')
 const selectedActingIdleAnimations = ref<string[]>([])
+
+// Placeholder state variables for Tools tab
+const selectedTextJournalInstruction = ref<string>('')
+const selectedInjectDreamContext = ref<boolean>(false)
+const selectedInjectJournalContext = ref<boolean>(false)
+const selectedInjectArtistryContext = ref<boolean>(false)
+const selectedDreamIntrusionPrompt = ref<string>('')
+const selectedJournalIntrusionPrompt = ref<string>('')
+const selectedArtistryIntrusionPrompt = ref<string>('')
 
 // Resolve which visual asset (actor) corresponds to the currently active stage model.
 // Returns the actor key and its idleAnimations override, or null if no override exists.
@@ -690,6 +700,7 @@ const tabs: Tab[] = [
   { id: 'modules', label: t('settings.pages.card.modules'), icon: 'i-solar:widget-4-bold-duotone' },
   { id: 'artistry', label: t('settings.pages.modules.artistry.title'), icon: 'i-solar:gallery-bold-duotone' },
   { id: 'proactivity', label: t('settings.pages.card.creation.proactivity', 'Proactivity'), icon: 'i-solar:heart-pulse-bold-duotone' },
+  { id: 'tools', label: 'Tools', icon: 'i-solar:widget-bold-duotone' },
 ]
 
 // Active tab state - set to first available tab by default
@@ -897,6 +908,14 @@ async function saveCard(card: Card): Promise<boolean> {
     autonomousMonitorDiscordEnabled: selectedArtistryAutonomousMonitorDiscordEnabled.value,
     autonomousHistoryDepth: selectedArtistryAutonomousHistoryDepth.value,
     options: artistryConfig,
+    injectArtistryContext: selectedInjectArtistryContext.value,
+    artistryIntrusionPrompt: selectedArtistryIntrusionPrompt.value,
+  }
+
+  cardWithModules.extensions.airi.textJournal = {
+    widgetInstruction: selectedTextJournalInstruction.value,
+    injectJournalContext: selectedInjectJournalContext.value,
+    journalIntrusionPrompt: selectedJournalIntrusionPrompt.value,
   }
 
   if (isEditMode.value && props.cardId) {
@@ -991,6 +1010,15 @@ function initializeCard(): Card {
   dreamStateEnabled.value = airiExt?.dreamState?.enabled ?? false
   dreamStateStrictAfkGating.value = airiExt?.dreamState?.strictAfkGating ?? true
   groundingEnabled.value = airiExt?.groundingEnabled ?? false
+
+  // Load Tools Tab configuration
+  selectedInjectDreamContext.value = airiExt?.dreamState?.injectDreamContext ?? false
+  selectedDreamIntrusionPrompt.value = airiExt?.dreamState?.dreamIntrusionPrompt ?? DEFAULT_DREAM_INTRUSION_PROMPT
+  selectedInjectJournalContext.value = airiExt?.textJournal?.injectJournalContext ?? false
+  selectedJournalIntrusionPrompt.value = airiExt?.textJournal?.journalIntrusionPrompt ?? DEFAULT_JOURNAL_INTRUSION_PROMPT
+  selectedInjectArtistryContext.value = airiExt?.artistry?.injectArtistryContext ?? false
+  selectedArtistryIntrusionPrompt.value = airiExt?.artistry?.artistryIntrusionPrompt ?? DEFAULT_ARTISTRY_INTRUSION_PROMPT
+  selectedTextJournalInstruction.value = airiExt?.textJournal?.widgetInstruction ?? DEFAULT_TEXT_JOURNAL_WIDGET_INSTRUCTION
 
   loadActingSpeechCapabilities(selectedSpeechProvider.value || speechProvider.value)
 
@@ -1306,7 +1334,6 @@ function handleGeneratorSave(newValue: string) {
             v-model:generation-context-width="generationContextWidth"
             v-model:generation-advanced-json="generationAdvancedJson"
             v-model:generation-reasoning-fallback="generationReasoningFallback"
-            v-model:generation-allowed-tools="generationAllowedTools"
             v-model:card-post-history-instructions="cardPostHistoryInstructions"
             v-model:compaction-strategy="compactionStrategy"
             v-model:compaction-min-keep-turns="compactionMinKeepTurns"
@@ -1398,6 +1425,18 @@ function handleGeneratorSave(newValue: string) {
             :sensor-payload="sensorPayload"
             :static-sample-payload="staticSamplePayload"
             @sparkle-click="openSparkleGenerator"
+          />
+          <CardCreationTabTools
+            v-else-if="activeTab === 'tools'"
+            v-model:selected-allowed-tools="generationAllowedTools"
+            v-model:selected-image-journal-instruction="selectedArtistryWidgetInstruction"
+            v-model:selected-text-journal-instruction="selectedTextJournalInstruction"
+            v-model:selected-inject-dream-context="selectedInjectDreamContext"
+            v-model:selected-inject-journal-context="selectedInjectJournalContext"
+            v-model:selected-inject-artistry-context="selectedInjectArtistryContext"
+            v-model:selected-dream-intrusion-prompt="selectedDreamIntrusionPrompt"
+            v-model:selected-journal-intrusion-prompt="selectedJournalIntrusionPrompt"
+            v-model:selected-artistry-intrusion-prompt="selectedArtistryIntrusionPrompt"
           />
           <div class="ml-auto mr-1 flex flex-row gap-2">
             <Button

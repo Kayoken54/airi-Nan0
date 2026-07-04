@@ -81,6 +81,20 @@ const AiriDreamStateSchema = object({
   lastProcessedAt: optional(number()),
   dailyRunDate: optional(string()),
   dailyRunCount: optional(number()),
+  injectDreamContext: optional(boolean()),
+  dreamIntrusionPrompt: optional(string()),
+  pendingDreamChips: optional(array(string())),
+  pendingDreamTimestamp: optional(number()),
+})
+
+const AiriTextJournalSchema = object({
+  widgetInstruction: optional(string()),
+  injectJournalContext: optional(boolean()),
+  journalIntrusionPrompt: optional(string()),
+  pendingJournalMoment: optional(object({
+    entryText: string(),
+    timestamp: number(),
+  })),
 })
 
 const AiriShortTermMemorySchema = object({
@@ -101,6 +115,7 @@ const AiriExtensionSchema = looseObject({
   heartbeats: optional(AiriHeartbeatSchema),
   dreamState: optional(AiriDreamStateSchema),
   shortTermMemory: optional(AiriShortTermMemorySchema),
+  textJournal: optional(AiriTextJournalSchema),
   groundingEnabled: optional(boolean()),
   groundingMemoryEnabled: optional(boolean()),
   groundingTopicsEnabled: optional(boolean()),
@@ -144,6 +159,12 @@ const AiriExtensionSchema = looseObject({
     autonomousHistoryDepth: optional(number()),
     autonomousMonitorEnabled: optional(boolean()),
     autonomousMonitorDiscordEnabled: optional(boolean()),
+    injectArtistryContext: optional(boolean()),
+    artistryIntrusionPrompt: optional(string()),
+    pendingArtistryMoment: optional(object({
+      prompt: string(),
+      timestamp: number(),
+    })),
   })),
   agents: optional(record(string(), looseObject({
     prompt: string(),

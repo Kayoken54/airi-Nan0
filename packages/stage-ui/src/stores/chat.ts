@@ -16,10 +16,17 @@ import { useAnalytics } from '../composables'
 import { createLlmJsonInterceptor } from '../composables/llm-json-interceptor'
 import { useLlmmarkerParser } from '../composables/llm-marker-parser'
 import { categorizeResponse, createStreamingCategorizer } from '../composables/response-categoriser'
+// Import Intrusion Prompts defaults
+import {
+  DEFAULT_ARTISTRY_INTRUSION_PROMPT,
+  DEFAULT_DREAM_INTRUSION_PROMPT,
+  DEFAULT_JOURNAL_INTRUSION_PROMPT,
+} from '../constants/prompts/character-defaults'
 import { useCompactionStore } from './chat/compaction'
 import { createDatetimeContext, createEternalRecordContext, createExpressionsContext, createScenesContext, createStickersContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { createChatHooks } from './chat/hooks'
+import { clearArtistryStaging, clearJournalStaging, pendingIntrusionStaging, stageArtistryIntrusion, stageJournalIntrusion } from './chat/intrusion-staging'
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useLLM } from './llm'
@@ -125,6 +132,12 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     }
   >({ name: 'airi-chat-input-bridge' })
 
+  // Cross-window intrusion staging channel
+  const { data: intrusionBroadcast, post: postIntrusionStaging } = useBroadcastChannel<
+    { type: 'journal' | 'artistry', data: any },
+    { type: 'journal' | 'artistry', data: any }
+  >({ name: 'airi-intrusion-staging' })
+
   const toolsResolver = ref<any>(null)
 
   function setToolsResolver(resolver: any) {
@@ -142,6 +155,16 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           ...payload.options,
           tools: toolsResolver.value,
         }, payload.targetSessionId)
+      }
+    })
+
+    // Listen for cross-window intrusion staging from secondary window
+    watch(intrusionBroadcast, (payload) => {
+      if (payload?.type === 'journal') {
+        stageJournalIntrusion(payload.data)
+      }
+      else if (payload?.type === 'artistry') {
+        stageArtistryIntrusion(payload.data)
       }
     })
   }
@@ -1017,7 +1040,52 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
           console.warn('[ChatOrchestrator] Failed to evaluate Dating Sim climax state injection', e)
         }
 
-        if (Object.keys(contextsSnapshot).length > 0 || sensorPayload || climaxPrompt) {
+        // Evaluate Introspective Context Injections
+        const dreamState = activeCard.value?.extensions?.airi?.dreamState
+        const textJournal = activeCard.value?.extensions?.airi?.textJournal
+        const artistry = activeCard.value?.extensions?.airi?.artistry
+
+        // Read pending intrusion data from module-level staging (populated via BroadcastChannel or local call)
+        const pendingJournal = pendingIntrusionStaging.journal ? toRaw(pendingIntrusionStaging.journal) : undefined
+        const pendingArtistry = pendingIntrusionStaging.artistry ? toRaw(pendingIntrusionStaging.artistry) : undefined
+
+        console.warn('[Chat Debug] performSend evaluation:', {
+          activeCardId: activeCardId.value,
+          dreamStateInject: dreamState?.injectDreamContext,
+          journalStateInject: textJournal?.injectJournalContext,
+          artistryStateInject: artistry?.injectArtistryContext,
+          hasPendingJournal: !!pendingJournal,
+          pendingJournalContent: pendingJournal?.entryText?.substring(0, 50),
+        })
+
+        let dreamPrompt = ''
+        if (dreamState?.injectDreamContext && dreamState?.pendingDreamChips && dreamState.pendingDreamChips.length > 0) {
+          const elapsedMinutes = Math.max(1, Math.round((Date.now() - (dreamState.pendingDreamTimestamp || Date.now())) / 60000))
+          const template = dreamState.dreamIntrusionPrompt || DEFAULT_DREAM_INTRUSION_PROMPT
+          const chipsText = dreamState.pendingDreamChips.join(', ')
+          dreamPrompt = template
+            .replace('{timeToDream}', String(elapsedMinutes))
+            .replace('{insertEchoChips}', chipsText)
+        }
+
+        let journalPrompt = ''
+        if (textJournal?.injectJournalContext && pendingJournal) {
+          console.warn('[Journal Debug] Evaluating journal injection from staging:', pendingJournal)
+          const elapsedMinutes = Math.max(1, Math.round((Date.now() - pendingJournal.timestamp) / 60000))
+          const template = textJournal.journalIntrusionPrompt || DEFAULT_JOURNAL_INTRUSION_PROMPT
+          journalPrompt = template
+            .replace('{timeSinceJournal}', String(elapsedMinutes))
+            .replace('{journalEntryText}', pendingJournal.entryText)
+        }
+
+        let artistryPrompt = ''
+        if (artistry?.injectArtistryContext && pendingArtistry) {
+          const template = artistry.artistryIntrusionPrompt || DEFAULT_ARTISTRY_INTRUSION_PROMPT
+          artistryPrompt = template
+            .replace('{imagePrompt}', pendingArtistry.prompt)
+        }
+
+        if (Object.keys(contextsSnapshot).length > 0 || sensorPayload || climaxPrompt || dreamPrompt || journalPrompt || artistryPrompt) {
           const system = newMessages.slice(0, 1)
           const afterSystem = newMessages.slice(1, newMessages.length)
 
@@ -1047,6 +1115,20 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
             contextContent += `${contextContent ? '\n---\n' : ''}${climaxPrompt}\n`
           }
 
+          if (dreamPrompt) {
+            contextContent += `${contextContent ? '\n---\n' : ''}[INSPECTIVE DREAM STATE]\n${dreamPrompt}\n`
+          }
+
+          if (journalPrompt) {
+            contextContent += `${contextContent ? '\n---\n' : ''}[INSPECTIVE JOURNAL REFLECTION]\n${journalPrompt}\n`
+          }
+
+          if (artistryPrompt) {
+            contextContent += `${contextContent ? '\n---\n' : ''}[INSPECTIVE ARTWORK AWARENESS]\n${artistryPrompt}\n`
+          }
+
+          console.warn('[Chat Debug] Combined contextContent to inject:', contextContent.trim())
+
           newMessages = [
             ...system,
             {
@@ -1055,6 +1137,31 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
             },
             ...afterSystem,
           ]
+
+          // Clear pending states immediately so they only trigger for this turn
+          if (journalPrompt) {
+            clearJournalStaging()
+          }
+          if (artistryPrompt) {
+            clearArtistryStaging()
+          }
+
+          if (activeCard.value && dreamPrompt && dreamState) {
+            void airiCardStore.updateCard(activeCard.value.id, {
+              ...toRaw(activeCard.value),
+              extensions: {
+                ...activeCard.value.extensions,
+                airi: {
+                  ...activeCard.value.extensions?.airi,
+                  dreamState: {
+                    ...dreamState,
+                    pendingDreamChips: undefined,
+                    pendingDreamTimestamp: undefined,
+                  },
+                },
+              },
+            })
+          }
         }
 
         streamingMessageContext.composedMessage = newMessages as Message[]

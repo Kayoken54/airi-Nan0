@@ -97,10 +97,11 @@ This document tracks all active pending items, architectural roadmaps, and featu
 ## Memory & Grounding RAG
 
 ### Memory & Grounding RAG
-*References: [proposal-dynamic-memory-rag-injection.md](../../../../../proposal-dynamic-memory-rag-injection.md) | [nan0-integration-feedback.md](../../../../../nan0-integration-feedback.md)*
+*References: [proposal-dynamic-memory-rag-injection.md](../../../../../proposal-dynamic-memory-rag-injection.md) | [nan0-integration-feedback.md](../../../../../nan0-integration-feedback.md) | [proposal-introspective-context-injection.md](../../../../../proposal-introspective-context-injection.md) | [proposal-tools-tab.md](../../../../../proposal-tools-tab.md)*
 *   **Toggle 2 — Timeline Memory (RAG)**: Implement semantic search limited strictly to the current active session ID.
 *   **Toggle 4 — Recent Topics Revisit**: Finish the decaying topic frequency map (Turn-Based, Segment-Based, and Wall-Clock decay strategies) utilizing Echo Chips, raw turns, and STMM blocks.
 *   **Actor & Relationship Schema Integration**: Enhance `layered-memory.ts` and memory repositories with native TypeScript actor properties (`actorId`, `targetActorId`, and `relationship`) for episodic vector indexing, bypassing the need for a Python/Chroma sidecar.
+
 
 ### Live2D DSL Manifest Scripting Interpreter
 *Reference: [live2d-dsl-interpreter-spec.md](../../../../../live2d-dsl-interpreter-spec.md)*

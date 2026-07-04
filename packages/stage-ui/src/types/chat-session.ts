@@ -9,6 +9,14 @@ export interface ChatSessionMeta {
   universeId?: string
   createdAt: number
   updatedAt: number
+  pendingJournalMoment?: {
+    entryText: string
+    timestamp: number
+  }
+  pendingArtistryMoment?: {
+    prompt: string
+    timestamp: number
+  }
 }
 
 export interface ChatSessionRecord {
