@@ -185,12 +185,12 @@ This document tracks all active pending items, architectural roadmaps, and featu
 *   **Twitch Chat Plugin (`airi-plugin-twitch-chat`)**: Inbound live stream chat context ingest reacting to chats, subs, raids, and channel points.
 *   **WIP Plugin Stubs**: Complete stubs for Bilibili Live Stream Ingest (`airi-plugin-bilibili-laplace`) and Home Assistant Event Ingest (`airi-plugin-homeassistant`).
 *   **Destiny 2 Proactive Speech Plugin**: Real-time Bungie API game event polling and a local ONNX/WebGPU screen-capture OCR pipeline (`PP-OCRv6_tiny_rec_onnx`) for live PVP/PVE HUD analysis.
-*   **Discord Revamp - Voice Delivery, Isolation & Sync**:
-    *   Implement `/voicemode` command to support `puppet` (local speaker playback), `voicenote` (combining TTS audio chunks to upload as voice notes), and `none` modes.
-    *   Implement `/voicecall` command classic `tts` pipeline (Discord Audio -> Deepgram STT -> Custom LLM -> Custom TTS -> Discord Audio) — *Note: Gemini Live VC call is 100% active/implemented, while this classic TTS VC path remains planned/blocked by Kyo.*
+*   **[x] Discord Revamp - Voice Delivery, Isolation & Sync**:
+    *   Implement `/voicemode` command to support `puppet` (local speaker playback), `voicenote` (combining TTS audio chunks to upload as voice notes), and `none` modes. (Completed)
+    *   Implement `/voicecall` command classic `tts` pipeline (Discord Audio -> Deepgram STT -> Custom LLM -> Custom TTS -> Discord Audio) — (Completed: Classic TTS playback is fully functional, using browser-side 24kHz PCM resampling and streaming directly into the active connection's voice player, combined with WAV merging for complete voice notes. Turn interruption and full transcription sync are pending).
     *   **Gemini Voice Call Sync Parity**: Capture and ingest both user and assistant transcription events from the Gemini Live WebSocket stream back into the active message history logs so that conversation logs stay in sync with the spoken voice session.
-    *   Implement `/vision` command toggle state guard (supported natively).
-    *   Wire up `/selfie` command trigger (stage capture is fully plumbed).
+    *   Implement `/vision` command toggle state guard (supported natively). (Completed)
+    *   Wire up `/selfie` command trigger (stage capture is fully plumbed). (Completed)
     *   Implement `/timelines` command (Completed).
     *   Implement `/journalmoment` command (Completed).
-    *   Enforce per-channel session/character isolation mapping ($\text{channelId} \longrightarrow \text{activeCharacterId} \longrightarrow \text{activeSessionId}$) (Completed by Kyo, pending merge).
+    *   Enforce per-channel session/character isolation mapping ($\text{channelId} \longrightarrow \text{activeCharacterId} \longrightarrow \text{activeSessionId}$) (Completed by Kyo).
