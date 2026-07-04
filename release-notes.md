@@ -1,36 +1,41 @@
-# 🚀 AIRI v0.9.12-stable.20260630 — Release Notes
+# 🚀 AIRI v0.9.13-stable.20260704 — Release Notes
 
-This release introduces a revolutionary **Discord Bidirectional Audio Bridge for Gemini Live**, launches the **AnimaDex Guided Card Creator**, adds **Global User Profiles & Settings**, and brings major upgrades to the **Audio Studio & Wizard workflows**.
+This release introduces brand new Discord slash commands (`/selfie`, `/vision`), implements **Discord Classic Voice Mode (STT/TTS)**, adds a new **AI Auto-Assign Voices configurator**, implements **User-configurable Idle Animations**, introduces **User Self-Concepts**, and delivers a major Quality-of-Life pass for system prompt and context control.
 
 ---
 
 ## ✨ Key Highlights
 
-### 🎙️ Discord Voice & Gemini Live Audio Bridge
-* **Pure JS Bidirectional Audio**: Implemented a native JS audio bridge connecting Discord voice channels directly to Gemini Live sessions for real-time vocal interaction.
-* **Auto-Session Lifecycle**: Wired up auto-start and auto-stop triggers that control Gemini Live voice sessions based on channel activity.
-* **Summon/Leave Voice Commands**: Summon or dismiss the bot into a voice channel using `/summon` and `/leave`.
-* **Rich Dashboard Widgets**: Implemented interactive Discord widgets with pagination for active status dashboard management, timeline histories, and character selector grids.
-* **Elegant Transcript Formatting**: Automatically parses and bolds `[ACTOR]` tags while cleanly stripping formatting prefixes on outbound messages.
+### 💬 New Discord Slash Commands
+* **`/selfie` (New)**: A brand new headless capture command to generate camera snapshots of your character on command, supporting optional emotion triggers (e.g., proud, shy).
+* **`/vision` (New)**: A brand new visual intake command that routes uploaded images to the VLM with a customizable filter toggle.
+* **DPI Retina Selfie Fix**: Scaled canvas size by the device pixel ratio (DPR) to prevent blurry or cropped selfie captures on Retina/high-DPI screens.
 
-### 🐉 AnimaDex Guided Card Creator & Wizard Refinements
-* **Guided Creator Page & Store**: Launched the new AnimaDex multi-step character card creator interface to streamline setup.
-* **Visual Roster Settings Grid**: Implemented Step 2's visual layout layout grid, simplifying card portraits and model bindings.
-* **Step 3 AI Story Idea Suggester**: Added clickable scenario cards, skeleton loading states, and custom prompting guidelines based on character archetypes.
-* **Auto-Link & WD14 indexing**: Auto-upserts character series metadata, auto-prefills model/voice bindings in Step 2, and supports quick model previews or blacklist-protected unbinds.
-* **Artistry Integrity**: Ensured safe deep cloning of artistry configuration blocks on card creation to prevent accidental mutations.
+### 🎙️ Discord Classic Voice Mode & Audio Upgrades
+* **Classic Mode Audio Streaming**: Implemented raw PCM audio streaming and chunk streaming directly to voice channels in Classic mode without external dependency bottlenecks.
+* **Classic Mode STT Ingestion**: Added local voice capturing and transcription parsing, automatically injecting classic voice channel transcripts into the active chat session.
+* **Self-Speaker Muting**: Added local speaker playback suppression during active Discord voice calls to prevent annoying echo-back issues.
 
-### 👤 User Profiles & Voice Configuration
-* **Global User Profile Page**: Added a dedicated user-profile settings page, integrated with a central voice profile store.
-* **Audio Studio Integration**: Added a **Quick Audio Studio Creator** modal directly into the guided card creator, allowing you to select, bind, or customize voice settings on the fly.
-* **Always-On Local Engines**: Simplified provider configurations so local engines (`kokoro-local` and `moss-nano-local`) are treated as always configured.
-* **Concept Speech Custom Voices**: Extracted the voice creator modal to support custom concept speech voice assignments.
+### ⚙️ Context Control & System Prompt QoL
+* **Per-Character Tool Gating**: Added options to disable tool calls on a per-character basis. This allows you to reduce context size and prevent errors on models (like RWKV) that don't support tool usage.
+* **Blank Field Preservation**: Restructured the system prompt compiler so that if you set fields to blank, they stay blank, preventing rogue default values from injecting unexpected instructions.
 
-### 🎭 Producer Panel & Artistry Enhancements
-* **Choice Play-All button**: Added a "Play All" button to the `ProducerChoiceBubble` for sequential TTS playback of all alternative suggestion paths.
-* **ComfyUI Image Journals**: Updated ComfyUI workflow instructions to use the `image_journal` format and added active workflow selection warning prompts.
-* **Artistry Defaults**: Configured default artistry settings for new and existing cards (threshold 49, spawnMode bg, target assistant).
+### 🧙 Wizard Voice Auto-Assign & Idle Animations
+* **AI Auto-Assign Voices**: Implemented an automated batch configurator in the wizard to auto-match and bind appropriate voices with fallback proxies.
+* **Per-Character Idle Animations**: You can now define and customize idle animations per actor directly in the wizard's auto-assign flow.
+* **Narrator Voice Fallback**: Narrative cards will automatically fall back to the user's customized profile voice when dealing with multi-actor layouts.
 
-### 🔧 API Payload & Markdown Sanitization
-* **Markdown Strip Fixes**: Cleared leading whitespace before markdown fences in raw output cleaners.
-* **API Payload Validation**: Automatically omits empty tools arrays from outbound API payloads to prevent validation errors with upstream LLM providers.
+### 👤 User Self-Concepts & Profiles
+* **Self-Concept Wizard Option**: Introduced a dedicated step in Wizard Step 3 to register a "user self-concept" template (compiled under a generic `concept_user` key).
+* **Profile Autofill**: Improved profile field autocomplete and shortcut handling during configuration.
+
+### 🗣️ Transcription & Whisper Integration
+* **App-Local Transcription**: Consolidated transcription configurations under a unified App (Local) provider with an interactive activation toggle.
+* **Whisper-Local Updates**: Replaced standalone Whisper setups with an eventa-compatible Whisper worker that supports English-only optimized models.
+
+### 🎭 Producer Lite (Auto Suggestions) Enhancements
+* **Decoupled Preview Textareas**: Decoupled option previews, synchronized textareas, and added an option to auto-play all choices sequentially.
+
+### 📦 Build & Dependency Packaging
+* **Relative Paths in copy-deps**: Updated `copy-deps.ts` to resolve package dependencies relative to the workspace root directory.
+* **Prism-media Externalization**: Externalized `prism-media` to resolve runtime errors related to `ffmpeg-static` loading.
