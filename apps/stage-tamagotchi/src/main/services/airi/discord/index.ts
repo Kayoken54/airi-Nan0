@@ -483,6 +483,63 @@ export function setupDiscordService() {
     }
   })
 
+  function mergeAudioBuffers(buffers: Uint8Array[]): Buffer {
+    if (buffers.length === 0) {
+      return Buffer.alloc(0)
+    }
+
+    const firstBuf = buffers[0]
+    const isWav = firstBuf.length >= 44
+      && firstBuf[0] === 0x52 // 'R'
+      && firstBuf[1] === 0x49 // 'I'
+      && firstBuf[2] === 0x46 // 'F'
+      && firstBuf[3] === 0x46 // 'F'
+
+    if (!isWav) {
+      return Buffer.concat(buffers.map(b => Buffer.from(b)))
+    }
+
+    const pcmChunks: Buffer[] = []
+    let headerTemplate: Buffer | null = null
+
+    for (const buf of buffers) {
+      const buffer = Buffer.from(buf)
+      let dataOffset = -1
+      for (let i = 12; i < buffer.length - 8; i++) {
+        if (buffer[i] === 0x64 && buffer[i + 1] === 0x61 && buffer[i + 2] === 0x74 && buffer[i + 3] === 0x61) {
+          dataOffset = i
+          break
+        }
+      }
+
+      if (dataOffset === -1) {
+        dataOffset = 40
+      }
+
+      const chunkDataSize = buffer.readUInt32LE(dataOffset + 4)
+      const pcmStart = dataOffset + 8
+      const pcmEnd = Math.min(pcmStart + chunkDataSize, buffer.length)
+      const pcm = buffer.subarray(pcmStart, pcmEnd)
+      pcmChunks.push(pcm)
+
+      if (!headerTemplate) {
+        headerTemplate = Buffer.alloc(pcmStart)
+        buffer.copy(headerTemplate, 0, 0, pcmStart)
+      }
+    }
+
+    if (!headerTemplate) {
+      return Buffer.concat(buffers.map(b => Buffer.from(b)))
+    }
+
+    const totalPcm = Buffer.concat(pcmChunks)
+    const riffSize = headerTemplate.length - 8 + totalPcm.length
+    headerTemplate.writeUInt32LE(riffSize, 4)
+    headerTemplate.writeUInt32LE(totalPcm.length, headerTemplate.length - 4)
+
+    return Buffer.concat([headerTemplate, totalPcm])
+  }
+
   ipcMain.handle('eventa:invoke:electron:discord:send-voice-note', async (_event, payload: { channelId: string, audioBuffers: Uint8Array[], content?: string, filename?: string }) => {
     // 0. Hard Terminal Log
     console.log(`[DiscordService/Native] IPC Received Voice Note. Chunks: ${payload?.audioBuffers?.length}, Total Chunks: ${payload?.audioBuffers?.length}`)
@@ -499,16 +556,24 @@ export function setupDiscordService() {
       if (channel?.isTextBased() && 'send' in channel && typeof (channel as any).send === 'function') {
         pushLog('VOICE_PUSH', `Merging ${payload.audioBuffers.length} audio chunks...`)
 
-        // In Electron IPC, ArrayBuffers/Uint8Arrays come across as Uint8Arrays.
-        // We can use Buffer.concat directly after wrapping them.
-        const buffer = Buffer.concat(payload.audioBuffers.map(b => Buffer.from(b)))
+        const buffer = mergeAudioBuffers(payload.audioBuffers)
+        const isWav = buffer.length >= 4
+          && buffer[0] === 0x52
+          && buffer[1] === 0x49
+          && buffer[2] === 0x46
+          && buffer[3] === 0x46
 
-        pushLog('VOICE_PUSH', `Attempting Discord send to ${payload.channelId} (Size: ${Math.round(buffer.length / 1024)}KB)...`)
+        let filename = payload.filename || `voice-note-${Date.now()}.mp3`
+        if (isWav && filename.endsWith('.mp3')) {
+          filename = filename.replace(/\.mp3$/, '.wav')
+        }
+
+        pushLog('VOICE_PUSH', `Attempting Discord send to ${payload.channelId} (Size: ${Math.round(buffer.length / 1024)}KB, Name: ${filename})...`)
         await (channel as any).send({
           content: payload.content || null,
           files: [{
             attachment: buffer,
-            name: payload.filename || 'voice-note.mp3',
+            name: filename,
           }],
         })
         pushLog('VOICE_SEND', `Successfully sent voice note to ${payload.channelId} (Native Bypass)`)
