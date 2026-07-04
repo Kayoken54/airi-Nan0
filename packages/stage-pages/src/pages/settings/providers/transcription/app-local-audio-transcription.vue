@@ -13,7 +13,7 @@ import { toast } from 'vue-sonner'
 
 const hearingStore = useHearingStore()
 const providersStore = useProvidersStore()
-const { providers } = storeToRefs(providersStore)
+const { providers } = storeToRefs(providersStore) as { providers: any }
 
 // Provider metadata
 const providerId = 'app-local-audio-transcription'
@@ -156,6 +156,34 @@ watch(model, async () => {
   providerConfig.model = model.value
 })
 
+const DEFAULT_LANGUAGE = 'en'
+
+const language = computed({
+  get: () => providers.value[providerId]?.language || DEFAULT_LANGUAGE,
+  set: (value) => {
+    if (!providers.value[providerId])
+      providers.value[providerId] = {}
+    providers.value[providerId].language = value
+  },
+})
+
+const languageOptions = [
+  { label: 'English', value: 'en' },
+  { label: 'Spanish', value: 'es' },
+  { label: 'French', value: 'fr' },
+  { label: 'German', value: 'de' },
+  { label: 'Italian', value: 'it' },
+  { label: 'Portuguese', value: 'pt' },
+  { label: 'Dutch', value: 'nl' },
+  { label: 'Russian', value: 'ru' },
+  { label: 'Japanese', value: 'ja' },
+  { label: 'Korean', value: 'ko' },
+  { label: 'Chinese', value: 'zh' },
+  { label: 'Arabic', value: 'ar' },
+  { label: 'Hindi', value: 'hi' },
+  { label: 'Turkish', value: 'tr' },
+]
+
 const isEnabled = computed(() => {
   return providersStore.providerRuntimeState[providerId]?.isConfigured && !!providersStore.addedProviders[providerId]
 })
@@ -191,6 +219,17 @@ async function toggleProvider() {
         }))"
         placeholder="Select a model..."
       />
+
+      <!-- Language selection -->
+      <div class="mt-4">
+        <FieldSelect
+          v-model="language"
+          label="Recognition Language"
+          description="Language hint passed to Whisper for transcription."
+          :options="languageOptions"
+          placeholder="Select a language..."
+        />
+      </div>
 
       <!-- Model Download Status -->
       <div v-if="model" class="mt-4">

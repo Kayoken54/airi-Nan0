@@ -74,7 +74,7 @@ import { toast } from 'vue-sonner'
 
 import { createLocalVisionAdapter, DEFAULT_LOCAL_VISION_MODEL, LOCAL_VISION_MODELS } from '../libs/inference'
 import { getKokoroAdapter } from '../libs/inference/adapters/kokoro'
-import { DEFAULT_WEB_RWKV_MODEL, DEFAULT_WHISPER_MODEL, WEB_RWKV_MODELS, WHISPER_MODELS } from '../libs/inference/constants'
+import { DEFAULT_WEB_RWKV_MODEL, WEB_RWKV_MODELS } from '../libs/inference/constants'
 import { appLocalAudioTranscription } from '../libs/providers/providers/transcription/app-local-audio-transcription'
 import { getDefaultKokoroModel, KOKORO_MODELS, kokoroModelsToModelInfo } from '../workers/kokoro/constants'
 import { createAliyunNLSProvider as createAliyunNlsStreamProvider } from './providers/aliyun/stream-transcription'
@@ -85,7 +85,6 @@ import { buildOpenAICompatibleProvider } from './providers/openai-compatible-bui
 import { createProviderRegistry } from './providers/registry'
 import { createWebRwkvChatProvider } from './providers/web-rwkv'
 import { createWebSpeechAPIProvider } from './providers/web-speech-api'
-import { createWhisperLocalTranscriptionProvider } from './providers/whisper-local'
 
 export type {
   BracketAction,
@@ -3065,49 +3064,6 @@ export const useProvidersStore = defineStore('providers', () => {
       },
     },
 
-    'whisper-local': {
-      id: 'whisper-local',
-      category: 'transcription',
-      tasks: ['speech-to-text', 'automatic-speech-recognition', 'asr', 'stt'],
-      nameKey: 'settings.pages.providers.provider.whisper-local.title',
-      name: 'Whisper (Local)',
-      descriptionKey: 'settings.pages.providers.provider.whisper-local.description',
-      description: 'Local speech-to-text using Whisper, runs in your browser.',
-      icon: 'i-solar:microphone-3-bold-duotone',
-      // Local in-browser model — no API key. requiresCredentials:false lets the
-      // store list models and create the instance without persisted credentials.
-      requiresCredentials: false,
-      defaultOptions: () => ({
-        language: 'en',
-        model: DEFAULT_WHISPER_MODEL,
-      }),
-      // File/generate-based: the worker transcribes a complete utterance. The
-      // hearing store routes it through generateTranscription (transcribeForRecording).
-      transcriptionFeatures: {
-        supportsGenerate: true,
-        supportsStreamOutput: false,
-        supportsStreamInput: false,
-      },
-      createProvider: async config => createWhisperLocalTranscriptionProvider({
-        language: config.language as string | undefined,
-      }),
-      capabilities: {
-        // Model id is the Hugging Face repo, passed straight to the worker.
-        listModels: async () => WHISPER_MODELS.map(m => ({
-          id: m.id,
-          name: m.name,
-          provider: 'whisper-local',
-          description: m.description,
-          contextLength: 0,
-          deprecated: false,
-        })),
-      },
-      validators: {
-        chatPingCheckAvailable: false,
-        // No credentials and a built-in default model: always valid.
-        validateProviderConfig: () => ({ errors: [], reason: '', valid: true }),
-      },
-    },
     'web-rwkv': {
       id: 'web-rwkv',
       category: 'chat',
@@ -3322,7 +3278,7 @@ export const useProvidersStore = defineStore('providers', () => {
         // surface in the "persisted" provider lists (e.g. the consciousness page,
         // which only lists added chat providers) without a manual add step. These
         // have no API key to enter, so there is nothing for the user to configure.
-        if (validationResult.valid && ['browser-web-speech-api', 'player2', 'web-rwkv', 'whisper-local', 'blip-local', 'app-local-audio-transcription'].includes(providerId)) {
+        if (validationResult.valid && ['browser-web-speech-api', 'player2', 'web-rwkv', 'blip-local', 'app-local-audio-transcription'].includes(providerId)) {
           markProviderAdded(providerId)
         }
       }

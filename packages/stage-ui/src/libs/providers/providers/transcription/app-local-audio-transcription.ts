@@ -7,7 +7,9 @@ import whisperWorkerUrl from '../../../workers/worker?worker&url'
 
 import { createWhisperAdapter } from '../../../inference/adapters/whisper'
 
-const localTranscriptionConfigSchema = z.object({})
+const localTranscriptionConfigSchema = z.object({
+  language: z.string().optional().default('en'),
+})
 type LocalTranscriptionConfig = z.input<typeof localTranscriptionConfigSchema>
 
 // Whisper Models list supported locally
@@ -131,7 +133,7 @@ const definition: ProviderDefinition<LocalTranscriptionConfig> = {
 
         const text = await whisperAdapter.transcribe({
           audioFloat32,
-          language: 'en',
+          language: _config?.language || 'en',
         })
 
         return { text }
