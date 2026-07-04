@@ -41,6 +41,11 @@ const {
 const providersStore = useProvidersStore()
 const { configuredTranscriptionProvidersMetadata } = storeToRefs(providersStore)
 
+console.log('[Hearing Page] Initial configuredTranscriptionProvidersMetadata:', JSON.parse(JSON.stringify(configuredTranscriptionProvidersMetadata.value)))
+watch(configuredTranscriptionProvidersMetadata, (val) => {
+  console.log('[Hearing Page] configuredTranscriptionProvidersMetadata updated:', JSON.parse(JSON.stringify(val)))
+}, { deep: true, immediate: true })
+
 const { trackProviderClick } = useAnalytics()
 const { stopStream, startStream } = useSettingsAudioDevice()
 const { audioInputs, selectedAudioInput, stream } = storeToRefs(useSettingsAudioDevice())
@@ -583,6 +588,7 @@ onUnmounted(() => {
                 :value="metadata.id"
                 :title="metadata.localizedName || 'Unknown'"
                 :description="metadata.localizedDescription"
+                class="shrink-0 !w-80"
                 @click="trackProviderClick(metadata.id, 'hearing')"
               />
               <RouterLink
