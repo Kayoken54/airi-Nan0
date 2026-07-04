@@ -1037,7 +1037,7 @@ chatHookCleanups.push(watch(sessionUpdate, (event) => {
 
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   cardStore.isModelSyncPrevented = true
-  const isDiscordVoice = !!(context as any)?.message?.metadata?._discordVoiceSource
+  const isDiscordVoice = !!(context as any)?.message?._discordVoiceSource
   isPlaybackSuppressed.value = isDiscordVoice
   if (isDiscordVoice) {
     console.info('[Stage] Ingesting message from Discord voice source, suppressing local speaker playback.')
