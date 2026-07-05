@@ -93,52 +93,47 @@ function handlePreviewEntry(id: string, title: string) {
     <div class="flex items-center justify-between border-b border-neutral-100 pb-4 dark:border-neutral-700/50">
       <div class="flex flex-col gap-1">
         <h3 class="text-sm text-neutral-900 font-semibold dark:text-neutral-100">
-          Stage Background
+          Gallery View
         </h3>
         <p class="text-xs text-neutral-500 dark:text-neutral-400">
-          Select an image from your journal or presets.
+          History of images generated.
         </p>
       </div>
-      <button
-        class="h-8 w-8 flex items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 transition-all active:scale-90 dark:bg-neutral-800 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
-        :disabled="isRefreshingGallery"
-        title="Refresh gallery"
-        @click="handleRefreshGallery"
-      >
-        <div
-          class="i-lucide:refresh-cw text-sm"
-          :class="{ 'animate-spin': isRefreshingGallery }"
-        />
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- Clear / None Background Button -->
+        <button
+          class="h-8 flex items-center gap-1.5 border rounded-lg px-3 text-xs font-semibold transition-all active:scale-95"
+          :class="[
+            activeBackgroundId === 'none'
+              ? 'border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400'
+              : 'border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 hover:border-primary-300 hover:text-primary-500',
+          ]"
+          @click="handleSetAsBackground('none')"
+        >
+          <div
+            class="text-sm"
+            :class="activeBackgroundId === 'none' ? 'i-solar:gallery-remove-bold' : 'i-solar:gallery-remove-linear'"
+          />
+          <span>None</span>
+        </button>
+
+        <!-- Refresh Button -->
+        <button
+          class="dark:hover:bg-neutral-850 h-8 flex items-center gap-1.5 border border-neutral-200 rounded-lg bg-neutral-50 px-3 text-xs text-neutral-500 font-semibold transition-all active:scale-95 dark:border-neutral-800 dark:bg-neutral-900 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:text-neutral-200"
+          :disabled="isRefreshingGallery"
+          @click="handleRefreshGallery"
+        >
+          <div
+            class="i-lucide:refresh-cw text-xs"
+            :class="{ 'animate-spin': isRefreshingGallery }"
+          />
+          <span>Refresh</span>
+        </button>
+      </div>
     </div>
 
     <!-- Grid -->
     <div class="grid grid-cols-2 max-h-[60vh] gap-3 overflow-y-auto pr-2 scrollbar-none lg:grid-cols-4 md:grid-cols-3">
-      <!-- "None" Option -->
-      <button
-        class="group relative h-36 flex flex-col items-center justify-center overflow-hidden border-2 rounded-xl transition-all sm:aspect-square sm:h-auto active:scale-95"
-        :class="[
-          activeBackgroundId === 'none'
-            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-            : 'border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 hover:border-primary-300',
-        ]"
-        @click="handleSetAsBackground('none')"
-      >
-        <div
-          class="mb-2 text-3xl transition-colors"
-          :class="activeBackgroundId === 'none' ? 'i-solar:gallery-remove-bold text-primary-500' : 'i-solar:gallery-remove-linear text-neutral-300 dark:text-neutral-700 group-hover:text-primary-400'"
-        />
-        <span
-          class="text-[10px] font-bold tracking-wider uppercase"
-          :class="activeBackgroundId === 'none' ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 dark:text-neutral-500'"
-        >
-          None
-        </span>
-        <div v-if="activeBackgroundId === 'none'" class="absolute right-2 top-2 rounded-full bg-primary-500 p-1 text-white shadow-lg">
-          <div class="i-solar:check-circle-bold text-[10px]" />
-        </div>
-      </button>
-
       <!-- Background Items -->
       <div
         v-for="entry in allBackgrounds"

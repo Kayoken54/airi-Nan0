@@ -538,4 +538,16 @@ onMounted(() => {
   font-weight: 700;
   text-shadow: 0 0 8px var(--active-highlight-color, rgba(56, 189, 248, 0.4));
 }
+
+.markdown-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+@media (min-width: 768px) and (min-height: 500px) {
+  .markdown-content :deep(img) {
+    max-height: 50vh;
+  }
+}
 </style>
