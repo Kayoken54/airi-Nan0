@@ -571,10 +571,11 @@ Return ONLY a raw JSON block.`
   }
 }
 
-async function confirmCreateCard() {
+// Builds and saves the card to the store. Does NOT close the wizard.
+async function doCreateCard(): Promise<boolean> {
   const proposal = synthesisProposal.value
   if (!proposal)
-    return
+    return false
 
   try {
     const cardId = `guided-${Date.now()}`
@@ -776,19 +777,29 @@ async function confirmCreateCard() {
       },
     }
 
-    // Save to card store — addCard generates its own internal ID, capture it
     const newCardId = await airiCardStore.addCard(newCard)
     await airiCardStore.activateCard(newCardId)
     toast.success('Card created and set active!')
-
-    // Navigate back to card view
-    wizardStore.resetWizard()
-    router.replace('/settings/airi-card')
+    return true
   }
   catch (e: any) {
     console.error('[AnimaDexWizard] Error creating card:', e)
     toast.error(`Failed to create card: ${e.message}`)
+    return false
   }
+}
+
+// Closes the wizard without creating a card.
+function doConfirm() {
+  wizardStore.resetWizard()
+  router.replace('/settings/airi-card')
+}
+
+// Creates the card AND closes the wizard.
+async function confirmCreateCard() {
+  const ok = await doCreateCard()
+  if (ok)
+    doConfirm()
 }
 </script>
 
@@ -1189,7 +1200,7 @@ async function confirmCreateCard() {
       </div>
 
       <!-- STEP 3: CONTEXT & STORY PROMPTS -->
-      <div v-else-if="currentStep === 3" class="flex flex-1 flex-col items-center justify-center overflow-y-auto bg-neutral-950 p-6">
+      <div v-else-if="currentStep === 3" class="flex flex-1 flex-col items-center overflow-y-auto bg-neutral-950 p-6">
         <div class="max-w-xl w-full border border-neutral-900 rounded-2xl bg-neutral-900/20 p-8 shadow-xl">
           <h3 class="mb-6 flex items-center gap-2 text-lg text-neutral-200 font-bold">
             <div i-solar:clipboard-text-line-duotone class="text-primary-500" />
@@ -1523,15 +1534,38 @@ async function confirmCreateCard() {
               </div>
 
               <!-- Main Submission -->
-              <div class="mt-2 flex justify-end gap-3">
+              <div class="mt-2 flex items-center justify-between gap-3">
+                <!-- Confirm: just close the wizard, no card created -->
                 <Button
-                  variant="primary"
-                  class="h-[38px] flex items-center gap-1.5 border border-primary-500/20 rounded-xl px-6 text-xs font-bold shadow-lg shadow-primary-500/15"
-                  @click="confirmCreateCard"
+                  variant="secondary"
+                  class="h-[38px] flex items-center gap-1.5 border border-neutral-700 rounded-xl px-4 text-xs font-bold"
+                  @click="doConfirm"
                 >
-                  Confirm & Create Card
-                  <div i-solar:check-circle-bold class="text-base" />
+                  <div i-solar:close-circle-outline class="text-base" />
+                  Confirm
                 </Button>
+
+                <div class="flex items-center gap-2">
+                  <!-- Create: save card, stay on page to keep iterating -->
+                  <Button
+                    variant="secondary"
+                    class="h-[38px] flex items-center gap-1.5 border border-neutral-700 rounded-xl px-4 text-xs font-bold hover:border-primary-500/40"
+                    @click="doCreateCard"
+                  >
+                    <div i-solar:card-send-outline class="text-base" />
+                    Create
+                  </Button>
+
+                  <!-- Confirm & Create: save card then close -->
+                  <Button
+                    variant="primary"
+                    class="h-[38px] flex items-center gap-1.5 border border-primary-500/20 rounded-xl px-5 text-xs font-bold shadow-lg shadow-primary-500/15"
+                    @click="confirmCreateCard"
+                  >
+                    Confirm & Create
+                    <div i-solar:check-circle-bold class="text-base" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
