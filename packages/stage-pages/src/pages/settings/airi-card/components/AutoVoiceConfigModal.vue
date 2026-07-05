@@ -13,7 +13,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 interface Character {
@@ -46,6 +46,118 @@ const consciousnessStore = useConsciousnessStore()
 
 const state = ref<'idle' | 'loading' | 'results' | 'error'>('idle')
 const errorMessage = ref('')
+
+const deepgramVoicePresets = [
+  { id: 'aura-2-amalthea-en', name: 'Amalthea', gender: 'Female', accent: 'PH', description: 'Young Adult, Filipino, Cheerful, engaging and natural.' },
+  { id: 'aura-2-andromeda-en', name: 'Andromeda', gender: 'Female', accent: 'US', description: 'Adult, American, Casual, expressive.' },
+  { id: 'aura-2-apollo-en', name: 'Apollo', gender: 'Male', accent: 'US', description: 'Adult, American, Confident, comfortable.' },
+  { id: 'aura-2-arcas-en', name: 'Arcas', gender: 'Male', accent: 'US', description: 'Adult, American, Natural, smooth, clear.' },
+  { id: 'aura-2-aries-en', name: 'Aries', gender: 'Male', accent: 'US', description: 'Adult, American, Warm, energetic, caring.' },
+  { id: 'aura-2-asteria-en', name: 'Asteria', gender: 'Female', accent: 'US', description: 'Adult, American, Clear, confident, energetic.' },
+  { id: 'aura-2-athena-en', name: 'Athena', gender: 'Female', accent: 'US', description: 'Mature, American, Calm, smooth, professional.' },
+  { id: 'aura-2-atlas-en', name: 'Atlas', gender: 'Male', accent: 'US', description: 'Mature, American, Enthusiastic, confident, friendly.' },
+  { id: 'aura-2-aurora-en', name: 'Aurora', gender: 'Female', accent: 'US', description: 'Adult, American, Cheerful, expressive, energetic.' },
+  { id: 'aura-2-callista-en', name: 'Callista', gender: 'Female', accent: 'US', description: 'Adult, American, Clear, energetic, smooth.' },
+  { id: 'aura-2-cora-en', name: 'Cora', gender: 'Female', accent: 'US', description: 'Adult, American, Smooth, melodic, caring.' },
+  { id: 'aura-2-cordelia-en', name: 'Cordelia', gender: 'Female', accent: 'US', description: 'Young Adult, American, Approachable, warm.' },
+  { id: 'aura-2-delia-en', name: 'Delia', gender: 'Female', accent: 'US', description: 'Young Adult, American, Casual, friendly, breathy.' },
+  { id: 'aura-2-draco-en', name: 'Draco', gender: 'Male', accent: 'UK', description: 'Adult, British, Warm, trustworthy, baritone.' },
+  { id: 'aura-2-electra-en', name: 'Electra', gender: 'Female', accent: 'US', description: 'Adult, American, Professional, engaging.' },
+  { id: 'aura-2-harmonia-en', name: 'Harmonia', gender: 'Female', accent: 'US', description: 'Adult, American, Empathetic, clear, calm.' },
+  { id: 'aura-2-helena-en', name: 'Helena', gender: 'Female', accent: 'US', description: 'Adult, American, Caring, natural, friendly, raspy.' },
+  { id: 'aura-2-hera-en', name: 'Hera', gender: 'Female', accent: 'US', description: 'Adult, American, Smooth, warm, professional.' },
+  { id: 'aura-2-hermes-en', name: 'Hermes', gender: 'Male', accent: 'US', description: 'Adult, American, Expressive, engaging, professional.' },
+  { id: 'aura-2-hyperion-en', name: 'Hyperion', gender: 'Male', accent: 'AU', description: 'Adult, Australian, Caring, warm, empathetic.' },
+  { id: 'aura-2-iris-en', name: 'Iris', gender: 'Female', accent: 'US', description: 'Young Adult, American, Cheerful, positive, approachable.' },
+  { id: 'aura-2-janus-en', name: 'Janus', gender: 'Female', accent: 'US', description: 'Adult, Southern American, Smooth, trustworthy.' },
+  { id: 'aura-2-juno-en', name: 'Juno', gender: 'Female', accent: 'US', description: 'Adult, American, Natural, engaging, breathy.' },
+  { id: 'aura-2-jupiter-en', name: 'Jupiter', gender: 'Male', accent: 'US', description: 'Adult, American, Expressive, baritone.' },
+  { id: 'aura-2-luna-en', name: 'Luna', gender: 'Female', accent: 'US', description: 'Young Adult, American, Friendly, natural, engaging.' },
+  { id: 'aura-2-mars-en', name: 'Mars', gender: 'Male', accent: 'US', description: 'Adult, American, Smooth, patient, trustworthy.' },
+  { id: 'aura-2-minerva-en', name: 'Minerva', gender: 'Female', accent: 'US', description: 'Adult, American, Positive, friendly, natural.' },
+  { id: 'aura-2-neptune-en', name: 'Neptune', gender: 'Male', accent: 'US', description: 'Adult, American, Professional, patient, polite.' },
+  { id: 'aura-2-odysseus-en', name: 'Odysseus', gender: 'Male', accent: 'US', description: 'Adult, American, Calm, smooth, comfortable.' },
+  { id: 'aura-2-ophelia-en', name: 'Ophelia', gender: 'Female', accent: 'US', description: 'Adult, American, Expressive, enthusiastic, cheerful.' },
+  { id: 'aura-2-orion-en', name: 'Orion', gender: 'Male', accent: 'US', description: 'Adult, American, Approachable, comfortable, calm.' },
+  { id: 'aura-2-orpheus-en', name: 'Orpheus', gender: 'Male', accent: 'US', description: 'Adult, American, Professional, clear, confident.' },
+  { id: 'aura-2-pandora-en', name: 'Pandora', gender: 'Female', accent: 'UK', description: 'Adult, British, Smooth, calm, breathy.' },
+  { id: 'aura-2-phoebe-en', name: 'Phoebe', gender: 'Female', accent: 'US', description: 'Adult, American, Energetic, warm, casual.' },
+  { id: 'aura-2-pluto-en', name: 'Pluto', gender: 'Male', accent: 'US', description: 'Adult, American, Smooth, calm, empathetic, baritone.' },
+  { id: 'aura-2-saturn-en', name: 'Saturn', gender: 'Male', accent: 'US', description: 'Adult, American, Knowledgeable, confident, baritone.' },
+  { id: 'aura-2-selene-en', name: 'Selene', gender: 'Female', accent: 'US', description: 'Adult, American, Expressive, engaging, energetic.' },
+  { id: 'aura-2-thalia-en', name: 'Thalia', gender: 'Female', accent: 'US', description: 'Adult, American, Clear, confident, energetic.' },
+  { id: 'aura-2-theia-en', name: 'Theia', gender: 'Female', accent: 'AU', description: 'Adult, Australian, Expressive, polite, sincere.' },
+  { id: 'aura-2-vesta-en', name: 'Vesta', gender: 'Female', accent: 'US', description: 'Adult, American, Natural, expressive, patient.' },
+  { id: 'aura-2-zeus-en', name: 'Zeus', gender: 'Male', accent: 'US', description: 'Adult, American, Deep, trustworthy, smooth.' },
+]
+
+interface VoiceProviderConfig {
+  id: string
+  label: string
+  baseProvider: string
+  getDefaultModel: () => string
+  voices: Array<{ id: string, name: string, gender: string, accent: string, description: string }>
+}
+
+const voiceProvidersRegistry: Record<string, VoiceProviderConfig> = {
+  'kokoro-local': {
+    id: 'kokoro-local',
+    label: 'Kokoro (Local Engine)',
+    baseProvider: 'kokoro-local',
+    getDefaultModel: () => (providersStore.getProviderConfig('kokoro-local')?.model as string) || 'q4',
+    voices: voicePresets,
+  },
+  'deepgram-tts': {
+    id: 'deepgram-tts',
+    label: 'Deepgram Aura-2 (Remote TTS)',
+    baseProvider: 'deepgram-tts',
+    getDefaultModel: () => 'aura-2',
+    voices: deepgramVoicePresets,
+  },
+}
+
+const selectedProvider = ref<string>('kokoro-local')
+const currentVoicePresets = computed(() => {
+  return voiceProvidersRegistry[selectedProvider.value]?.voices || []
+})
+
+const countdown = ref(15)
+const countdownTimer = ref<any>(null)
+const isTimerPaused = ref(false)
+
+function startCountdown() {
+  clearCountdown()
+  countdownTimer.value = setInterval(() => {
+    if (isTimerPaused.value)
+      return
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearCountdown()
+      void runAutoConfiguration()
+    }
+  }, 1000)
+}
+
+function clearCountdown() {
+  if (countdownTimer.value) {
+    clearInterval(countdownTimer.value)
+    countdownTimer.value = null
+  }
+}
+
+function handlePauseTimer() {
+  isTimerPaused.value = true
+  clearCountdown()
+}
+
+function handleManualMatch() {
+  clearCountdown()
+  void runAutoConfiguration()
+}
+
+watch(selectedProvider, () => {
+  handlePauseTimer()
+})
 
 interface Recommendation {
   characterId: string
@@ -143,11 +255,15 @@ watch(() => props.modelValue, (isOpen) => {
     recommendations.value = []
     errorMessage.value = ''
     stopAudio()
-    // Auto-trigger analysis when modal opens
-    void runAutoConfiguration()
+    // Start countdown timer instead of running instantly
+    selectedProvider.value = 'kokoro-local'
+    countdown.value = 15
+    isTimerPaused.value = false
+    startCountdown()
   }
   else {
     stopAudio()
+    clearCountdown()
   }
 })
 
@@ -178,7 +294,7 @@ async function runAutoConfiguration() {
       return `- ID: "${c.id}", Name: "${c.name}", Series: "${series}", Gender: "${gender}", Description/Traits: ${c.tags}`
     }).join('\n')
 
-    const voicesList = voicePresets.map((v) => {
+    const voicesList = currentVoicePresets.value.map((v) => {
       return `- ID: "${v.id}", Name: "${v.name}", Gender: "${v.gender}", Description: ${v.description}`
     }).join('\n')
 
@@ -191,7 +307,7 @@ async function runAutoConfiguration() {
 
     const systemMsg = `You are a professional character setup director. 
 For each of the provided characters:
-1. Match them with the single best-fitting voice from the available Kokoro voice list.
+1. Match them with the single best-fitting voice from the available voice list of the selected provider.
 2. Suggest optimal speech "rate" (speech speed, normally 1.0, range 0.7 to 1.4) and "pitch" (speech pitch, normally 1.0, range 0.7 to 1.4) matching their canon description.
 3. Suggest 1 to 3 best-fitting "idleAnimations" selected ONLY from their specific "Available Idle Motions" list. Do not invent any animation names that are not in their list.
 
@@ -199,7 +315,7 @@ Return ONLY a raw JSON array matching this schema (no markdown formatting, no wr
 [
   {
     "characterId": "the character ID string",
-    "voiceId": "the selected Kokoro voice ID",
+    "voiceId": "the selected voice ID from the available voices list",
     "rate": 1.0,
     "pitch": 1.0,
     "idleAnimations": ["motion1", "motion2"],
@@ -207,7 +323,7 @@ Return ONLY a raw JSON array matching this schema (no markdown formatting, no wr
   }
 ]`
 
-    const userMsg = `AVAILABLE VOICES:\n${voicesList}\n\nCHARACTERS & AVAILABLE IDLE MOTIONS:\n${characterMotionsText}\n\nCHARACTERS PROFILE INFO:\n${castList}`
+    const userMsg = `AVAILABLE VOICES FOR PROVIDER:\n${voicesList}\n\nCHARACTERS & AVAILABLE IDLE MOTIONS:\n${characterMotionsText}\n\nCHARACTERS PROFILE INFO:\n${castList}`
 
     const response = await llmStore.generate(activeModel, providerInstance as any, [
       { role: 'system', content: systemMsg },
@@ -234,7 +350,7 @@ Return ONLY a raw JSON array matching this schema (no markdown formatting, no wr
       return {
         characterId: char ? char.id : item.characterId,
         name: char ? char.name : (item.name || 'Unknown'),
-        voiceId: item.voiceId || 'af_heart',
+        voiceId: item.voiceId || currentVoicePresets.value[0]?.id || '',
         rate: typeof item.rate === 'number' ? item.rate : 1.0,
         pitch: typeof item.pitch === 'number' ? item.pitch : 1.0,
         idleAnimations: Array.isArray(item.idleAnimations) ? item.idleAnimations : [],
@@ -266,7 +382,12 @@ async function playPreview(rec: Recommendation) {
       throw new Error('Virtual Audio Studio provider is not active.')
     }
 
-    const configuredModel = (providersStore.getProviderConfig('kokoro-local')?.model as string) || 'q4'
+    const providerConfig = voiceProvidersRegistry[selectedProvider.value]
+    if (!providerConfig) {
+      throw new Error(`Voice provider configuration not found in registry: ${selectedProvider.value}`)
+    }
+    const baseProvider = providerConfig.baseProvider
+    const baseModel = providerConfig.getDefaultModel()
     const testText = `Hello, I am ${rec.name}. How does my voice sound?`
 
     // Save a temporary voice profile to speechStore to run pitch and rate effects via the proxy
@@ -274,8 +395,8 @@ async function playPreview(rec: Recommendation) {
     const tempProfile = {
       id: tempProfileId,
       name: 'Voice Profile Auto Preview',
-      baseProvider: 'kokoro-local',
-      baseModel: configuredModel,
+      baseProvider,
+      baseModel,
       baseVoice: rec.voiceId,
       effects: {
         pitch: rec.pitch,
@@ -300,7 +421,18 @@ async function playPreview(rec: Recommendation) {
       },
     }
 
-    speechStore.saveVoiceProfile(tempProfile as any)
+    console.log('[AutoVoiceConfigModal] Saving temporary preview voice profile:', tempProfile)
+
+    // Trigger array replacement to ensure LocalStorage/Vue reactivity runs
+    const currentProfiles = [...(speechStore.savedVoiceProfiles || [])]
+    const profileIdx = currentProfiles.findIndex(p => p.id === tempProfileId)
+    if (profileIdx !== -1) {
+      currentProfiles[profileIdx] = tempProfile as any
+    }
+    else {
+      currentProfiles.push(tempProfile as any)
+    }
+    speechStore.savedVoiceProfiles = currentProfiles
 
     const audioData = await speechStore.speech(
       provider as any,
@@ -329,17 +461,24 @@ async function playPreview(rec: Recommendation) {
 }
 
 function handleApply() {
-  const payload: Record<string, { baseProvider: string, baseModel: string, baseVoice: string }> = {}
+  const payload: Record<string, { baseProvider: string, baseModel: string, baseVoice: string, idleAnimations?: string[] }> = {}
+  const providerConfig = voiceProvidersRegistry[selectedProvider.value]
+  if (!providerConfig) {
+    throw new Error(`Voice provider configuration not found in registry: ${selectedProvider.value}`)
+  }
+  const baseProvider = providerConfig.baseProvider
+  const baseModel = providerConfig.getDefaultModel()
+
+  const currentProfiles = [...(speechStore.savedVoiceProfiles || [])]
 
   recommendations.value.forEach((rec) => {
     const profileId = `voice_profile_${rec.name.trim()}_auto`
-    const configuredModel = (providersStore.getProviderConfig('kokoro-local')?.model as string) || 'q4'
 
     const newProfile = {
       id: profileId,
       name: `${rec.name} (Auto)`,
-      baseProvider: 'kokoro-local',
-      baseModel: configuredModel,
+      baseProvider,
+      baseModel,
       baseVoice: rec.voiceId,
       effects: {
         pitch: rec.pitch,
@@ -364,7 +503,15 @@ function handleApply() {
       },
     }
 
-    speechStore.saveVoiceProfile(newProfile as any)
+    console.log(`[AutoVoiceConfigModal] Saving final configured voice profile for ${rec.name}:`, newProfile)
+
+    const profileIdx = currentProfiles.findIndex(p => p.id === profileId)
+    if (profileIdx !== -1) {
+      currentProfiles[profileIdx] = newProfile as any
+    }
+    else {
+      currentProfiles.push(newProfile as any)
+    }
 
     payload[rec.characterId] = {
       baseProvider: 'virtual-audio-studio',
@@ -373,6 +520,8 @@ function handleApply() {
       idleAnimations: [...rec.idleAnimations],
     }
   })
+
+  speechStore.savedVoiceProfiles = currentProfiles
 
   emit('apply', payload)
   emit('update:modelValue', false)
@@ -401,8 +550,67 @@ function handleApply() {
 
         <!-- Body Content -->
         <div class="min-h-[250px] flex flex-1 flex-col overflow-y-auto p-6">
+          <!-- Idle / Countdown State -->
+          <div v-if="state === 'idle'" class="flex flex-1 flex-col items-center justify-center gap-6 py-6">
+            <div class="text-center space-y-1">
+              <h4 class="text-sm text-neutral-200 font-bold">
+                Auto-Matching configuration
+              </h4>
+              <p class="max-w-sm text-xs text-neutral-400 leading-normal">
+                Matches your cast with the best voices and motions. Adjust provider settings below or begin immediately.
+              </p>
+            </div>
+
+            <!-- Provider Selection & Match actions -->
+            <div class="max-w-sm w-full border border-neutral-800 rounded-xl bg-neutral-950/20 p-4 space-y-4">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase">Voice Provider</label>
+                <select
+                  v-model="selectedProvider"
+                  class="w-full border border-neutral-800 rounded-lg bg-neutral-900 px-3 py-2 text-xs text-neutral-200 outline-none focus:border-primary-500"
+                >
+                  <option value="kokoro-local">
+                    Kokoro (Local Engine)
+                  </option>
+                  <option value="deepgram-tts">
+                    Deepgram Aura-2 (Remote TTS)
+                  </option>
+                </select>
+              </div>
+
+              <div class="flex items-center gap-2 pt-2">
+                <Button variant="primary" class="h-9 flex-1 text-xs font-bold" @click="handleManualMatch">
+                  Match Now
+                </Button>
+
+                <button
+                  v-if="!isTimerPaused"
+                  class="hover:bg-neutral-850 h-9 w-9 flex items-center justify-center border border-neutral-800 rounded-lg bg-neutral-900 text-neutral-400 hover:text-white"
+                  title="Pause countdown"
+                  @click="handlePauseTimer"
+                >
+                  <div class="i-solar:pause-bold text-sm" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Sleek countdown loading bar -->
+            <div class="max-w-sm w-full flex flex-col gap-2">
+              <div class="flex items-center justify-between text-[10px] text-neutral-400">
+                <span>{{ isTimerPaused ? 'Timer Paused' : `Auto-matching in ${countdown}s...` }}</span>
+                <span class="font-mono">{{ Math.round((countdown / 15) * 100) }}%</span>
+              </div>
+              <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+                <div
+                  class="h-full bg-primary-500 transition-all duration-300 ease-out"
+                  :style="{ width: isTimerPaused ? '0%' : `${(countdown / 15) * 100}%` }"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Loading State -->
-          <div v-if="state === 'loading'" class="flex flex-1 flex-col items-center justify-center gap-4 py-8">
+          <div v-else-if="state === 'loading'" class="flex flex-1 flex-col items-center justify-center gap-4 py-8">
             <div class="h-10 w-10 flex items-center justify-center rounded-full bg-primary-500/15 text-primary-400">
               <span class="i-solar:restart-square-outline animate-spin text-2xl" />
             </div>
@@ -411,7 +619,7 @@ function handleApply() {
                 Analyzing Cast Profiles
               </h4>
               <p class="mt-1 text-xs text-neutral-400">
-                matching characters with the best Kokoro voice presets and idle loop animations...
+                matching characters with the best voice presets and idle loop animations...
               </p>
             </div>
           </div>
@@ -461,7 +669,7 @@ function handleApply() {
                       v-model="rec.voiceId"
                       class="border border-neutral-800 rounded-lg bg-neutral-900 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-primary-500"
                     >
-                      <option v-for="voice in voicePresets" :key="voice.id" :value="voice.id">
+                      <option v-for="voice in currentVoicePresets" :key="voice.id" :value="voice.id">
                         {{ voice.name }} ({{ voice.gender }})
                       </option>
                     </select>

@@ -40,7 +40,7 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
 
   // Bindings state (characterId -> displayModelId/voiceId)
   const boundModels = ref<Record<string, string>>({})
-  const boundVoices = ref<Record<string, string>>({})
+  const boundVoices = ref<Record<string, { baseProvider: string, baseModel: string, baseVoice: string }>>({})
 
   // Filters
   const selectedGender = ref<string | null>(null)
