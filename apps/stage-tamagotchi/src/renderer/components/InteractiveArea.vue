@@ -740,12 +740,12 @@ function jumpToMessage(messageId: string) {
     </div>
 
     <!-- Journal Preview Chips -->
-    <div v-if="latestTextEntries.length > 0 || latestImageEntries.length > 0" class="w-full flex gap-2 px-2 py-1">
+    <div v-if="latestTextEntries.length > 0 || latestImageEntries.length > 0" class="w-full flex flex-col gap-3 px-2 py-1 md:flex-row">
       <!-- Text Journal Chips -->
       <div
         v-if="groupedTextEntries.length > 0"
         :class="[
-          latestImageEntries.length > 0 ? 'w-1/2' : 'w-full',
+          latestImageEntries.length > 0 ? 'w-full md:w-1/2' : 'w-full',
           'flex flex-col gap-1 min-w-0',
         ]"
       >
@@ -831,7 +831,7 @@ function jumpToMessage(messageId: string) {
       <div
         v-if="latestImageEntries.length > 0"
         :class="[
-          latestTextEntries.length > 0 ? 'w-1/2' : 'w-full',
+          latestTextEntries.length > 0 ? 'w-full md:w-1/2' : 'w-full',
           'flex flex-col gap-1 min-w-0',
         ]"
       >
