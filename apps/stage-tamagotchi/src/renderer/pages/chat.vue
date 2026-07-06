@@ -4,6 +4,7 @@ import { ChatBrainPopover } from '@proj-airi/stage-ui/components'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useLiveSessionStore } from '@proj-airi/stage-ui/stores/modules/live-session'
+import { useSettingsChat } from '@proj-airi/stage-ui/stores/settings'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed } from 'vue'
@@ -14,6 +15,7 @@ import WindowTitleBar from '../components/Window/TitleBar.vue'
 const chatSessionStore = useChatSessionStore()
 const airiCardStore = useAiriCardStore()
 const liveSessionStore = useLiveSessionStore()
+const settingsChat = useSettingsChat()
 
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { activeSessionId, sessionMetas, messages } = storeToRefs(chatSessionStore)
@@ -184,6 +186,44 @@ function formatAbbreviatedCount(num: number): string {
 
           <!-- Brain LLM Icon Button (opens downwards) -->
           <ChatBrainPopover side="bottom" />
+
+          <!-- Settings Ellipsis Menu (Send Mode options) -->
+          <PopoverRoot>
+            <PopoverTrigger as-child>
+              <button
+                class="flex cursor-pointer items-center justify-center rounded-xl p-1.5 text-neutral-500 transition-all duration-200 ease-in-out hover:bg-neutral-200 dark:text-neutral-400 hover:text-neutral-700 hover:dark:bg-neutral-800 dark:hover:text-neutral-200"
+                title="Send Options"
+              >
+                <div class="i-solar:menu-dots-bold text-base" />
+              </button>
+            </PopoverTrigger>
+            <PopoverPortal>
+              <PopoverContent
+                class="animate-in fade-in slide-in-from-top-1 z-[10000] flex flex-col gap-1 border border-neutral-200/60 rounded-2xl bg-white/95 p-1.5 shadow-2xl backdrop-blur-xl duration-150 dark:border-neutral-800 dark:bg-neutral-950/95"
+                side="bottom"
+                align="end"
+                :side-offset="8"
+              >
+                <div class="select-none px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                  Send Key Mode
+                </div>
+                <button
+                  v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
+                  :key="mode"
+                  :class="[
+                    'px-3 py-2 text-xs font-semibold rounded-xl transition-all text-left flex items-center justify-between gap-4 w-full',
+                    settingsChat.sendMode === mode
+                      ? 'bg-primary-50/50 text-primary-600 dark:bg-primary-950/30 dark:text-primary-400'
+                      : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
+                  ]"
+                  @click="settingsChat.sendMode = mode"
+                >
+                  <span>{{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl + Enter' : 'Double Enter' }}</span>
+                  <div v-if="settingsChat.sendMode === mode" class="i-solar:check-circle-bold text-sm" />
+                </button>
+              </PopoverContent>
+            </PopoverPortal>
+          </PopoverRoot>
         </div>
       </div>
     </WindowTitleBar>

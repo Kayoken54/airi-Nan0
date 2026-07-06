@@ -34,7 +34,7 @@ import { BasicTextarea, Button } from '@proj-airi/ui'
 // Watch messageInput and search universe-scoped memory context
 import { watchDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -597,12 +597,7 @@ const hasVisibleMessages = computed(() => {
   return messages.value.some(m => m.role === 'user' || m.role === 'assistant')
 })
 
-const sendButtonLabel = computed(() => {
-  if (!hasVisibleMessages.value && !messageInput.value.trim()) {
-    return 'Greet'
-  }
-  return 'Send'
-})
+const isGreetMode = computed(() => !hasVisibleMessages.value && !messageInput.value.trim())
 
 onMounted(() => {
   updateWindowTitle()
@@ -890,15 +885,6 @@ function jumpToMessage(messageId: string) {
         @open-studio="navigateToConceptStudio"
       />
 
-      <!-- Producer Sparkle Button -->
-      <button
-        class="max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md bg-neutral-100 p-2 text-lg text-neutral-500 outline-none transition-colors transition-transform active:scale-95 dark:bg-neutral-800 dark:text-neutral-400 hover:text-primary-500 dark:hover:text-primary-400"
-        title="Suggest responses"
-        @click="isProducerModalOpen = true"
-      >
-        <div class="i-solar:magic-stick-3-bold-duotone" />
-      </button>
-
       <!-- Clear Messages (with safety hook) -->
       <button
         class="max-h-[10lh] min-h-[1lh]"
@@ -912,61 +898,6 @@ function jumpToMessage(messageId: string) {
       >
         <div class="i-solar:trash-bin-2-bold-duotone" />
       </button>
-
-      <!-- Send (Dual Use) -->
-      <div
-        class="flex items-center gap-0.5 overflow-hidden rounded-lg shadow-sm transition-colors"
-        bg="primary-500 hover:primary-600"
-        max-h="[10lh]"
-      >
-        <button
-          class="h-9 flex items-center justify-center px-3 outline-none transition-transform active:scale-95"
-          text="white"
-          title="Send Message"
-          @click="handleSend"
-        >
-          <div class="i-solar:plain-2-bold-duotone mr-1.5 text-lg" />
-          <span class="text-xs font-bold leading-none tracking-tighter uppercase">{{ sendButtonLabel }}</span>
-        </button>
-
-        <PopoverRoot>
-          <PopoverTrigger as-child>
-            <button
-              class="h-9 w-6 flex items-center justify-center border-l border-white/20 outline-none hover:bg-white/10"
-              text="white"
-              title="Change Send Key Mode"
-            >
-              <div class="i-solar:alt-arrow-down-linear text-xs" />
-            </button>
-          </PopoverTrigger>
-          <PopoverPortal>
-            <PopoverContent
-              class="z-100 flex flex-col gap-1 border border-neutral-200 rounded-xl bg-white/95 p-1.5 shadow-2xl backdrop-blur-md dark:border-neutral-700 dark:bg-neutral-900/95"
-              side="top"
-              align="end"
-              :side-offset="12"
-            >
-              <div class="px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-                Send Key Mode
-              </div>
-              <button
-                v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
-                :key="mode"
-                :class="[
-                  'px-3 py-2 text-xs font-semibold rounded-lg transition-all text-left flex items-center justify-between gap-4',
-                  settingsChat.sendMode === mode
-                    ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/50 dark:text-primary-300'
-                    : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
-                ]"
-                @click="settingsChat.sendMode = mode"
-              >
-                <span>{{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl + Enter' : 'Double Enter' }}</span>
-                <div v-if="settingsChat.sendMode === mode" class="i-solar:check-circle-bold text-sm" />
-              </button>
-            </PopoverContent>
-          </PopoverPortal>
-        </PopoverRoot>
-      </div>
     </div>
     <!-- Ephemeral Grounding Preview Block -->
     <div
@@ -1093,22 +1024,43 @@ function jumpToMessage(messageId: string) {
       </div>
     </div>
 
-    <BasicTextarea
-      v-model="messageInput"
-      :send-mode="settingsChat.sendMode"
-      :placeholder="isImagineMode ? 'Describe a scene to imagine...' : t('stage.message')"
-      class="ph-no-capture"
-      text="primary-600 dark:primary-100  placeholder:primary-500 dark:placeholder:primary-200"
-      border="solid 2 primary-200/20 dark:primary-400/20"
-      bg="primary-100/50 dark:primary-900/70"
-      max-h="[10lh]" min-h="[1lh]"
-      w-full shrink-0 resize-none overflow-y-scroll rounded-xl p-2 font-medium outline-none
-      transition="all duration-250 ease-in-out placeholder:all placeholder:duration-250 placeholder:ease-in-out"
-      @submit="handleSend"
-      @compositionstart="isComposing = true"
-      @compositionend="isComposing = false"
-      @attach="handleFilePaste"
-    />
+    <div class="relative w-full flex items-end">
+      <BasicTextarea
+        v-model="messageInput"
+        :send-mode="settingsChat.sendMode"
+        :placeholder="isImagineMode ? 'Describe a scene to imagine...' : t('stage.message')"
+        class="ph-no-capture w-full pr-20"
+        text="primary-600 dark:primary-100 placeholder:primary-500 dark:placeholder:primary-200"
+        border="solid 2 primary-200/20 dark:primary-400/20"
+        bg="primary-100/50 dark:primary-900/70"
+        max-h="[10lh]" min-h="[1lh]"
+        shrink-0 resize-none overflow-y-scroll rounded-xl p-2 font-medium outline-none
+        transition="all duration-250 ease-in-out placeholder:all placeholder:duration-250 placeholder:ease-in-out"
+        @submit="handleSend"
+        @compositionstart="isComposing = true"
+        @compositionend="isComposing = false"
+        @attach="handleFilePaste"
+      />
+      <div class="no-drag absolute bottom-2 right-2 z-10 flex select-none items-center gap-1">
+        <!-- Suggest Response (Producer Sparkle) Inline Button -->
+        <button
+          class="flex items-center justify-center rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/30 dark:text-neutral-400 hover:text-primary-500 dark:hover:bg-neutral-800/30 dark:hover:text-primary-400"
+          title="Suggest responses"
+          @click="isProducerModalOpen = true"
+        >
+          <div class="i-solar:magic-stick-3-bold-duotone text-base" />
+        </button>
+
+        <!-- Send / Greet Inline Button -->
+        <button
+          class="flex items-center justify-center rounded-lg p-1.5 text-primary-500 transition-colors hover:bg-neutral-200/30 dark:text-primary-400 hover:text-primary-600 dark:hover:bg-neutral-800/30 dark:hover:text-primary-300"
+          :title="isGreetMode ? 'Greet' : 'Send Message'"
+          @click="handleSend"
+        >
+          <div :class="[isGreetMode ? 'i-ph:hand-waving-duotone' : 'i-solar:plain-2-bold-duotone', 'text-base']" />
+        </button>
+      </div>
+    </div>
 
     <!-- Context Dialog -->
     <ChatSessionModal
