@@ -842,10 +842,10 @@ function jumpToMessage(messageId: string) {
             <button class="select-none text-[10px] text-primary-500 font-bold transition-colors hover:text-primary-600">
               + Add
             </button>
-            <div class="i-solar:eye-linear cursor-pointer text-[12px] text-neutral-400 hover:text-neutral-600" />
             <button class="select-none text-[10px] text-neutral-400 font-bold transition-colors hover:text-neutral-600">
               View All
             </button>
+            <div class="i-solar:eye-linear cursor-pointer text-[12px] text-neutral-400 hover:text-neutral-600" />
           </div>
         </div>
         <div class="flex gap-2 overflow-x-auto scrollbar-none">
