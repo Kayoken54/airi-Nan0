@@ -313,6 +313,26 @@ const producerSuggestion = ref<{ type: 'producer-suggestion', choices: Array<{ t
 const { generateSuggestions } = useProducer()
 const lastProducerConfig = ref<{ guidance: string, contextDepth: number, count: number, shortReplies: boolean } | null>(null)
 
+const quickSuggestContextDepth = useLocalStorage('airi:producer:context-depth', 6)
+const quickSuggestCount = useLocalStorage('airi:producer:suggestion-count', 4)
+const quickSuggestShortReplies = useLocalStorage('airi:producer:short-replies', true)
+
+function handleQuickSuggest() {
+  const input = messageInput.value.trim()
+  if (input) {
+    messageInput.value = ''
+    handleProducerSubmit({
+      guidance: input,
+      contextDepth: quickSuggestContextDepth.value,
+      count: quickSuggestCount.value,
+      shortReplies: quickSuggestShortReplies.value,
+    })
+  }
+  else {
+    isProducerModalOpen.value = true
+  }
+}
+
 async function handleProducerSubmit(payload: { guidance: string, contextDepth: number, count: number, shortReplies: boolean }) {
   lastProducerConfig.value = payload
   producerSuggestion.value = {
@@ -1093,7 +1113,7 @@ defineExpose({
         <button
           class="h-8 w-8 flex items-center justify-center rounded-xl bg-neutral-200/20 text-neutral-500 transition-all duration-200 active:scale-95 dark:bg-neutral-800/20 hover:bg-neutral-200/40 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-200"
           title="Suggest responses"
-          @click="isProducerModalOpen = true"
+          @click="handleQuickSuggest"
         >
           <div class="i-solar:magic-stick-3-bold-duotone text-base" />
         </button>
