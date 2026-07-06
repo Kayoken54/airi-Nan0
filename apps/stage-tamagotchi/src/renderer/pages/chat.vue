@@ -100,7 +100,7 @@ function formatAbbreviatedCount(num: number): string {
 </script>
 
 <template>
-  <div class="h-full w-full overflow-y-scroll pt-[44px]">
+  <div class="h-full w-full flex flex-col overflow-hidden pt-[44px]">
     <WindowTitleBar
       title="Chat"
       icon="i-solar:chat-line-bold"
