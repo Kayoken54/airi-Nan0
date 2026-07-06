@@ -106,19 +106,18 @@ function formatAbbreviatedCount(num: number): string {
       icon="i-solar:chat-line-bold"
     >
       <div class="relative w-full flex items-center justify-between px-2" drag-region>
-        <!-- Left: Brand Logo & Label Link -->
-        <div class="no-drag flex select-none items-center gap-2 outline-none">
-          <img
-            src="/@fs/Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-layouts/src/assets/logo-dark.svg"
-            class="theme-colored h-7 w-7"
-          >
-          <div class="translate-y-[1px] text-lg text-primary-500 font-semibold font-quicksand dark:text-primary-300">
-            <span>AIRI</span>
+        <!-- Left: Brand Logo & Premium Session Selector -->
+        <div class="no-drag flex select-none items-center gap-3 outline-none">
+          <div class="flex items-center gap-2">
+            <img
+              src="/@fs/Users/richardpinedo/Projects.nosync/airi/airi_dasilva333/packages/stage-layouts/src/assets/logo-dark.svg"
+              class="theme-colored h-7 w-7"
+            >
+            <div class="translate-y-[1px] text-lg text-primary-500 font-semibold font-quicksand dark:text-primary-300">
+              <span>AIRI</span>
+            </div>
           </div>
-        </div>
 
-        <!-- Center: Premium Session Selector Dropdown with Reka Popover -->
-        <div class="no-drag absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <PopoverRoot>
             <PopoverTrigger as-child>
               <div
