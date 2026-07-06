@@ -5,7 +5,7 @@ The goal is to evolve the AIRI Chatbox from a standard chat interface into a **h
 
 We will execute this in two phases:
 * **Phase 1 (MVP)**: Focuses on the top header's session selector, token metrics, brain button, settings ellipsis menu, and inline composer action endcaps. (COMPLETED)
-* **Phase 2**: Focuses on the Context Artifact Band optimizations (Memories and Media Gallery collapsible headers, responsive rows, and the creative `[+ Add]` imagine modal). (IN PROGRESS)
+* **Phase 2**: Focuses on the Context Artifact Band optimizations (Memories and Media Gallery collapsible headers, responsive rows, and the creative `[+ Add]` imagine modal). (COMPLETED)
 
 ---
 
@@ -38,7 +38,7 @@ To prevent the bands from dominating vertical space, we introduce collapsible he
 * **Memories Header Actions**:
   * **`+ New` Button**: Opens the `JournalMomentModal` to let the user generate a journal entry from the conversation history.
 * **Media Gallery Header Actions**:
-  * **`+ Add` Button**: Positioned in the header next to the collapse toggle. When clicked, opens a prompt dialog asking: *"What would you like to imagine a picture of?"* It temporarily toggles Imagine Mode and routes the prompt directly to the image generator to append a new scene to the gallery. *(Deferred to later implementation)*
+  * **`+ Add` Button**: Positioned in the header next to the collapse toggle. When clicked, opens a prompt dialog asking: *"What would you like to imagine a picture of?"* It routes the prompt directly to the image generator to append a new scene to the gallery.
   * **`View All` Button**: Triggers the `StageBackgroundDialogPicker` (Stage Style/Background selection dialog).
 
 ---
