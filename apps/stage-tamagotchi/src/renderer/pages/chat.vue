@@ -62,6 +62,42 @@ function handleToggleGroundingDirectorScratchpad() {
     airiCardStore.toggleGroundingDirectorScratchpad(activeCardId.value)
 }
 
+function handleToggleImageDirector() {
+  if (!activeCardId.value || !activeCard.value)
+    return
+  const current = activeCard.value.extensions?.airi?.artistry?.autonomousEnabled ?? false
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions?.airi,
+        artistry: {
+          ...activeCard.value.extensions?.airi?.artistry,
+          autonomousEnabled: !current,
+        },
+      },
+    },
+  } as any)
+}
+
+function handleToggleHeartbeats() {
+  if (!activeCardId.value || !activeCard.value)
+    return
+  const current = activeCard.value.extensions?.airi?.heartbeats?.enabled ?? false
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions?.airi,
+        heartbeats: {
+          ...activeCard.value.extensions?.airi?.heartbeats,
+          enabled: !current,
+        },
+      },
+    },
+  } as any)
+}
+
 // --- Active Session Info ---
 const activeSessionMeta = computed(() => {
   if (!activeSessionId.value)
@@ -385,6 +421,70 @@ function formatAbbreviatedCount(num: number): string {
                   >
                     <span
                       :class="activeCard?.extensions?.airi?.groundingDirectorScratchpadEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                    />
+                  </div>
+                </div>
+
+                <!-- Section Divider -->
+                <div class="mx-2 my-1 border-t border-neutral-200/60 dark:border-neutral-800" />
+
+                <!-- Section: Modes -->
+                <div class="select-none px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                  Modes
+                </div>
+
+                <!-- Toggle: Image Director -->
+                <div
+                  class="w-full flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  @click="handleToggleImageDirector"
+                >
+                  <div class="flex items-center gap-2.5">
+                    <div
+                      class="text-base"
+                      :class="activeCard?.extensions?.airi?.artistry?.autonomousEnabled
+                        ? 'text-primary-500 i-solar:gallery-wide-bold-duotone'
+                        : 'text-neutral-400 dark:text-neutral-500 i-solar:gallery-wide-linear'"
+                    />
+                    <div class="flex flex-col">
+                      <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Image Director</span>
+                      <span class="text-[9px] text-neutral-400">Generates a new image for every turn</span>
+                    </div>
+                  </div>
+                  <div
+                    :class="activeCard?.extensions?.airi?.artistry?.autonomousEnabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+                    class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+                  >
+                    <span
+                      :class="activeCard?.extensions?.airi?.artistry?.autonomousEnabled ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                    />
+                  </div>
+                </div>
+
+                <!-- Toggle: Heartbeats -->
+                <div
+                  class="w-full flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  @click="handleToggleHeartbeats"
+                >
+                  <div class="flex items-center gap-2.5">
+                    <div
+                      class="text-base"
+                      :class="activeCard?.extensions?.airi?.heartbeats?.enabled
+                        ? 'text-primary-500 i-solar:heart-pulse-bold-duotone'
+                        : 'text-neutral-400 dark:text-neutral-500 i-solar:heart-pulse-linear'"
+                    />
+                    <div class="flex flex-col">
+                      <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">Heartbeats</span>
+                      <span class="text-[9px] text-neutral-400">Activates character periodically</span>
+                    </div>
+                  </div>
+                  <div
+                    :class="activeCard?.extensions?.airi?.heartbeats?.enabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'"
+                    class="relative h-4 w-7 inline-flex shrink-0 cursor-pointer items-center border border-transparent rounded-full transition-colors duration-200 ease-in-out"
+                  >
+                    <span
+                      :class="activeCard?.extensions?.airi?.heartbeats?.enabled ? 'translate-x-3.5' : 'translate-x-0.5'"
                       class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
                     />
                   </div>
