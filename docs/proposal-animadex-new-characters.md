@@ -98,3 +98,25 @@ At the bottom of the review step, the user can choose between two explicit execu
 - [ ] **Phase 3 (Prompting)**: Create the character-synthesis system prompt for the LLM to generate the new character's matching lore segments (and optional setting/place descriptions).
 - [ ] **Phase 4 (Review Options)**: Implement the Step 4 preview panel showing the generated settings with the "Include Synthesized Places & Settings" toggle, and "Apply to Current Card (with Backup)" and "Create as New Card" buttons.
 - [ ] **Phase 5 (Verification)**: Test dynamic injection on Steven Universe and custom cards, validating that the new actor's model/voice config initializes.
+
+---
+
+## 🔄 6. Downstream Phase: Auto-Assign Backfilling for Existing Cards
+
+To accommodate cards that were created without voice/motion assignments (or prior to the addition of AWS Polly/Deepgram presets), the Studio Tab will expose an **"Auto-Assign Voices & Motions"** utility for compatible cards (Mode A).
+
+### The Auto-Extraction & Database Lookup Pipeline
+Rather than asking the user to manually configure each character from scratch, the system will dynamically reconstruct the database context from the card's active JSON structures:
+
+1. **Roster Identification**: Loop through `visual_assets` and capture all keys starting with the `actor_` prefix (e.g. `actor_amethyst_steven_universe`).
+2. **Catalog Trigger-Matching**:
+   - Extract the character's image prompt: `visual_assets[actorKey].prompt`.
+   - Parse the leading trigger phrase (typically everything prior to the first comma, e.g., `amethyst (steven universe)`).
+   - Cross-reference this trigger phrase against the local AnimaDex database catalog (`wizardStore.catalog`).
+3. **Property Retrieval**:
+   - **Gender**: Read the matching catalog entry's gender field (fully resolving the gender gap).
+   - **Copyright**: Extract the associated series copyright field from the database record.
+   - **Bound Model**: Capture `visual_assets[actorKey].manifestation.modelId` directly.
+4. **Modal Mounting**: Map these properties to the `<AutoVoiceConfigModal>` options, allowing the user to select the preferred TTS provider (AWS Polly, Deepgram, or Kokoro) and review the matches.
+5. **Writeback**: On user confirmation, write the returned bindings directly into the card's `visual_assets[actorKey].speech` and `modules[actorKey].speech` targets, and save the card.
+

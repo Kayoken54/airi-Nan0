@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { AiriCard } from '@proj-airi/stage-ui/stores/modules/airi-card'
 
+import { useAnimaDexWizardStore } from '@proj-airi/stage-ui/stores/animadex-wizard'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
 import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
+import AutoVoiceConfigModal from '../AutoVoiceConfigModal.vue'
 import ConceptBuilderModal from '../ConceptBuilderModal.vue'
 
 const props = defineProps<{
@@ -18,10 +20,71 @@ const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const autonomousArtistryStore = useAutonomousArtistryStore()
 const userProfileStore = useSettingsUserProfile()
+const wizardStore = useAnimaDexWizardStore()
 
 const showBuilder = ref(false)
 const editingConceptId = ref<string>()
 const editingConceptData = ref<any>()
+
+const autoVoiceModalOpen = ref(false)
+
+const isCompatibleWithAutoAssign = computed(() => {
+  return Object.keys(visualAssets.value).some(key => key.startsWith('actor_'))
+})
+
+const mappedCharactersForAutoAssign = computed(() => {
+  const result: any[] = []
+
+  Object.entries(visualAssets.value).forEach(([id, asset]: [string, any]) => {
+    if (!id.startsWith('actor_'))
+      return
+
+    // Reconstruct name from actor key (e.g. actor_amethyst_steven_universe -> Amethyst Steven Universe)
+    let name = id.replace(/^actor_/, '').replace(/_/g, ' ')
+    name = name.replace(/\b\w/g, c => c.toUpperCase())
+
+    const prompt = asset.prompt || ''
+    const trigger = prompt.split(',')[0]?.trim() || name
+
+    const catalogEntry = wizardStore.characters.find(
+      (c: any) => c.trigger.toLowerCase() === trigger.toLowerCase(),
+    )
+
+    let genderVal
+    let traits: number[] = []
+    if (catalogEntry) {
+      genderVal = catalogEntry.traits[0] !== undefined ? wizardStore.facets.gender[catalogEntry.traits[0]] : undefined
+      traits = catalogEntry.traits || []
+    }
+
+    result.push({
+      id,
+      name,
+      trigger,
+      tags: prompt.slice(trigger.length).replace(/^[,\s()]+|[,\s()]+$/g, '').trim(),
+      traits,
+      gender: genderVal,
+    })
+  })
+
+  return result
+})
+
+const boundModelsMap = computed(() => {
+  const map: Record<string, string> = {}
+  Object.entries(visualAssets.value).forEach(([id, asset]: [string, any]) => {
+    if (id.startsWith('actor_') && asset.manifestation?.modelId) {
+      map[id] = asset.manifestation.modelId
+    }
+  })
+  return map
+})
+
+onMounted(async () => {
+  if (wizardStore.characters.length === 0) {
+    await wizardStore.loadCatalog()
+  }
+})
 
 function handleAddConcept() {
   editingConceptId.value = undefined
@@ -57,6 +120,47 @@ function handleSaveConcept(payload: { id: string, data: any }) {
   assets[id] = data
 
   saveAssets(assets)
+}
+
+function handleApplyAutoVoices(payload: Record<string, { baseProvider: string, baseModel: string, baseVoice: string, idleAnimations?: string[] }>) {
+  const nextAssets = { ...visualAssets.value }
+  const extension = JSON.parse(JSON.stringify(props.card.extensions || {}))
+  if (!extension.airi) {
+    extension.airi = {}
+  }
+  if (!extension.airi.modules) {
+    extension.airi.modules = {}
+  }
+
+  for (const [actorKey, voice] of Object.entries(payload)) {
+    if (nextAssets[actorKey]) {
+      const asset = nextAssets[actorKey] as any
+      asset.speech = {
+        provider: voice.baseProvider,
+        model: voice.baseModel,
+        voice_id: voice.baseVoice,
+      }
+      if (voice.idleAnimations) {
+        asset.idleAnimations = [...voice.idleAnimations]
+      }
+    }
+
+    if (!extension.airi.modules[actorKey]) {
+      extension.airi.modules[actorKey] = {}
+    }
+    extension.airi.modules[actorKey].speech = {
+      provider: voice.baseProvider,
+      model: voice.baseModel,
+      voice_id: voice.baseVoice,
+    }
+  }
+
+  extension.airi.visual_assets = nextAssets
+
+  cardStore.updateCard(props.cardId, {
+    ...props.card,
+    extensions: extension,
+  })
 }
 
 function saveAssets(assets: any) {
@@ -171,6 +275,14 @@ async function toggleConcept(conceptId: string) {
             Concept Registry
           </h3>
           <div class="flex items-center gap-3">
+            <button
+              v-if="isCompatibleWithAutoAssign"
+              class="text-[10px] text-primary-500 font-bold hover:underline"
+              @click="autoVoiceModalOpen = true"
+            >
+              Auto-Assign Voices
+            </button>
+            <span v-if="isCompatibleWithAutoAssign" class="text-xs text-neutral-300 dark:text-neutral-700">|</span>
             <button
               class="text-[10px] text-primary-500 font-bold hover:underline"
               @click="handleAddUserProfileConcept"
@@ -345,6 +457,15 @@ async function toggleConcept(conceptId: string) {
     :concept-id="editingConceptId"
     :initial-data="editingConceptData"
     @save="handleSaveConcept"
+  />
+
+  <AutoVoiceConfigModal
+    v-model="autoVoiceModalOpen"
+    :selected-characters="mappedCharactersForAutoAssign"
+    :copyrights="wizardStore.copyrights"
+    :genders="wizardStore.facets.gender"
+    :bound-models="boundModelsMap"
+    @apply="handleApplyAutoVoices"
   />
 </template>
 
