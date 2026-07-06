@@ -203,10 +203,11 @@ const autoHideMode = computed(() => controlStripStore.dockedEdge !== null)
 // Main window control strip sizing and smart popovers state
 const hoverExpanded = ref(false)
 const hoverTimer = ref<NodeJS.Timeout | null>(null)
+const activePopover = ref<string | null>(null)
 
 const isFullyExpanded = computed(() => {
   if (autoHideMode.value) {
-    return !collapsed.value || hoverExpanded.value
+    return !collapsed.value || hoverExpanded.value || activePopover.value !== null
   }
   return !collapsed.value
 })
@@ -238,7 +239,6 @@ watch(isOutsideControlStrip, (isOutside) => {
   }
 })
 
-const activePopover = ref<string | null>(null)
 const lastPlacement = ref<'left' | 'right' | 'top' | 'bottom' | null>(null)
 const lastOrientation = ref<'vertical' | 'horizontal'>('vertical')
 

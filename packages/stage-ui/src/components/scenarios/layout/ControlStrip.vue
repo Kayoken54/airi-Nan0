@@ -36,6 +36,8 @@ const datingSimStore = useDatingSimStore()
 
 const autoHideMode = computed(() => dockedEdge.value !== null)
 
+const activePopover = ref<string | null>(null)
+
 // Auto-hide Tab hover states
 const hoverExpanded = ref(false)
 const hoverTimer = ref<NodeJS.Timeout | null>(null)
@@ -56,7 +58,7 @@ watch(isOutsideWindow, (isOutside) => {
 
 const isFullyExpanded = computed(() => {
   if (autoHideMode.value) {
-    return !collapsed.value || hoverExpanded.value
+    return !collapsed.value || hoverExpanded.value || activePopover.value !== null
   }
   return !collapsed.value
 })
@@ -491,8 +493,6 @@ function selectSelfieBackground(bgId: string) {
     } as any)
   }
 }
-
-const activePopover = ref<string | null>(null)
 
 const { post: postViewfinderState } = useBroadcastChannel<{ active: boolean, countdown: number | null }, { active: boolean, countdown: number | null }>({ name: 'airi:stage-selfie-viewfinder' })
 
