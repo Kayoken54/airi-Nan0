@@ -282,6 +282,51 @@ const otherConcepts = computed(() => {
         </p>
       </div>
 
+      <!-- Cast Roster Billboard Centerpiece -->
+      <div class="flex flex-col gap-2">
+        <h4 class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+          Cast Roster
+        </h4>
+        <div class="grid grid-cols-2 gap-3 border-b border-neutral-100 pb-6 lg:grid-cols-6 md:grid-cols-4 sm:grid-cols-3 dark:border-neutral-800/40">
+          <div
+            v-for="char in characters"
+            :key="char.key"
+            class="group relative h-52 w-full flex flex-col justify-end overflow-hidden border rounded-2xl p-3 shadow-sm transition-all duration-300"
+            :class="char.isActive
+              ? 'border-primary-500 ring-2 ring-primary-500/10 scale-100'
+              : 'border-neutral-200 dark:border-neutral-850 opacity-60 scale-95 hover:opacity-85 hover:scale-98'"
+          >
+            <!-- Background Image -->
+            <div class="absolute inset-0 bg-neutral-100 dark:bg-neutral-900">
+              <img
+                v-if="char.avatarUrl"
+                :src="char.avatarUrl"
+                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              >
+              <div v-else class="bg-neutral-150 text-neutral-455 h-full w-full flex items-center justify-center dark:bg-neutral-950 dark:text-neutral-700">
+                <div class="i-solar:user-bold text-4xl" />
+              </div>
+            </div>
+
+            <!-- Dark Vignette for Text Contrast -->
+            <div class="absolute inset-0 from-black/90 via-black/30 to-transparent bg-gradient-to-t" />
+
+            <!-- Active Glow Indicator -->
+            <div
+              v-if="char.isActive"
+              class="absolute right-3 top-3 h-2 w-2 animate-pulse rounded-full bg-primary-500 ring-4 ring-primary-500/30"
+            />
+
+            <!-- Character Name overlay -->
+            <div class="relative z-10 text-center">
+              <span class="line-clamp-1 w-full truncate text-[10px] text-white font-bold tracking-tight drop-shadow-md">
+                {{ char.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Active Concept Stack -->
       <div class="dark:border-neutral-850 border border-neutral-200/60 rounded-2xl bg-neutral-50/50 p-4 dark:bg-neutral-950/20">
         <h4 class="mb-2 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
@@ -420,7 +465,7 @@ const otherConcepts = computed(() => {
             class="flex flex-col overflow-hidden border border-neutral-200/60 rounded-2xl bg-white shadow-sm md:flex-row dark:border-neutral-800 dark:bg-neutral-950/10"
           >
             <!-- Left Thumbnail Column -->
-            <div class="relative aspect-video shrink-0 overflow-hidden border-r border-neutral-100/50 bg-neutral-100 md:aspect-auto md:h-auto md:w-32 dark:border-neutral-900/60 dark:bg-neutral-900">
+            <div class="relative aspect-video shrink-0 overflow-hidden border-r border-neutral-100/50 bg-neutral-100 md:aspect-auto md:w-32 dark:border-neutral-900/60 dark:bg-neutral-900">
               <img
                 v-if="place.thumbnailUrl"
                 :src="place.thumbnailUrl"
@@ -428,14 +473,14 @@ const otherConcepts = computed(() => {
               >
               <div v-else class="h-full w-full flex flex-col items-center justify-center p-3 text-neutral-400 dark:text-neutral-600">
                 <div class="i-solar:gallery-wide-linear mb-1 text-xl" />
-                <span class="text-[7px] font-bold tracking-wider uppercase opacity-60">No Scene Image</span>
+                <span class="text-[7px] text-neutral-400 font-bold tracking-wider uppercase opacity-60">No Scene Image</span>
               </div>
             </div>
 
             <!-- Right Details Area -->
             <div class="min-w-0 flex flex-1 flex-col gap-3 p-4">
               <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 truncate">
+                <div class="min-w-0 flex items-center gap-2 truncate">
                   <span class="truncate text-xs text-neutral-800 font-bold dark:text-neutral-200">{{ place.name }}</span>
                   <span class="truncate text-[9px] text-neutral-400 font-mono opacity-85">&lt;{{ place.key }}&gt;</span>
                 </div>
