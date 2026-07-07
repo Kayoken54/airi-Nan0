@@ -10,9 +10,9 @@ import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, markRaw, ref } from 'vue'
 
-import chat_archives from '../components/chat/chat_archives.vue'
 import chat_characters from '../components/chat/chat_characters.vue'
 import chat_director from '../components/chat/chat_director.vue'
+import chat_lifetime from '../components/chat/chat_lifetime.vue'
 import chat_media from '../components/chat/chat_media.vue'
 // Import Sub-Surfaces
 import chat_messages from '../components/chat/chat_messages.vue'
@@ -75,7 +75,7 @@ const activeSurfaceComponent = computed(() => {
     world: chat_world,
     characters: chat_characters,
     media: chat_media,
-    archives: chat_archives,
+    archives: chat_lifetime,
     notes: chat_notes,
   }
   return markRaw(map[activeSurface.value] || chat_messages)
@@ -599,7 +599,7 @@ function selectSurface(surface: typeof activeSurface.value) {
                 { id: 'world', label: 'World Bible', icon: 'i-solar:notes-bold-duotone' },
                 { id: 'characters', label: 'Characters', icon: 'i-solar:users-group-two-rounded-bold-duotone' },
                 { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
-                { id: 'archives', label: 'Archives', icon: 'i-solar:box-minimalistic-bold-duotone' },
+                { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
                 { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
               ] as const)"
               :key="item.id"
@@ -648,7 +648,7 @@ function selectSurface(surface: typeof activeSurface.value) {
               { id: 'world', label: 'World Bible', icon: 'i-solar:notes-bold-duotone' },
               { id: 'characters', label: 'Characters', icon: 'i-solar:users-group-two-rounded-bold-duotone' },
               { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
-              { id: 'archives', label: 'Archives', icon: 'i-solar:box-minimalistic-bold-duotone' },
+              { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
               { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
             ] as const)"
             :key="item.id"
