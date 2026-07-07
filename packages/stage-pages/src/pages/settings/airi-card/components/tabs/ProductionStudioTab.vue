@@ -3,6 +3,7 @@ import type { AiriCard } from '@proj-airi/stage-ui/stores/modules/airi-card'
 
 import { useAnimaDexWizardStore } from '@proj-airi/stage-ui/stores/animadex-wizard'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
+import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
 import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
@@ -18,6 +19,7 @@ const props = defineProps<{
 
 const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
+const displayModelsStore = useDisplayModelsStore()
 const autonomousArtistryStore = useAutonomousArtistryStore()
 const userProfileStore = useSettingsUserProfile()
 const wizardStore = useAnimaDexWizardStore()
@@ -44,11 +46,8 @@ const mappedCharactersForAutoAssign = computed(() => {
     name = name.replace(/\b\w/g, c => c.toUpperCase())
 
     const prompt = asset.prompt || ''
-    const trigger = prompt.split(',')[0]?.trim() || name
-
-    const catalogEntry = wizardStore.characters.find(
-      (c: any) => c.trigger.toLowerCase() === trigger.toLowerCase(),
-    )
+    const catalogEntry = wizardStore.findCatalogCharacter(prompt)
+    const trigger = catalogEntry ? catalogEntry.trigger : (prompt.split(',')[0]?.trim() || name)
 
     let genderVal
     let traits: number[] = []
@@ -59,7 +58,7 @@ const mappedCharactersForAutoAssign = computed(() => {
 
     result.push({
       id,
-      name,
+      name: catalogEntry ? catalogEntry.name : name,
       trigger,
       tags: prompt.slice(trigger.length).replace(/^[,\s()]+|[,\s()]+$/g, '').trim(),
       traits,
@@ -161,6 +160,23 @@ function handleApplyAutoVoices(payload: Record<string, { baseProvider: string, b
     ...props.card,
     extensions: extension,
   })
+}
+
+function getConceptThumbUrl(asset: any): string | undefined {
+  if (asset.manifestation?.modelId) {
+    const model = displayModelsStore.displayModels.find(m => m.id === asset.manifestation.modelId)
+    if (model?.previewImage) {
+      return model.previewImage
+    }
+  }
+
+  if (asset.prompt) {
+    const match = wizardStore.findCatalogCharacter(asset.prompt)
+    const canonicalTrigger = match ? match.trigger : asset.prompt.split(',')[0]?.trim()
+    return wizardStore.getCharacterThumbUrl(canonicalTrigger) || undefined
+  }
+
+  return undefined
 }
 
 function saveAssets(assets: any) {
@@ -303,59 +319,78 @@ async function toggleConcept(conceptId: string) {
           <div
             v-for="(asset, id) in visualAssets"
             :key="id"
-            class="group cursor-pointer border border-neutral-200 rounded-xl bg-white p-3 transition-all dark:border-neutral-700 hover:border-primary-400 dark:bg-neutral-800/50 dark:hover:border-primary-500/50"
+            class="group flex cursor-pointer gap-3 border border-neutral-200 rounded-xl bg-white p-3 transition-all dark:border-neutral-700 hover:border-primary-400 dark:bg-neutral-800/50 dark:hover:border-primary-500/50"
             :class="activeConcepts.includes(id as string) ? 'ring-2 ring-primary-500 ring-offset-2 dark:ring-offset-neutral-900' : ''"
             @click="toggleConcept(id as string)"
           >
-            <div class="mb-1 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-neutral-700 font-bold transition-colors dark:text-neutral-200 group-hover:text-primary-500">{{ id }}</span>
-                <span
-                  v-if="asset.isBase"
-                  :class="[
-                    'rounded-full px-1.5 py-0.5 text-[9px] font-bold',
-                    'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-                  ]"
-                >BASE</span>
-                <span
-                  v-else
-                  :class="[
-                    'rounded-full px-1.5 py-0.5 text-[9px] font-bold',
-                    'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400',
-                  ]"
-                >LAYER</span>
-                <div
-                  v-if="asset.manifestation && (asset.manifestation.modelId || asset.manifestation.mood || asset.manifestation.backgroundId || asset.manifestation.active_expressions)"
-                  class="i-solar:t-shirt-outline shrink-0 text-sm text-neutral-300"
-                />
-                <div
-                  v-if="(asset as any).speech && (asset as any).speech.voice_id"
-                  class="i-solar:volume-loud-outline shrink-0 text-sm text-neutral-300"
-                />
-              </div>
-              <div class="flex items-center gap-2">
-                <div v-if="activeConcepts.includes(id as string)" class="i-solar:check-circle-bold text-xs text-primary-500" />
-                <button
-                  class="rounded bg-neutral-100 p-1 text-neutral-400 opacity-0 transition-all dark:bg-neutral-800 hover:bg-primary-500 hover:text-white group-hover:opacity-100"
-                  @click.stop="handleEditConcept(id as string, asset)"
-                >
-                  <div class="i-solar:pen-new-square-linear text-[10px]" />
-                </button>
-                <button
-                  class="rounded bg-neutral-100 p-1 text-neutral-400 opacity-0 transition-all dark:bg-neutral-800 hover:bg-red-500 hover:text-white group-hover:opacity-100"
-                  @click.stop="handleDeleteConcept(id as string)"
-                >
-                  <div class="i-solar:trash-bin-trash-linear text-[10px]" />
-                </button>
+            <!-- Left Column: Avatar Image -->
+            <div class="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-900/50">
+              <img
+                v-if="getConceptThumbUrl(asset)"
+                :src="getConceptThumbUrl(asset)"
+                alt=""
+                class="h-full w-full object-cover"
+                loading="lazy"
+              >
+              <div v-else class="h-full w-full flex items-center justify-center text-neutral-400">
+                <div class="i-solar:ghost-bold text-lg" />
               </div>
             </div>
-            <p class="line-clamp-2 text-[10px] text-neutral-500 leading-relaxed">
-              {{ asset.description }}
-            </p>
-            <div class="mt-2 overflow-hidden border-t border-neutral-100 pt-2 dark:border-neutral-700/50">
-              <code class="block truncate text-[9px] text-neutral-400 font-mono italic">
-                {{ asset.prompt }}
-              </code>
+
+            <!-- Right Column: Content Details -->
+            <div class="min-w-0 flex flex-1 flex-col justify-between">
+              <div class="mb-1 flex items-center justify-between gap-2">
+                <div class="min-w-0 flex items-center gap-1.5">
+                  <span class="truncate text-xs text-neutral-700 font-bold transition-colors dark:text-neutral-200 group-hover:text-primary-500" :title="String(id)">
+                    {{ id }}
+                  </span>
+                  <span
+                    v-if="asset.isBase"
+                    :class="[
+                      'rounded-full px-1.5 py-0.5 text-[9px] font-bold shrink-0',
+                      'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+                    ]"
+                  >BASE</span>
+                  <span
+                    v-else
+                    :class="[
+                      'rounded-full px-1.5 py-0.5 text-[9px] font-bold shrink-0',
+                      'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400',
+                    ]"
+                  >LAYER</span>
+                  <div
+                    v-if="asset.manifestation && (asset.manifestation.modelId || asset.manifestation.mood || asset.manifestation.backgroundId || asset.manifestation.active_expressions)"
+                    class="i-solar:t-shirt-outline shrink-0 text-sm text-neutral-300"
+                  />
+                  <div
+                    v-if="(asset as any).speech && (asset as any).speech.voice_id"
+                    class="i-solar:volume-loud-outline shrink-0 text-sm text-neutral-300"
+                  />
+                </div>
+                <div class="flex shrink-0 items-center gap-1.5">
+                  <div v-if="activeConcepts.includes(id as string)" class="i-solar:check-circle-bold text-xs text-primary-500" />
+                  <button
+                    class="rounded bg-neutral-100 p-1 text-neutral-400 opacity-0 transition-all dark:bg-neutral-800 hover:bg-primary-500 hover:text-white group-hover:opacity-100"
+                    @click.stop="handleEditConcept(id as string, asset)"
+                  >
+                    <div class="i-solar:pen-new-square-linear text-[10px]" />
+                  </button>
+                  <button
+                    class="rounded bg-neutral-100 p-1 text-neutral-400 opacity-0 transition-all dark:bg-neutral-800 hover:bg-red-500 hover:text-white group-hover:opacity-100"
+                    @click.stop="handleDeleteConcept(id as string)"
+                  >
+                    <div class="i-solar:trash-bin-trash-linear text-[10px]" />
+                  </button>
+                </div>
+              </div>
+              <p class="line-clamp-2 text-[10px] text-neutral-500 leading-normal">
+                {{ asset.description }}
+              </p>
+              <div class="dark:border-neutral-850/50 mt-1.5 overflow-hidden border-t border-neutral-100/50 pt-1">
+                <code class="block truncate text-[9px] text-neutral-400 font-mono italic">
+                  {{ asset.prompt }}
+                </code>
+              </div>
             </div>
           </div>
         </div>

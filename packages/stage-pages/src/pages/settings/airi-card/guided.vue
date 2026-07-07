@@ -178,13 +178,7 @@ function handleSearchEnter() {
 
 // Thumbnail resolver
 function getThumbUrl(trigger: string) {
-  // Replace invalid filename characters (Windows/OS forbidden characters) with '_'
-  let clean = trigger.replace(/[/\\:*?"<>|]/g, '_')
-  // Strip trailing periods to prevent double periods with extension (e.g. 'inc..webp' -> 'inc.webp')
-  if (clean.endsWith('.')) {
-    clean = clean.slice(0, -1)
-  }
-  return `https://blobs.animadex.net/Outputs/thumbs/${encodeURIComponent(clean)}.webp`
+  return wizardStore.getCharacterThumbUrl(trigger) || ''
 }
 
 // Model Preview & Unbind Helpers

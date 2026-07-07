@@ -264,6 +264,29 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
     })
   })
 
+  function findCatalogCharacter(promptOrText: string | undefined): any | undefined {
+    if (!promptOrText)
+      return undefined
+    const textLower = promptOrText.trim().toLowerCase()
+    return characters.value.find((c) => {
+      const triggerLower = c.trigger.toLowerCase()
+      return textLower === triggerLower || textLower.startsWith(`${triggerLower},`) || textLower.startsWith(`${triggerLower} `)
+    })
+  }
+
+  function getCharacterThumbUrl(canonicalTrigger: string | undefined): string | null {
+    if (!canonicalTrigger)
+      return null
+
+    // Replace invalid filename characters
+    let clean = canonicalTrigger.replace(/[/\\:*?"<>|]/g, '_')
+    if (clean.endsWith('.')) {
+      clean = clean.slice(0, -1)
+    }
+
+    return `https://blobs.animadex.net/Outputs/thumbs/${encodeURIComponent(clean)}.webp`
+  }
+
   return {
     catalogLoaded,
     copyrights,
@@ -291,5 +314,7 @@ export const useAnimaDexWizardStore = defineStore('animadex-wizard', () => {
     resetWizard,
     suggestions,
     filteredCharacters,
+    findCatalogCharacter,
+    getCharacterThumbUrl,
   }
 })

@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
+import { useAnimaDexWizardStore } from '@proj-airi/stage-ui/stores/animadex-wizard'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { electronOpenSettings } from '../../../shared/eventa'
 
 const airiCardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const displayModelsStore = useDisplayModelsStore()
+const wizardStore = useAnimaDexWizardStore()
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
+
+onMounted(async () => {
+  if (wizardStore.characters.length === 0) {
+    await wizardStore.loadCatalog()
+  }
+})
 
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 
@@ -151,7 +159,13 @@ const characters = computed(() => {
       }
 
       const boundModelId = manifestation?.modelId
-      const avatarUrl = getModelPreviewUrl(boundModelId)
+      let avatarUrl = getModelPreviewUrl(boundModelId)
+      if (!avatarUrl) {
+        const rawPrompt = mod.prompt || asset.prompt || ''
+        const match = wizardStore.findCatalogCharacter(rawPrompt)
+        const canonicalTrigger = match ? match.trigger : rawPrompt.split(',')[0]?.trim()
+        avatarUrl = wizardStore.getCharacterThumbUrl(canonicalTrigger) || ''
+      }
 
       list.push({
         key,
@@ -175,7 +189,13 @@ const characters = computed(() => {
     const displayName = (activeCard.value as any).nickname || activeCard.value.name || 'Main Character'
     const mainModelId = cardModules.displayModelId
     const speech = cardModules.speech
-    const avatarUrl = getModelPreviewUrl(mainModelId)
+    let avatarUrl = getModelPreviewUrl(mainModelId)
+    if (!avatarUrl) {
+      const rawPrompt = activeCard.value.systemPrompt || ''
+      const match = wizardStore.findCatalogCharacter(rawPrompt)
+      const canonicalTrigger = match ? match.trigger : rawPrompt.split(',')[0]?.trim()
+      avatarUrl = wizardStore.getCharacterThumbUrl(canonicalTrigger) || ''
+    }
 
     list.push({
       key: 'actor_primary',
@@ -326,7 +346,7 @@ const otherConcepts = computed(() => {
           <div
             v-for="char in characters"
             :key="char.key"
-            class="group relative h-52 w-full flex flex-col justify-end overflow-hidden border rounded-2xl p-3 shadow-sm transition-all duration-300"
+            class="group relative h-64 w-full flex flex-col justify-end overflow-hidden border rounded-2xl p-3 shadow-sm transition-all duration-300"
             :class="char.isActive
               ? 'border-primary-500 ring-2 ring-primary-500/10 scale-100'
               : 'border-neutral-200 dark:border-neutral-850 opacity-60 scale-95 hover:opacity-85 hover:scale-98'"
