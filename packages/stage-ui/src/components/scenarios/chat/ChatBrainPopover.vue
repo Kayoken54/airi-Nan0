@@ -202,13 +202,10 @@ const activeModelDisplay = computed(() => {
       </button>
       <button
         v-else
-        class="max-h-[10lh] min-h-[1lh] flex items-center justify-center rounded-md p-2 outline-none transition-colors transition-transform active:scale-95"
-        bg="neutral-100 dark:neutral-800"
-        text="lg neutral-500 dark:neutral-400"
-        hover:text="primary-500 dark:primary-400"
+        class="flex cursor-pointer items-center justify-center rounded-xl p-1.5 text-neutral-500 transition-colors duration-200 ease-in-out hover:bg-neutral-200 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
         :title="title"
       >
-        <div class="i-ph:brain-duotone" />
+        <div class="i-ph:brain-duotone text-base" />
       </button>
     </PopoverTrigger>
 
