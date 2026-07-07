@@ -256,6 +256,51 @@ const latestTextEntries = computed(() => {
     .slice(0, 15)
 })
 
+const allTextEntries = computed(() => {
+  if (!activeCardId.value)
+    return []
+
+  const manualEntries = textJournalStore.entries
+    .filter(e => e.characterId === activeCardId.value)
+    .map(e => ({
+      id: e.id,
+      type: 'manual' as const,
+      timestamp: e.createdAt,
+      title: e.title,
+      content: e.content,
+      source: e.source,
+    }))
+
+  const autoEntries = shortTermMemory.getCharacterBlocks(activeCardId.value)
+    .map((b) => {
+      const fenceMatch = b.summary.trim().match(/^(?:`{3,}|~{3,})[\w-]*\n?([\s\S]*?)\n?(?:`{3,}|~{3,})$/)
+      const content = fenceMatch ? fenceMatch[1].trim() : b.summary.trim()
+      return {
+        id: b.id,
+        type: 'auto' as const,
+        timestamp: b.updatedAt || b.createdAt,
+        messageCount: b.messageCount,
+        sessionCount: b.sessionCount,
+        estimatedTokens: b.estimatedTokens,
+        title: `Daily Recap — ${b.date}`,
+        content,
+      }
+    })
+
+  const echoEntries = echoesStore.getCharacterChips(activeCardId.value)
+    .map(c => ({
+      id: c.id,
+      type: 'echo' as const,
+      echoType: c.type,
+      timestamp: c.createdAt,
+      title: c.type.charAt(0).toUpperCase() + c.type.slice(1).replace('_', ' '),
+      content: c.content,
+    }))
+
+  return [...manualEntries, ...autoEntries, ...echoEntries]
+    .sort((a, b) => b.timestamp - a.timestamp)
+})
+
 const groupedTextEntries = computed(() => {
   const entries = latestTextEntries.value
   const groups: { type: 'single' | 'echo-group', entry?: any, items?: any[] }[] = []
@@ -790,9 +835,12 @@ defineExpose({
   showSessions,
   openSearchModal,
   handleTrashClick,
+  showJournalModal,
   latestImageEntries,
   allImageEntries,
+  allTextEntries,
   openImagePreview,
+  openTextPreview,
   openImagineDialog: () => {
     showImagineDialog.value = true
     imaginePrompt.value = ''

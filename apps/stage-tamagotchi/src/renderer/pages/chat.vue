@@ -42,6 +42,11 @@ function handleClearMessages() {
   interactiveAreaRef.value?.handleTrashClick()
 }
 
+function handleOpenJournal() {
+  if (interactiveAreaRef.value)
+    interactiveAreaRef.value.showJournalModal = true
+}
+
 const isRightPanelOpen = useLocalStorage('airi:chat:right-panel-open', false)
 const { width } = useWindowSize()
 const showRightPanel = computed(() => isRightPanelOpen.value && width.value >= 768)
@@ -180,6 +185,11 @@ function formatAbbreviatedCount(num: number): string {
   if (num >= 1000)
     return `${(num / 1000).toFixed(1)}K`
   return String(num)
+}
+
+function formatMonthDay(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}/${d.getDate()}`
 }
 </script>
 
@@ -542,6 +552,85 @@ function formatAbbreviatedCount(num: number): string {
 
           <!-- Panel Body -->
           <div class="flex flex-col gap-4 p-4">
+            <!-- Memories Section -->
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Memories</span>
+                <button
+                  class="select-none text-[10px] text-primary-500 font-bold transition-colors hover:text-primary-600"
+                  @click="handleOpenJournal"
+                >
+                  + New
+                </button>
+              </div>
+              <div class="flex flex-col gap-1">
+                <template v-for="entry in (interactiveAreaRef?.allTextEntries ?? [])" :key="entry.id">
+                  <!-- Echo chip -->
+                  <div
+                    v-if="entry.type === 'echo'"
+                    class="h-[26px] w-full flex cursor-pointer items-center gap-2 border rounded-lg px-2 py-1 text-[10px] font-bold leading-none transition-all"
+                    :class="entry.echoType === 'mood'
+                      ? 'border-rose-200/60 bg-rose-50/50 text-rose-600 dark:border-rose-800/60 dark:bg-rose-900/20 dark:text-rose-400'
+                      : entry.echoType === 'flavor'
+                        ? 'border-amber-200/60 bg-amber-50/50 text-amber-600 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-400'
+                        : 'border-indigo-200/60 bg-indigo-50/50 text-indigo-600 dark:border-indigo-800/60 dark:bg-indigo-900/20 dark:text-indigo-400'"
+                    @click="interactiveAreaRef?.openTextPreview?.(entry)"
+                  >
+                    <span class="shrink-0 opacity-70">{{ formatMonthDay(entry.timestamp) }}</span>
+                    <span
+                      :class="entry.echoType === 'mood'
+                        ? 'i-solar:heart-bold-duotone'
+                        : entry.echoType === 'flavor'
+                          ? 'i-solar:tag-bold-duotone'
+                          : 'i-solar:magic-stick-3-bold-duotone'"
+                      class="shrink-0 text-[10px]"
+                    />
+                    <span class="truncate">{{ entry.content }}</span>
+                  </div>
+
+                  <!-- STMM auto entry card -->
+                  <div
+                    v-else-if="entry.type === 'auto'"
+                    class="flex flex-col cursor-pointer gap-1 border border-primary-200/30 rounded-lg bg-primary-50/30 p-2.5 transition-colors dark:border-primary-800/30 hover:border-primary-300 dark:bg-primary-950/20 dark:hover:border-primary-700"
+                    @click="interactiveAreaRef?.openTextPreview?.(entry)"
+                  >
+                    <div class="flex items-center gap-1.5 text-[10px] text-primary-500 font-bold uppercase dark:text-primary-400">
+                      <span>{{ formatMonthDay(entry.timestamp) }}</span>
+                      <span class="i-solar:dna-bold-duotone text-[10px]" />
+                      <span>Daily Summary Block</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[9px] text-neutral-400 font-medium">
+                      <span>{{ entry.messageCount }} messages</span>
+                      <span>·</span>
+                      <span>{{ entry.sessionCount }} sessions</span>
+                      <span v-if="entry.estimatedTokens">·</span>
+                      <span v-if="entry.estimatedTokens">{{ entry.estimatedTokens }} tokens</span>
+                    </div>
+                    <p class="line-clamp-2 text-[10px] text-neutral-600 leading-relaxed dark:text-neutral-400">
+                      {{ entry.content }}
+                    </p>
+                  </div>
+
+                  <!-- Manual journal entry card -->
+                  <div
+                    v-else-if="entry.type === 'manual'"
+                    class="flex flex-col cursor-pointer gap-1 border border-emerald-200/30 rounded-lg bg-emerald-50/30 p-2.5 transition-colors dark:border-emerald-800/30 hover:border-emerald-300 dark:bg-emerald-950/20 dark:hover:border-emerald-700"
+                    @click="interactiveAreaRef?.openTextPreview?.(entry)"
+                  >
+                    <div class="flex items-center gap-1.5 text-[10px] text-emerald-500 font-bold uppercase dark:text-emerald-400">
+                      <span>{{ formatMonthDay(entry.timestamp) }}</span>
+                      <span class="i-solar:notebook-bold-duotone text-[10px]" />
+                      <span>Journal Entry</span>
+                    </div>
+                    <span class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">{{ entry.title }}</span>
+                    <p class="line-clamp-2 text-[10px] text-neutral-500 leading-relaxed dark:text-neutral-400">
+                      {{ entry.content }}
+                    </p>
+                  </div>
+                </template>
+              </div>
+            </div>
+
             <!-- Media Gallery Section -->
             <div class="flex flex-col gap-2">
               <div class="flex items-center justify-between">
