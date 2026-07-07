@@ -1194,7 +1194,7 @@ defineExpose({
         @compositionend="isComposing = false"
         @attach="handleFilePaste"
       />
-      <div class="no-drag absolute right-2.5 top-1/2 z-10 flex select-none items-center gap-2 -translate-y-1/2">
+      <div class="composer-buttons no-drag absolute right-2.5 top-1/2 z-10 flex select-none items-center -translate-y-1/2">
         <!-- Add Media inline button -->
         <ChatImagesPopover
           @attach="fileInput?.click()"
@@ -1442,6 +1442,11 @@ defineExpose({
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Compensate for whitespace/teleport nodes breaking flex gap in composer */
+.composer-buttons > * + * {
+  margin-left: 0.5rem;
 }
 
 .modal-fade-enter-active,
