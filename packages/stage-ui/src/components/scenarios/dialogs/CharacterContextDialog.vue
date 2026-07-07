@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 
-import MarkdownRenderer from '../../markdown/markdown-renderer.vue'
+import CharacterContextView from '../../scenarios/chat/components/CharacterContextView.vue'
 
 interface Props {
   characterName?: string
-  systemPrompt: string
+  characterId?: string
+  systemPrompt?: string
 }
 
 const props = defineProps<Props>()
@@ -30,22 +31,7 @@ const showDialog = defineModel<boolean>({ default: false })
         </div>
 
         <div class="flex-1 overflow-y-auto pr-2 scrollbar-none">
-          <div class="mb-4 border border-primary-200 rounded-xl bg-primary-50/30 p-4 dark:border-primary-900/30 dark:bg-primary-950/20">
-            <p class="text-sm text-primary-700 leading-relaxed dark:text-primary-300">
-              This is your character's context you control this in the settings, if you want to change the way it behaves you change the corresponding field.
-            </p>
-          </div>
-
-          <div class="min-h-[100px] border border-neutral-200 rounded-xl border-dashed bg-neutral-50/50 p-4 dark:border-neutral-800 dark:bg-neutral-950/50">
-            <MarkdownRenderer
-              v-if="systemPrompt"
-              :content="systemPrompt"
-              class="text-sm text-neutral-700 leading-6 dark:text-neutral-300"
-            />
-            <div v-else class="h-32 flex items-center justify-center text-sm text-neutral-400 font-mono italic">
-              &lt; No System Prompt Defined &gt;
-            </div>
-          </div>
+          <CharacterContextView :character-id="characterId" />
         </div>
       </DialogContent>
     </DialogPortal>

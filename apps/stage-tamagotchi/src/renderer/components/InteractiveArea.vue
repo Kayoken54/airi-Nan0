@@ -1229,6 +1229,7 @@ defineExpose({
     <CharacterContextDialog
       v-model="showContext"
       :character-name="characterName"
+      :character-id="activeCardId || undefined"
       :system-prompt="effectiveSystemPrompt"
     />
 
