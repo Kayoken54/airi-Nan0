@@ -10,13 +10,13 @@ import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, markRaw, ref } from 'vue'
 
-import chat_characters from '../components/chat/chat_characters.vue'
 import chat_director from '../components/chat/chat_director.vue'
 import chat_lifetime from '../components/chat/chat_lifetime.vue'
 import chat_media from '../components/chat/chat_media.vue'
 // Import Sub-Surfaces
 import chat_messages from '../components/chat/chat_messages.vue'
 import chat_notes from '../components/chat/chat_notes.vue'
+import chat_studio from '../components/chat/chat_studio.vue'
 import chat_world from '../components/chat/chat_world.vue'
 import WindowTitleBar from '../components/Window/TitleBar.vue'
 
@@ -73,7 +73,7 @@ const activeSurfaceComponent = computed(() => {
     messages: chat_messages,
     director: chat_director,
     world: chat_world,
-    characters: chat_characters,
+    characters: chat_studio,
     media: chat_media,
     archives: chat_lifetime,
     notes: chat_notes,
@@ -597,7 +597,7 @@ function selectSurface(surface: typeof activeSurface.value) {
                 { id: 'messages', label: 'Chat View', icon: 'i-solar:chat-line-bold-duotone' },
                 { id: 'director', label: 'Director\'s Monitor', icon: 'i-solar:videocamera-record-bold-duotone' },
                 { id: 'world', label: 'World Bible', icon: 'i-solar:notes-bold-duotone' },
-                { id: 'characters', label: 'Characters', icon: 'i-solar:users-group-two-rounded-bold-duotone' },
+                { id: 'characters', label: 'Studio', icon: 'i-solar:layers-minimalistic-bold-duotone' },
                 { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
                 { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
                 { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
@@ -646,7 +646,7 @@ function selectSurface(surface: typeof activeSurface.value) {
               { id: 'messages', label: 'Chat View', icon: 'i-solar:chat-line-bold-duotone' },
               { id: 'director', label: 'Director\'s Monitor', icon: 'i-solar:videocamera-record-bold-duotone' },
               { id: 'world', label: 'World Bible', icon: 'i-solar:notes-bold-duotone' },
-              { id: 'characters', label: 'Characters', icon: 'i-solar:users-group-two-rounded-bold-duotone' },
+              { id: 'characters', label: 'Studio', icon: 'i-solar:layers-minimalistic-bold-duotone' },
               { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
               { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
               { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
