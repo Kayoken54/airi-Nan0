@@ -5,6 +5,7 @@ import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-sto
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useLiveSessionStore } from '@proj-airi/stage-ui/stores/modules/live-session'
 import { useSettingsChat } from '@proj-airi/stage-ui/stores/settings'
+import { useLocalStorage, useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, ref } from 'vue'
@@ -40,6 +41,11 @@ function handleSearchMemories() {
 function handleClearMessages() {
   interactiveAreaRef.value?.handleTrashClick()
 }
+
+const isRightPanelOpen = useLocalStorage('airi:chat:right-panel-open', false)
+const { width } = useWindowSize()
+const showRightPanel = computed(() => isRightPanelOpen.value && width.value >= 768)
+const mediaDisplayCount = ref(12)
 
 // --- Grounding toggle helpers ---
 function handleToggleGrounding() {
@@ -492,15 +498,128 @@ function formatAbbreviatedCount(num: number): string {
               </PopoverContent>
             </PopoverPortal>
           </PopoverRoot>
+
+          <!-- Right Context Panel Toggle (md+) -->
+          <button
+            class="cursor-pointer items-center justify-center rounded-xl p-1.5 text-neutral-500 transition-all duration-200 ease-in-out hidden md:inline-flex hover:bg-neutral-200 dark:text-neutral-400 hover:text-neutral-700 hover:dark:bg-neutral-800 dark:hover:text-neutral-200"
+            :class="{ 'text-primary-500 dark:text-primary-400 bg-primary-50/50 dark:bg-primary-950/30': isRightPanelOpen }"
+            :title="isRightPanelOpen ? 'Close context panel' : 'Open context panel'"
+            @click="isRightPanelOpen = !isRightPanelOpen"
+          >
+            <div class="i-solar:sidebar-minimalistic-bold-duotone text-base" />
+          </button>
         </div>
       </div>
     </WindowTitleBar>
-    <InteractiveArea
-      ref="interactiveAreaRef"
-      class="interaction-area block h-full w-full p-4 transition-opacity duration-250"
-    />
+    <div class="flex flex-1 overflow-hidden">
+      <div
+        :class="['flex flex-col overflow-hidden transition-all duration-300 ease-in-out',
+                 showRightPanel ? 'w-9/12 border-r border-neutral-200/50 dark:border-neutral-800/50' : 'w-full']"
+      >
+        <InteractiveArea
+          ref="interactiveAreaRef"
+          class="interaction-area block h-full w-full p-4 transition-opacity duration-250"
+        />
+      </div>
+
+      <!-- Right Context Panel -->
+      <Transition name="slide-right">
+        <div
+          v-if="showRightPanel"
+          class="w-3/12 flex flex-col overflow-y-auto bg-neutral-50/30 dark:bg-neutral-950/30"
+        >
+          <!-- Panel Header -->
+          <div class="flex select-none items-center justify-between border-b border-neutral-200/50 px-4 py-3 dark:border-neutral-800/50">
+            <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Context Panel</span>
+            <button
+              class="rounded-lg p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              title="Close context panel"
+              @click="isRightPanelOpen = false"
+            >
+              <div class="i-solar:close-square-outline text-sm" />
+            </button>
+          </div>
+
+          <!-- Panel Body -->
+          <div class="flex flex-col gap-4 p-4">
+            <!-- Media Gallery Section -->
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] text-neutral-500 font-bold tracking-wider uppercase dark:text-neutral-400">Media Gallery</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="select-none text-[10px] text-primary-500 font-bold transition-colors hover:text-primary-600"
+                    @click="interactiveAreaRef?.openImagineDialog()"
+                  >
+                    + Add
+                  </button>
+                  <button
+                    class="select-none text-[10px] text-neutral-400 font-bold transition-colors hover:text-neutral-600"
+                    @click="interactiveAreaRef?.openBackgroundDialog()"
+                  >
+                    View All
+                  </button>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-1.5">
+                <div
+                  v-for="entry in (interactiveAreaRef?.allImageEntries ?? []).slice(0, mediaDisplayCount)"
+                  :key="entry.id"
+                  :class="[
+                    'group relative aspect-square cursor-pointer overflow-hidden rounded-lg',
+                    'border border-neutral-200/60 transition-all hover:border-primary-400',
+                    'dark:border-neutral-800/60 dark:hover:border-primary-500',
+                    'bg-neutral-200/50 dark:bg-neutral-800/50',
+                  ]"
+                  @click="interactiveAreaRef?.openImagePreview?.(entry)"
+                >
+                  <img
+                    v-if="entry.url"
+                    :src="entry.url"
+                    class="h-full w-full object-cover"
+                  >
+                  <!-- Placeholder square when no url -->
+                  <div v-else class="h-full w-full" />
+                  <!-- Hover overlay -->
+                  <div class="absolute inset-0 flex items-end from-black/50 to-transparent bg-gradient-to-t p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <span class="truncate text-[8px] text-white font-medium leading-tight">{{ entry.title }}</span>
+                  </div>
+                </div>
+                <!-- Fill remaining slots with placeholders -->
+                <div
+                  v-for="n in Math.max(0, mediaDisplayCount - (interactiveAreaRef?.allImageEntries?.length ?? 0))"
+                  :key="`fill-${n}`"
+                  class="aspect-square border border-neutral-200/60 rounded-lg bg-neutral-100/50 dark:border-neutral-800/60 dark:bg-neutral-800/30"
+                />
+              </div>
+
+              <!-- View More -->
+              <button
+                class="w-full flex items-center justify-center gap-1.5 border border-neutral-200/60 rounded-xl bg-neutral-50/50 py-2 text-[10px] text-neutral-500 font-bold tracking-wider uppercase transition-all dark:border-neutral-800/60 hover:border-primary-200 dark:bg-neutral-950/50 dark:text-neutral-400 hover:text-primary-500 dark:hover:border-primary-800 dark:hover:text-primary-400"
+                @click="mediaDisplayCount += 12"
+              >
+                View More
+                <span class="i-solar:alt-arrow-down-bold text-[8px]" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-right-enter-from,
+.slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(1rem);
+}
+</style>
 
 <route lang="yaml">
 meta:

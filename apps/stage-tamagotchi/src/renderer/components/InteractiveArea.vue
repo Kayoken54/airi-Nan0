@@ -287,6 +287,12 @@ const latestImageEntries = computed(() => {
   return backgroundStore.journalEntries.slice(0, 15)
 })
 
+const allImageEntries = computed(() => {
+  if (!activeCardId.value)
+    return []
+  return backgroundStore.journalEntries
+})
+
 // --- Date Formatting ---
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('en-CA') // YYYY-MM-DD
@@ -784,6 +790,16 @@ defineExpose({
   showSessions,
   openSearchModal,
   handleTrashClick,
+  latestImageEntries,
+  allImageEntries,
+  openImagePreview,
+  openImagineDialog: () => {
+    showImagineDialog.value = true
+    imaginePrompt.value = ''
+  },
+  openBackgroundDialog: () => {
+    stageBackgroundDialogOpen.value = true
+  },
 })
 </script>
 
