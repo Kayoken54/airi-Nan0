@@ -1203,7 +1203,12 @@ defineExpose({
 
         <!-- Suggest Response (Producer Sparkle) Inline Button -->
         <button
-          class="ml-1 h-8 w-8 flex items-center justify-center rounded-xl bg-neutral-200/20 text-neutral-500 transition-all duration-200 active:scale-95 dark:bg-neutral-800/20 hover:bg-neutral-200/40 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-200"
+          class="ml-1 h-8 w-8 flex items-center justify-center rounded-xl transition-all duration-250 active:scale-95 hover:bg-neutral-200/40 hover:text-neutral-700 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-200"
+          :class="[
+            messageInput.trim()
+              ? 'bg-primary-500/15 text-primary-500 shadow-[0_0_12px_rgba(168,85,247,0.2)] dark:bg-primary-500/20 dark:text-primary-400'
+              : 'bg-neutral-200/20 text-neutral-500 dark:bg-neutral-800/20 dark:text-neutral-400',
+          ]"
           title="Suggest responses"
           @click="handleQuickSuggest"
         >
@@ -1212,7 +1217,12 @@ defineExpose({
 
         <!-- Send / Greet Inline Button -->
         <button
-          class="ml-2.5 h-8 w-8 flex items-center justify-center rounded-xl bg-primary-600 text-white transition-all duration-200 active:scale-95 dark:bg-primary-500 hover:bg-primary-700 dark:hover:bg-primary-600"
+          class="ml-2.5 h-8 w-8 flex items-center justify-center rounded-xl bg-primary-600 text-white transition-all duration-250 active:scale-95 dark:bg-primary-500 hover:bg-primary-700 dark:hover:bg-primary-600"
+          :class="[
+            messageInput.trim()
+              ? 'shadow-lg shadow-primary-500/35 scale-[1.03]'
+              : 'opacity-90',
+          ]"
           :title="isGreetMode ? 'Greet' : 'Send Message'"
           @click="handleSend"
         >
