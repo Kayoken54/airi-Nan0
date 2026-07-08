@@ -278,6 +278,29 @@ const isAutonomousArtistryEnabled = computed(() => {
   return cardStore.activeCard?.extensions?.airi?.artistry?.autonomousEnabled ?? false
 })
 
+const drawingStartedAt = ref<number>(0)
+const drawingElapsed = ref<number>(0)
+const showFinished = ref(false)
+const finishedTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+
+watch(isArtistryProcessing, (now, was) => {
+  if (now && !was) {
+    drawingStartedAt.value = Date.now()
+    showFinished.value = false
+    if (finishedTimeout.value) {
+      clearTimeout(finishedTimeout.value)
+      finishedTimeout.value = null
+    }
+  }
+  else if (!now && was) {
+    drawingElapsed.value = (Date.now() - drawingStartedAt.value) / 1000
+    showFinished.value = true
+    finishedTimeout.value = setTimeout(() => {
+      showFinished.value = false
+    }, 30_000)
+  }
+})
+
 const { generateSuggestions } = useProducer()
 const { post: postCaption } = useBroadcastChannel<any, any>({ name: 'airi-caption-overlay' })
 
@@ -618,11 +641,14 @@ onBeforeUnmount(() => {
         leave-to-class="opacity-0"
       >
         <div
-          v-if="isAutonomousArtistryEnabled && isArtistryProcessing"
+          v-if="isAutonomousArtistryEnabled && (isArtistryProcessing || showFinished)"
           class="pointer-events-none absolute left-2.5 top-2.5 z-50 flex items-center gap-1.5 border border-neutral-200/50 rounded-lg bg-white/80 p-1.5 shadow-sm backdrop-blur-md dark:border-neutral-800/40 dark:bg-neutral-900/70"
         >
-          <div class="i-ph:paint-brush-broad-duotone size-3.5 animate-pulse text-primary-500" />
-          <span class="select-none pr-0.5 text-[9px] text-neutral-800 font-bold tracking-wider uppercase dark:text-neutral-200">Drawing</span>
+          <div v-if="isArtistryProcessing" class="i-ph:paint-brush-broad-duotone size-3.5 animate-pulse text-primary-500" />
+          <div v-else class="i-ph:check-circle-duotone size-3.5 text-emerald-500" />
+          <span class="select-none pr-0.5 text-[9px] text-neutral-800 font-bold tracking-wider uppercase dark:text-neutral-200">
+            {{ isArtistryProcessing ? 'Drawing' : `Done in ${drawingElapsed.toFixed(1)}s` }}
+          </span>
         </div>
       </Transition>
 
