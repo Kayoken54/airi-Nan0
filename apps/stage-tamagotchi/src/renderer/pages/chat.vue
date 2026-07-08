@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { estimateTokens, formatTokenCount } from '@proj-airi/stage-shared'
 import { ChatBrainPopover, ChatMemoryPopover } from '@proj-airi/stage-ui/components'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
@@ -21,6 +22,8 @@ import chat_studio from '../components/chat/chat_studio.vue'
 import chat_world from '../components/chat/chat_world.vue'
 import WindowTitleBar from '../components/Window/TitleBar.vue'
 
+import { electronApplySizePreset } from '../../shared/eventa'
+
 // Active Surface Ref
 const activeSurfaceRef = ref<any>(null)
 // Extract the nested interactiveAreaRef from activeSurfaceRef if available
@@ -30,6 +33,14 @@ const chatSessionStore = useChatSessionStore()
 const airiCardStore = useAiriCardStore()
 const liveSessionStore = useLiveSessionStore()
 const settingsChat = useSettingsChat()
+
+const applySizePreset = useElectronEventaInvoke(electronApplySizePreset)
+const isSettingsOpen = ref(false)
+
+function handleApplyChatPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
+  applySizePreset({ target: 'chat', preset })
+  isSettingsOpen.value = false
+}
 
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { activeSessionId, sessionMetas, messages } = storeToRefs(chatSessionStore)
@@ -338,7 +349,7 @@ function selectSurface(surface: typeof activeSurface.value) {
           <ChatBrainPopover side="bottom" />
 
           <!-- Settings Ellipsis Menu (Send Mode + Grounding Modes) -->
-          <PopoverRoot>
+          <PopoverRoot v-model:open="isSettingsOpen">
             <PopoverTrigger as-child>
               <button
                 class="flex cursor-pointer items-center justify-center rounded-xl p-1.5 text-neutral-500 transition-all duration-200 ease-in-out hover:bg-neutral-200 dark:text-neutral-400 hover:text-neutral-700 hover:dark:bg-neutral-800 dark:hover:text-neutral-200"
@@ -358,20 +369,36 @@ function selectSurface(surface: typeof activeSurface.value) {
                 <div class="select-none px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
                   Send Key Mode
                 </div>
-                <button
-                  v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
-                  :key="mode"
-                  :class="[
-                    'px-3 py-2 text-xs font-semibold rounded-xl transition-all text-left flex items-center justify-between gap-4 w-full',
-                    settingsChat.sendMode === mode
-                      ? 'bg-primary-50/50 text-primary-600 dark:bg-primary-950/30 dark:text-primary-400'
-                      : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
-                  ]"
-                  @click="settingsChat.sendMode = mode"
-                >
-                  <span>{{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl + Enter' : 'Double Enter' }}</span>
-                  <div v-if="settingsChat.sendMode === mode" class="i-solar:check-circle-bold text-sm" />
-                </button>
+                <div class="mx-2 mb-1.5 flex gap-0.5 rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-900">
+                  <button
+                    v-for="mode in (['enter', 'ctrl-enter', 'double-enter'] as const)"
+                    :key="mode"
+                    :class="[
+                      'flex-1 py-1 text-[10px] font-bold rounded-md transition-all text-center whitespace-nowrap',
+                      settingsChat.sendMode === mode
+                        ? 'bg-white dark:bg-neutral-800 text-primary-600 dark:text-primary-400 shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+                    ]"
+                    @click="settingsChat.sendMode = mode"
+                  >
+                    {{ mode === 'enter' ? 'Enter' : mode === 'ctrl-enter' ? 'Ctrl+Enter' : 'Double' }}
+                  </button>
+                </div>
+
+                <!-- Section: Chat Layout -->
+                <div class="select-none px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                  Chat Layout
+                </div>
+                <div class="mx-2 mb-1.5 flex border border-neutral-200/20 rounded-lg bg-neutral-100 p-0.5 divide-x divide-neutral-200/50 dark:border-neutral-800/30 dark:bg-neutral-900 dark:divide-neutral-800/80">
+                  <button
+                    v-for="preset in (['mini', 'medium', 'large', 'full'] as const)"
+                    :key="preset"
+                    class="flex-1 cursor-pointer rounded-md py-1 text-center text-[10px] text-neutral-600 font-bold transition-all active:scale-95 hover:bg-white/45 dark:text-neutral-400 hover:text-sky-500 dark:hover:bg-neutral-800/40 dark:hover:text-sky-400"
+                    @click="handleApplyChatPreset(preset)"
+                  >
+                    {{ preset === 'medium' ? 'Med.' : preset.charAt(0).toUpperCase() + preset.slice(1) }}
+                  </button>
+                </div>
 
                 <!-- Section Divider -->
                 <div class="mx-2 my-1 border-t border-neutral-200/60 dark:border-neutral-800" />

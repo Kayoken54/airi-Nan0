@@ -1646,7 +1646,7 @@ function getShortLabel(btnId: string): string {
         <!-- CHAT PRESETS POPOVER -->
         <div v-if="activePopover === 'chat-preset'" class="flex flex-col gap-2">
           <div class="flex items-center justify-between border-b border-neutral-200 pb-1.5 dark:border-neutral-800">
-            <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Chat Size Presets</span>
+            <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Chat Layout</span>
             <button class="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" @click="activePopover = null">
               <span class="i-solar:close-circle-outline text-lg" />
             </button>
@@ -1672,16 +1672,15 @@ function getShortLabel(btnId: string): string {
             </div>
           </div>
 
-          <!-- Size Presets horizontal compact list -->
-          <div class="grid grid-cols-4 gap-1.5 py-1">
+          <!-- Size Presets Stateless Action Strip -->
+          <div class="mx-0.5 my-1 flex border border-neutral-200/20 rounded-xl bg-neutral-200/40 p-0.5 divide-x divide-neutral-200/50 dark:border-neutral-800/30 dark:bg-neutral-900/60 dark:divide-neutral-800/80">
             <button
               v-for="p in PRESETS"
               :key="p.name"
-              class="flex flex-col cursor-pointer items-center justify-center gap-1.5 border border-neutral-200/50 rounded-xl bg-neutral-50/50 px-1 py-2.5 text-[11px] text-neutral-700 font-semibold transition-all duration-200 active:scale-95 dark:border-neutral-800/20 hover:border-sky-400/50 dark:bg-neutral-800/40 hover:bg-sky-500/10 dark:text-neutral-300 hover:text-sky-600 dark:hover:bg-sky-500/20 dark:hover:text-sky-300"
+              class="flex-1 cursor-pointer rounded-lg py-1.5 text-center text-[10px] text-neutral-600 font-bold transition-all active:scale-95 hover:bg-white/40 dark:text-neutral-400 hover:text-sky-500 dark:hover:bg-neutral-800/40 dark:hover:text-sky-400"
               @click="applySizePreset('chat', p.name, selectedAlignment)"
             >
-              <span :class="[p.icon, 'text-lg']" />
-              <span class="text-[10px]">{{ p.label }}</span>
+              {{ p.label === 'Medium' ? 'Med.' : p.label }}
             </button>
           </div>
 
