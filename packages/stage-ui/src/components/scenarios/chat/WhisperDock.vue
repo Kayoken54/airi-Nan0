@@ -52,7 +52,7 @@ const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
 
 const characterName = computed(() => activeCard.value?.name ?? 'AIRI')
 
-defineExpose({ isOpen, inputText })
+defineExpose({ isOpen, inputText, send })
 
 watch(() => props.open, (val) => {
   if (val !== undefined && val !== isOpen.value) {

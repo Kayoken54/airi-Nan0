@@ -19,7 +19,7 @@ import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user
 import { Button } from '@proj-airi/ui'
 import { refDebounced, useBroadcastChannel, useLocalStorage, useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 import { electron, electronStartDraggingWindow } from '../../shared/eventa'
@@ -474,6 +474,15 @@ function handleSelectSuggestion(messageText: string) {
   }
 }
 
+async function handleSendSuggestion(messageText: string) {
+  if (whisperDockRef.value) {
+    whisperDockRef.value.inputText = messageText
+    await nextTick()
+    await whisperDockRef.value.send()
+    handleClearSuggestions()
+  }
+}
+
 function toggleSpeechPreview(idx: number, messageText: string) {
   if (activePlayingIndex.value === idx) {
     stopActiveAudio()
@@ -664,8 +673,17 @@ onBeforeUnmount(() => {
                   <span class="truncate text-xs font-medium">{{ choice.title }}</span>
                 </div>
 
-                <!-- Right: Indicator if selected -->
-                <div v-if="whisperDockRef?.inputText === choice.message" class="i-solar:check-circle-bold flex-shrink-0 text-xs text-primary-400" />
+                <!-- Right: Actions (Check indicator + Send instantly button) -->
+                <div class="flex flex-shrink-0 items-center gap-1.5">
+                  <div v-if="whisperDockRef?.inputText === choice.message" class="i-solar:check-circle-bold text-xs text-primary-400" />
+                  <button
+                    class="animate-in fade-in size-5 flex cursor-pointer items-center justify-center rounded-md text-neutral-400 transition-all duration-200 hover:bg-primary-500/20 hover:text-primary-500"
+                    title="Send suggestion instantly"
+                    @click.stop="handleSendSuggestion(choice.message)"
+                  >
+                    <div class="i-ph:paper-plane-tilt-fill size-3" />
+                  </button>
+                </div>
               </button>
             </div>
           </div>
