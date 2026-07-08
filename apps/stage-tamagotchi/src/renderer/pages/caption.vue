@@ -21,13 +21,18 @@ const shouldFadeOnCursorWithin = computed(() => !isOutsideWindowFor250Ms.value)
 const dragHandleRef = ref<HTMLElement | null>(null)
 const { isOutside: isOutsideDragHandle } = useElectronMouseInElement(dragHandleRef)
 
-watch(isOutsideDragHandle, (outside) => {
-  console.log('[Caption] drag handle hover outside changed:', outside)
-  setIgnoreMouseEvents([outside, { forward: true }])
+const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 15 })
+const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
+
+const isInteractiveArea = computed(() => {
+  return !isOutsideDragHandle.value || isAroundWindowBorder.value
 })
 
-const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 30 })
-const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
+watch(isInteractiveArea, (interactive) => {
+  const ignore = !interactive
+  console.log('[Caption] setIgnoreMouseEvents:', ignore)
+  setIgnoreMouseEvents([ignore, { forward: true }])
+}, { immediate: true })
 
 const context = useElectronEventaContext()
 const getAttached = defineInvoke(context.value, captionGetIsFollowingWindow)
