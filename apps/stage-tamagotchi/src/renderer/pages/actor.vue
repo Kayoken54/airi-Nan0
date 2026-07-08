@@ -22,8 +22,14 @@ import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
-import { electron, electronStartDraggingWindow } from '../../shared/eventa'
+import { electron, electronStageToggleVisibility, electronStartDraggingWindow } from '../../shared/eventa'
 import { useWindowStore } from '../stores/window'
+
+const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
+
+function handleHideStage() {
+  toggleStageVisibility(false)
+}
 
 const backgroundStore = useBackgroundStore()
 const { activeBackgroundUrl } = storeToRefs(backgroundStore)
@@ -592,22 +598,33 @@ onBeforeUnmount(() => {
         </div>
       </Transition>
 
-      <!-- Floating Window Drag Control (Fades on hover) -->
+      <!-- Floating Window Drag & Visibility Controls (Fades on hover) -->
       <div
         ref="dragHandleRef"
         :class="[
-          'pointer-events-auto absolute right-4 top-4 z-50 transition-opacity duration-300 ease-in-out',
+          'pointer-events-auto absolute right-2.5 top-2.5 z-50 transition-opacity duration-300 ease-in-out',
           showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         ]"
       >
-        <button
-          class="w-fit flex cursor-pointer items-center self-end justify-center border-2 border-neutral-200/60 rounded-xl border-solid bg-neutral-50/80 p-2 backdrop-blur-md transition-all transition-duration-300 transition-ease-out active:scale-95 dark:border-neutral-800/10 dark:bg-neutral-800/70 hover:transition-none"
-          title="Drag to Reposition Stage"
-          @mousedown="startDraggingWindow"
-          @touchstart="onDragStartTouch"
-        >
-          <div class="i-ph:arrows-out-cardinal size-5 text-neutral-800 dark:text-neutral-300" />
-        </button>
+        <div class="flex items-center gap-0.5 border border-neutral-200/50 rounded-lg bg-white/80 p-0.5 shadow-sm backdrop-blur-md dark:border-neutral-800/40 dark:bg-neutral-900/70">
+          <!-- Drag Handle Button -->
+          <button
+            class="text-neutral-850 size-6 flex cursor-pointer items-center justify-center rounded-md transition-all duration-200 active:scale-95 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-neutral-700/60"
+            title="Drag to Reposition Stage"
+            @mousedown="startDraggingWindow"
+            @touchstart="onDragStartTouch"
+          >
+            <div class="i-ph:arrows-out-cardinal size-3.5" />
+          </button>
+          <!-- Quick Hide Button -->
+          <button
+            class="text-neutral-850 size-6 flex cursor-pointer items-center justify-center rounded-md transition-all duration-200 active:scale-95 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-neutral-700/60"
+            title="Hide Stage"
+            @click="handleHideStage"
+          >
+            <div class="i-ph:eye-slash size-3.5" />
+          </button>
+        </div>
       </div>
 
       <!-- Suggestions Floating Overlay -->
