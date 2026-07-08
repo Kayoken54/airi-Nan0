@@ -37,6 +37,18 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
   const isProcessing = ref(false)
   const directorNotes = ref<DirectorNote[]>([])
 
+  const { post: broadcastProcessingState, data: incomingProcessingState } = useBroadcastChannel<{ isProcessing: boolean }, { isProcessing: boolean }>({ name: 'airi:artistry-processing-state' })
+
+  watch(isProcessing, (val) => {
+    broadcastProcessingState({ isProcessing: val })
+  })
+
+  watch(incomingProcessingState, (event) => {
+    if (event && typeof event.isProcessing === 'boolean') {
+      isProcessing.value = event.isProcessing
+    }
+  })
+
   type DirectorNotesSyncEvent
     = | { type: 'director-note-added', sessionId: string, note: DirectorNote }
       | { type: 'director-note-updated', sessionId: string, noteId: string, updates: Partial<DirectorNote> }
