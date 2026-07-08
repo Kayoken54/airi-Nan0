@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
@@ -16,12 +18,30 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'spawn-standalone', id: string): void
   (e: 'update:open', val: boolean): void
+  (e: 'get-suggestions', input: string): void
+  (e: 'clear-suggestions'): void
 }>()
 
 const isOpen = ref(props.open ?? false)
 const inputText = ref('')
 const inputRef = ref<HTMLInputElement>()
 const isSending = ref(false)
+
+const suggestionCount = useLocalStorage('airi:producer:suggestion-count', 4)
+const isWandMenuOpen = ref(false)
+
+function handleWandClick() {
+  emit('get-suggestions', inputText.value)
+}
+
+function handleWandRightClick() {
+  isWandMenuOpen.value = true
+}
+
+function setSuggestionCount(count: number) {
+  suggestionCount.value = count
+  isWandMenuOpen.value = false
+}
 
 const cardStore = useAiriCardStore()
 const consciousnessStore = useConsciousnessStore()
@@ -32,7 +52,7 @@ const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
 
 const characterName = computed(() => activeCard.value?.name ?? 'AIRI')
 
-defineExpose({ isOpen })
+defineExpose({ isOpen, inputText })
 
 watch(() => props.open, (val) => {
   if (val !== undefined && val !== isOpen.value) {
@@ -61,6 +81,7 @@ function dismiss() {
   isOpen.value = false
   inputText.value = ''
   isSending.value = false
+  emit('clear-suggestions')
 }
 
 async function send() {
@@ -243,6 +264,51 @@ function handleKeydown(e: KeyboardEvent) {
           ]"
         />
       </Transition>
+
+      <!-- Magic Wand Button with Right-Click Popover -->
+      <PopoverRoot v-model:open="isWandMenuOpen">
+        <PopoverTrigger as-child>
+          <button
+            :class="[
+              'size-7 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer border border-transparent',
+              inputText.trim()
+                ? 'text-primary-500 bg-primary-500/10 shadow-[0_0_12px_rgba(139,92,246,0.3)] border-primary-500/30'
+                : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-600 dark:hover:text-neutral-200',
+            ]"
+            title="Get suggestions (Left-click triggers, Right-click settings)"
+            @click="handleWandClick"
+            @contextmenu.prevent="handleWandRightClick"
+          >
+            <div class="i-solar:magic-stick-3-bold-duotone size-4.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverPortal>
+          <PopoverContent
+            side="top"
+            align="center"
+            :side-offset="8"
+            class="animate-in fade-in slide-in-from-bottom-1 z-[10000] w-36 flex flex-col border border-neutral-200/60 rounded-xl bg-white/95 p-1.5 shadow-xl backdrop-blur-xl duration-150 dark:border-neutral-800 dark:bg-neutral-950/95"
+          >
+            <div class="select-none px-2 py-1 text-[9px] text-neutral-400 font-bold tracking-wider uppercase">
+              Suggestions
+            </div>
+            <button
+              v-for="count in [2, 3, 4]"
+              :key="count"
+              :class="[
+                'px-2 py-1 text-[10px] font-semibold rounded-lg transition-all text-left flex items-center justify-between w-full cursor-pointer',
+                suggestionCount === count
+                  ? 'bg-primary-50/50 text-primary-600 dark:bg-primary-950/30 dark:text-primary-400 font-bold'
+                  : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
+              ]"
+              @click="setSuggestionCount(count)"
+            >
+              <span>{{ count }} Options</span>
+              <div v-if="suggestionCount === count" class="i-solar:check-circle-bold text-xs" />
+            </button>
+          </PopoverContent>
+        </PopoverPortal>
+      </PopoverRoot>
 
       <!-- Exit/Close Button -->
       <button
