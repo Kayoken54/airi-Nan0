@@ -262,6 +262,8 @@ const isGeneratingSuggestions = ref(false)
 
 const suggestionCount = useLocalStorage('airi:producer:suggestion-count', 4)
 const cacheAligned = useLocalStorage('airi:producer:cache-aligned', false)
+const contextDepth = useLocalStorage('airi:producer:context-depth', 6)
+const shortReplies = useLocalStorage('airi:producer:short-replies', true)
 
 const cardStore = useAiriCardStore()
 const chatSessionStore = useChatSessionStore()
@@ -453,9 +455,9 @@ async function handleGetSuggestions(guidance: string) {
       characterName: characterNameVal,
       messages: messagesVal as any,
       guidance: guidance ? guidance.trim() : undefined,
-      contextDepth: cacheAligned.value ? 100 : 6,
+      contextDepth: cacheAligned.value ? messagesVal.length : contextDepth.value,
       count: suggestionCount.value,
-      shortReplies: true,
+      shortReplies: shortReplies.value,
     })
 
     actorSuggestions.value = choices.map(c => ({
