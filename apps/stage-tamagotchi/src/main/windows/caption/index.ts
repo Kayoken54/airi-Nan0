@@ -249,22 +249,74 @@ export function setupCaptionWindowManager(params: {
     if (!winHeight || isNaN(winHeight) || winHeight <= 0)
       winHeight = 180
 
+    let targetDisplay: Electron.Display | undefined
+    try {
+      targetDisplay = screen.getDisplayMatching(main)
+    }
+    catch (e) {
+      targetDisplay = screen.getPrimaryDisplay()
+    }
+    const workArea = (targetDisplay || screen.getPrimaryDisplay()).workArea
+
+    const maxHeight = 240
+    const dockInsideThreshold = 30
+    const insideHeight = 80
+
     if (dock === 'bottom') {
-      return {
-        x: mainX,
-        y: Math.round(mainY + mainHeight), // Flush with bottom of Stage
-        width: mainWidth,
-        height: 300,
+      const spaceBottom = workArea.height - (mainY + mainHeight - workArea.y)
+      if (spaceBottom >= maxHeight) {
+        return {
+          x: mainX,
+          y: Math.round(mainY + mainHeight),
+          width: mainWidth,
+          height: maxHeight,
+        }
+      }
+      else if (spaceBottom >= dockInsideThreshold) {
+        return {
+          x: mainX,
+          y: Math.round(mainY + mainHeight),
+          width: mainWidth,
+          height: Math.round(spaceBottom),
+        }
+      }
+      else {
+        // Dock Inside Bottom
+        return {
+          x: mainX,
+          y: Math.round(mainY + mainHeight - insideHeight),
+          width: mainWidth,
+          height: insideHeight,
+        }
       }
     }
 
     if (dock === 'top') {
-      const topHeight = 240
-      return {
-        x: mainX,
-        y: Math.round(mainY - topHeight), // Flush with top of Stage
-        width: mainWidth,
-        height: topHeight,
+      const spaceTop = mainY - workArea.y
+      if (spaceTop >= maxHeight) {
+        return {
+          x: mainX,
+          y: Math.round(mainY - maxHeight),
+          width: mainWidth,
+          height: maxHeight,
+        }
+      }
+      else if (spaceTop >= dockInsideThreshold) {
+        return {
+          x: mainX,
+          y: Math.round(workArea.y),
+          width: mainWidth,
+          height: Math.round(spaceTop),
+        }
+      }
+      else {
+        // Dock Inside Top
+        return {
+          x: mainX,
+          y: mainY,
+          width: mainWidth,
+          height: insideHeight,
+        }
       }
     }
 
