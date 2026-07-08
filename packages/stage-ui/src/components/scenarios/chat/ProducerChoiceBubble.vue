@@ -3,8 +3,8 @@ import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettingsUserProfile } from '@proj-airi/stage-ui/stores/settings/user-profile'
-import { useLocalStorage } from '@vueuse/core'
-import { onUnmounted, ref, watch } from 'vue'
+import { useBroadcastChannel, useLocalStorage } from '@vueuse/core'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
 interface Choice {
@@ -31,6 +31,33 @@ const providersStore = useProvidersStore()
 const chatOrchestratorStore = useChatOrchestratorStore()
 const suggestionCount = useLocalStorage('airi:producer:suggestion-count', 4)
 
+const { post } = useBroadcastChannel<any, any>({ name: 'airi-caption-overlay' })
+
+function showCaption(text: string) {
+  console.log('[CaptionDebug] [Chatbox] showCaption called with text:', text)
+  try {
+    post({ type: 'caption-speaker', text: 'User' })
+    post({
+      type: 'caption-assistant',
+      segments: [{ text, color: '#818cf8', actorId: 'user', isActive: true }],
+    })
+  }
+  catch (e) {
+    console.warn('[CaptionDebug] [Chatbox] Failed to post caption:', e)
+  }
+}
+
+function clearCaption() {
+  console.log('[CaptionDebug] [Chatbox] clearCaption called')
+  try {
+    post({ type: 'caption-speaker', text: '' })
+    post({ type: 'caption-assistant', segments: [] })
+  }
+  catch (e) {
+    console.warn('[CaptionDebug] [Chatbox] Failed to clear caption:', e)
+  }
+}
+
 // Tracks which card index is currently loading TTS audio
 const loadingIndex = ref<number | null>(null)
 // Tracks which card index is currently playing audio
@@ -39,8 +66,11 @@ const activePlayingIndex = ref<number | null>(null)
 const activeAudio = ref<HTMLAudioElement | null>(null)
 // True while "Play All" is actively sequencing through choices
 const isPlayingAll = ref(false)
+// Holds session identifier for the active sentence-by-sentence play loop
+const currentPlaybackSession = ref<any>(null)
 
 function stopActiveAudio() {
+  currentPlaybackSession.value = null
   if (activeAudio.value) {
     activeAudio.value.pause()
     activeAudio.value.currentTime = 0
@@ -48,6 +78,7 @@ function stopActiveAudio() {
   }
   activePlayingIndex.value = null
   loadingIndex.value = null
+  clearCaption()
 }
 
 async function playChoiceSpeech(idx: number, text: string) {
@@ -75,28 +106,73 @@ async function playChoiceSpeech(idx: number, text: string) {
     if (!provider) {
       throw new Error('Virtual Audio Studio provider is not active.')
     }
-    const audioData = await speechStore.speech(
-      provider as any,
-      'virtual',
-      text,
-      voiceId,
+
+    // Split text into sentences using lookbehind for punctuation boundaries (. ! ?)
+    const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean)
+
+    // Synthesize speech concurrently for each sentence
+    const audioItems = await Promise.all(
+      sentences.map(async (sentence) => {
+        const audioData = await speechStore.speech(
+          provider as any,
+          'virtual',
+          sentence,
+          voiceId,
+        )
+        const audioUrl = URL.createObjectURL(new Blob([audioData]))
+        return {
+          text: sentence,
+          audio: new Audio(audioUrl),
+        }
+      }),
     )
+
     // Guard: user may have cancelled while we were fetching
     if (loadingIndex.value !== idx)
       return
 
-    const audioUrl = URL.createObjectURL(new Blob([audioData]))
-    const audio = new Audio(audioUrl)
-    audio.addEventListener('ended', () => {
-      if (activePlayingIndex.value === idx) {
-        activePlayingIndex.value = null
-        activeAudio.value = null
-      }
-    })
-    activeAudio.value = audio
     loadingIndex.value = null
-    activePlayingIndex.value = idx
-    audio.play()
+
+    // Create a new playback session token
+    const sessionToken = Symbol('playback-session')
+    currentPlaybackSession.value = sessionToken
+
+    // Play each sentence in sequence
+    for (let i = 0; i < audioItems.length; i++) {
+      if (currentPlaybackSession.value !== sessionToken)
+        break
+
+      const item = audioItems[i]
+      activeAudio.value = item.audio
+      activePlayingIndex.value = idx
+
+      showCaption(item.text)
+      item.audio.play()
+
+      // Wait for ended, pause, or error to progress or terminate
+      await new Promise<void>((resolve) => {
+        const cleanup = () => {
+          item.audio.removeEventListener('ended', onDone)
+          item.audio.removeEventListener('pause', onDone)
+          item.audio.removeEventListener('error', onDone)
+        }
+        const onDone = () => {
+          cleanup()
+          resolve()
+        }
+        item.audio.addEventListener('ended', onDone)
+        item.audio.addEventListener('pause', onDone)
+        item.audio.addEventListener('error', onDone)
+      })
+    }
+
+    // Reset state when the entire sentence list has finished playing naturally
+    if (currentPlaybackSession.value === sessionToken) {
+      activePlayingIndex.value = null
+      activeAudio.value = null
+      currentPlaybackSession.value = null
+      clearCaption()
+    }
   }
   catch (error) {
     console.error('[ProducerChoiceBubble] Speech synthesis failed:', error)
@@ -104,6 +180,8 @@ async function playChoiceSpeech(idx: number, text: string) {
     loadingIndex.value = null
     activePlayingIndex.value = null
     activeAudio.value = null
+    currentPlaybackSession.value = null
+    clearCaption()
   }
 }
 
@@ -155,7 +233,7 @@ watch(() => chatOrchestratorStore.sending, (isSending) => {
   }
 })
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
   stopPlayAll()
 })
 </script>
