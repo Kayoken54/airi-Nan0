@@ -9,6 +9,7 @@ import { useBackgroundStore } from '@proj-airi/stage-ui/stores'
 import { useSpeakingStore } from '@proj-airi/stage-ui/stores/audio'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
@@ -267,6 +268,13 @@ const chatSessionStore = useChatSessionStore()
 const userProfileStore = useSettingsUserProfile()
 const speechStore = useSpeechStore()
 const providersStore = useProvidersStore()
+
+const artistryAutonomousStore = useAutonomousArtistryStore()
+const { isProcessing: isArtistryProcessing } = storeToRefs(artistryAutonomousStore)
+
+const isAutonomousArtistryEnabled = computed(() => {
+  return cardStore.activeCard?.extensions?.airi?.artistry?.autonomousEnabled ?? false
+})
 
 const { generateSuggestions } = useProducer()
 const { post: postCaption } = useBroadcastChannel<any, any>({ name: 'airi-caption-overlay' })
@@ -595,6 +603,24 @@ onBeforeUnmount(() => {
           <div ref="positioningSliderRef" class="pointer-events-auto absolute left-4 top-1/2 -translate-y-1/2">
             <ViewControlInputs :mode="stageViewControlsMode" />
           </div>
+        </div>
+      </Transition>
+
+      <!-- Autonomous Artistry Generation Loader (Top Left Edge) -->
+      <Transition
+        enter-active-class="transition-opacity duration-300 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition-opacity duration-200 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="isAutonomousArtistryEnabled && isArtistryProcessing"
+          class="pointer-events-none absolute left-2.5 top-2.5 z-50 flex items-center gap-1.5 border border-neutral-200/50 rounded-lg bg-white/80 p-1.5 shadow-sm backdrop-blur-md dark:border-neutral-800/40 dark:bg-neutral-900/70"
+        >
+          <div class="i-ph:paint-brush-broad-duotone size-3.5 animate-pulse text-primary-500" />
+          <span class="select-none pr-0.5 text-[9px] text-neutral-800 font-bold tracking-wider uppercase dark:text-neutral-200">Drawing</span>
         </div>
       </Transition>
 
