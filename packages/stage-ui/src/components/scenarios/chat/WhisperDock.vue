@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
+import { PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
@@ -267,7 +267,7 @@ function handleKeydown(e: KeyboardEvent) {
 
       <!-- Magic Wand Button with Right-Click Popover -->
       <PopoverRoot v-model:open="isWandMenuOpen">
-        <PopoverTrigger as-child>
+        <PopoverAnchor as-child>
           <button
             :class="[
               'size-7 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer border border-transparent',
@@ -281,7 +281,7 @@ function handleKeydown(e: KeyboardEvent) {
           >
             <div class="i-solar:magic-stick-3-bold-duotone size-4.5" />
           </button>
-        </PopoverTrigger>
+        </PopoverAnchor>
         <PopoverPortal>
           <PopoverContent
             side="top"
