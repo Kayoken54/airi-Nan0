@@ -668,16 +668,10 @@ onBeforeUnmount(() => {
         >
           <!-- The list of suggestion pills -->
           <div class="pointer-events-auto max-w-lg w-full flex flex-col gap-2 border border-neutral-200/40 rounded-2xl bg-white/80 p-2.5 shadow-2xl backdrop-blur-2xl dark:border-neutral-800/40 dark:bg-neutral-950/85">
-            <!-- Shimmer Loading State -->
-            <div v-if="isGeneratingSuggestions" class="grid gap-2" :class="suggestionCount <= 2 ? 'grid-cols-2' : 'grid-cols-2'">
-              <div
-                v-for="(_, idx) in suggestionCount"
-                :key="idx"
-                class="h-8 flex animate-pulse items-center border border-neutral-300/30 rounded-xl bg-neutral-200/60 px-3 dark:border-neutral-800/40 dark:bg-neutral-900/50"
-              >
-                <div class="mr-2 size-4 animate-pulse rounded-full bg-neutral-300/80 dark:bg-neutral-800/60" />
-                <div class="h-3 w-2/3 animate-pulse rounded bg-neutral-300/70 dark:bg-neutral-800/50" />
-              </div>
+            <!-- Loading State -->
+            <div v-if="isGeneratingSuggestions" class="h-8 flex select-none items-center justify-center gap-2 text-xs text-neutral-600 font-medium dark:text-neutral-300">
+              <div class="i-ph:circle-notch-bold size-3.5 animate-spin text-primary-500" />
+              <span>Generating {{ suggestionCount }} suggestions...</span>
             </div>
 
             <!-- Loaded Suggestions State -->
