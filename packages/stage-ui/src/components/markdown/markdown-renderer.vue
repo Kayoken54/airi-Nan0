@@ -116,12 +116,87 @@ async function processContent() {
   }
 
   try {
-    const rawCompiled = await process(healed)
+    let rawCompiled = await process(healed)
+
+    // Resolve any image tag sources to their local IndexedDB Object URLs if the title matches a background entry
+    if (rawCompiled.includes('<img')) {
+      const { useBackgroundStore } = await import('../../stores/background')
+      const backgroundStore = useBackgroundStore()
+
+      // Parse compiled HTML to find <img> elements
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(rawCompiled, 'text/html')
+      const imgs = doc.querySelectorAll('img')
+      let modified = false
+
+      for (const img of imgs) {
+        const altText = img.getAttribute('alt') || img.getAttribute('title') || ''
+        const currentSrc = img.getAttribute('src') || ''
+
+        if (altText && (currentSrc.includes('ComfyUI_temp') || currentSrc.startsWith('http://') || currentSrc.startsWith('https://') || currentSrc.startsWith('local:'))) {
+          // Look up in background entries for a matching title
+          const cleanAlt = altText.trim().toLowerCase()
+          const matchedBg = Array.from(backgroundStore.entries.values()).find(
+            bg => bg.title.trim().toLowerCase() === cleanAlt,
+          )
+
+          if (matchedBg) {
+            const objectUrl = backgroundStore.getBackgroundUrl(matchedBg.id)
+            if (objectUrl) {
+              img.setAttribute('src', objectUrl)
+              modified = true
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        rawCompiled = doc.body.innerHTML
+      }
+    }
+
     processedContent.value = postProcessActorColors(DOMPurify.sanitize(rawCompiled))
   }
   catch (error) {
     console.warn('Failed to process markdown with syntax highlighting, using fallback:', error)
-    processedContent.value = postProcessActorColors(DOMPurify.sanitize(processSync(healed)))
+    let rawCompiled = processSync(healed)
+
+    // Fallback logic for basic compiled processing
+    if (rawCompiled.includes('<img')) {
+      try {
+        const { useBackgroundStore } = await import('../../stores/background')
+        const backgroundStore = useBackgroundStore()
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(rawCompiled, 'text/html')
+        const imgs = doc.querySelectorAll('img')
+        let modified = false
+
+        for (const img of imgs) {
+          const altText = img.getAttribute('alt') || img.getAttribute('title') || ''
+          const currentSrc = img.getAttribute('src') || ''
+          if (altText && (currentSrc.includes('ComfyUI_temp') || currentSrc.startsWith('http://') || currentSrc.startsWith('https://') || currentSrc.startsWith('local:'))) {
+            const cleanAlt = altText.trim().toLowerCase()
+            const matchedBg = Array.from(backgroundStore.entries.values()).find(
+              bg => bg.title.trim().toLowerCase() === cleanAlt,
+            )
+
+            if (matchedBg) {
+              const objectUrl = backgroundStore.getBackgroundUrl(matchedBg.id)
+              if (objectUrl) {
+                img.setAttribute('src', objectUrl)
+                modified = true
+              }
+            }
+          }
+        }
+        if (modified) {
+          rawCompiled = doc.body.innerHTML
+        }
+      }
+      catch (err) {}
+    }
+
+    processedContent.value = postProcessActorColors(DOMPurify.sanitize(rawCompiled))
   }
 }
 
