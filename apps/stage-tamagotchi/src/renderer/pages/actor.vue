@@ -311,12 +311,16 @@ const activeAudio = ref<HTMLAudioElement | null>(null)
 const isPlayingAll = ref(false)
 const currentPlaybackSession = ref<any>(null)
 
+const utteredSegments = ref<{ text: string, color: string, actorId: string, isActive: boolean }[]>([])
+
 function showCaption(text: string) {
   try {
     postCaption({ type: 'caption-speaker', text: 'User' })
+    utteredSegments.value.forEach(s => s.isActive = false)
+    utteredSegments.value.push({ text, color: '#818cf8', actorId: 'user', isActive: true })
     postCaption({
       type: 'caption-assistant',
-      segments: [{ text, color: '#818cf8', actorId: 'user', isActive: true }],
+      segments: JSON.parse(JSON.stringify(utteredSegments.value)),
     })
   }
   catch (e) {
@@ -326,6 +330,7 @@ function showCaption(text: string) {
 
 function clearCaption() {
   try {
+    utteredSegments.value = []
     postCaption({ type: 'caption-speaker', text: '' })
     postCaption({ type: 'caption-assistant', segments: [] })
   }
