@@ -455,7 +455,7 @@ async function playPreview(rec: Recommendation) {
       },
       ust: {
         enabled: true,
-        mode: 'mute' as any,
+        mode: 'flatten' as any,
         customStripChars: '*_[]()<>"\'',
         stripEmojis: true,
         tildeReplacement: '',
@@ -537,7 +537,7 @@ function handleApply() {
       },
       ust: {
         enabled: true,
-        mode: 'mute' as any,
+        mode: 'flatten' as any,
         customStripChars: '*_[]()<>"\'',
         stripEmojis: true,
         tildeReplacement: '',
