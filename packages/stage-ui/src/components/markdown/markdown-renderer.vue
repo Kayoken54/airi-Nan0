@@ -242,6 +242,13 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
     return
   }
 
+  // Guard: Skip highlighting if the search text contains no alphanumeric characters
+  // (e.g. only quotes, asterisks, punctuation) to avoid matching wrong positions.
+  const hasAlphanumeric = /[a-z0-9]/i.test(activeText)
+  if (!hasAlphanumeric) {
+    return
+  }
+
   const searchText = activeText.trim().replace(/\s+/g, ' ').toLowerCase()
   if (!searchText)
     return
@@ -272,13 +279,24 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
   walk(el)
 
   const normalizedAccumulated = accumulatedText.toLowerCase()
+
+  // 1. Primary forward search: Look ahead starting at lastMatchIndex
   let matchIndex = normalizedAccumulated.indexOf(searchText, lastMatchIndex > 0 ? lastMatchIndex + 1 : 0)
   let matchedLength = searchText.length
 
+  // 2. Sliding window backup: If primary forward match fails, allow search with minor backtrack buffer (e.g. 15 chars)
+  // to absorb skipped quotes, double spaces, or token formatting differences.
+  if (matchIndex === -1 && lastMatchIndex > 0) {
+    const backtrackStart = Math.max(0, lastMatchIndex - 15)
+    matchIndex = normalizedAccumulated.indexOf(searchText, backtrackStart)
+  }
+
+  // 3. Absolute fallback: Search from the beginning of the text
   if (matchIndex === -1) {
     matchIndex = normalizedAccumulated.indexOf(searchText)
   }
 
+  // 4. Clean-string fuzzy fallback (ignoring punctuation/whitespace entirely)
   if (matchIndex === -1) {
     const cleanStr = (s: string) => s.replace(/[^a-z0-9]/gi, '').toLowerCase()
     const cleanSearch = cleanStr(searchText)
@@ -306,7 +324,11 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
   if (matchIndex === -1)
     return
 
-  lastMatchIndex = matchIndex
+  // Only update lastMatchIndex if the new match moves forward or keeps the same location,
+  // preventing temporary fallback matches from permanently rewinding the sliding search state.
+  if (matchIndex >= lastMatchIndex) {
+    lastMatchIndex = matchIndex
+  }
   const matchEndIndex = matchIndex + matchedLength
 
   let startNode: Text | null = null
