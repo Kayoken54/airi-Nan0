@@ -25,6 +25,7 @@ import { toast } from 'vue-sonner'
 
 import { electron, electronStageToggleVisibility, electronStartDraggingWindow } from '../../shared/eventa'
 import { useWindowStore } from '../stores/window'
+import { collapseBoundsToTopRight, restoreBoundsFromCollapsedPill } from '../utils/stage-window-collapse'
 
 const toggleStageVisibility = useElectronEventaInvoke(electronStageToggleVisibility)
 
@@ -135,6 +136,9 @@ function startDraggingWindow() {
   startDraggingWindowInvoke()
 }
 
+const isStageCollapsed = ref(false)
+const restoreWindowBounds = ref<{ x: number, y: number, width: number, height: number } | null>(null)
+
 let isTouchDragging = false
 let startTouchScreenX = 0
 let startTouchScreenY = 0
@@ -203,6 +207,38 @@ const showControls = ref(false)
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 const stageIsHidden = ref(false)
 
+async function handleToggleStageCollapse() {
+  try {
+    const currentBounds = await getBounds()
+    if (!currentBounds)
+      return
+
+    if (!isStageCollapsed.value) {
+      restoreWindowBounds.value = currentBounds
+      isStageCollapsed.value = true
+      stageIsHidden.value = false
+      showControls.value = true
+      await setIgnoreMouseEvents([false, { forward: true }])
+      await setBounds([collapseBoundsToTopRight(currentBounds)])
+      return
+    }
+
+    const nextBounds = restoreWindowBounds.value
+      ? restoreBoundsFromCollapsedPill({
+          collapsedBounds: currentBounds,
+          restoreBounds: restoreWindowBounds.value,
+        })
+      : currentBounds
+
+    isStageCollapsed.value = false
+    restoreWindowBounds.value = null
+    await setBounds([nextBounds])
+  }
+  catch (err) {
+    console.error('Failed to toggle stage collapse:', err)
+  }
+}
+
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const isInsideWindow = computed(() => !isOutsideWindow.value)
 
@@ -227,6 +263,13 @@ const isOverControls = computed(() => {
 watch(
   [isInsideWindow, fadeOnHoverEnabled, stageEnabled, isOverControls],
   ([inside, fadeEnabled, stageOn, overControls]) => {
+    if (isStageCollapsed.value) {
+      stageIsHidden.value = false
+      setIgnoreMouseEvents([false, { forward: true }])
+      showControls.value = true
+      return
+    }
+
     if (!stageOn) {
       stageIsHidden.value = false
       setIgnoreMouseEvents([false, { forward: true }])
@@ -242,6 +285,14 @@ watch(
   { immediate: true },
 )
 
+watch(isStageCollapsed, () => {
+  if (isStageCollapsed.value) {
+    stageIsHidden.value = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    showControls.value = true
+  }
+})
+
 const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 30 })
 const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
 
@@ -249,7 +300,7 @@ const stageState = ref<'pending' | 'loading' | 'mounted'>('pending')
 const { post: broadcastModelReady } = useBroadcastChannel<string, string>({ name: 'airi-stage-model-ready' })
 
 watch(stageState, (val) => {
-  console.log('[Actor Window] stageState changed:', val)
+  console.info('[Actor Window] stageState changed:', val)
   if (val === 'mounted') {
     broadcastModelReady('ready')
   }
@@ -403,14 +454,14 @@ async function playChoiceSpeech(idx: number, text: string) {
       item.audio.play()
 
       await new Promise<void>((resolve) => {
-        const cleanup = () => {
-          item.audio.removeEventListener('ended', onDone)
-          item.audio.removeEventListener('pause', onDone)
-          item.audio.removeEventListener('error', onDone)
-        }
         const onDone = () => {
           cleanup()
           resolve()
+        }
+        function cleanup() {
+          item.audio.removeEventListener('ended', onDone)
+          item.audio.removeEventListener('pause', onDone)
+          item.audio.removeEventListener('error', onDone)
         }
         item.audio.addEventListener('ended', onDone)
         item.audio.addEventListener('pause', onDone)
@@ -494,7 +545,7 @@ async function handleGetSuggestions(guidance: string) {
       void playAllChoices()
     }
   }
-  catch (err) {
+  catch {
     toast.error('Failed to generate suggestions.')
   }
   finally {
@@ -552,7 +603,7 @@ onBeforeUnmount(() => {
     <div class="relative h-full w-full overflow-hidden rounded-2xl">
       <!-- Scene Background Layer -->
       <div
-        v-if="activeBackgroundUrl"
+        v-if="activeBackgroundUrl && !isStageCollapsed"
         :class="[
           'absolute inset-0 z-0',
           'transition-opacity duration-500',
@@ -568,6 +619,7 @@ onBeforeUnmount(() => {
       <!-- Standalone Graphics Model Scene Renderer -->
       <div class="absolute inset-0 z-10">
         <RendererStage
+          v-if="!isStageCollapsed"
           v-model:state="stageState"
           :paused="!stageEnabled"
           :focus-at="{ x: live2dLookAtX, y: live2dLookAtY }"
@@ -582,7 +634,7 @@ onBeforeUnmount(() => {
 
       <!-- Spatial Controls Overlay -->
       <Transition name="fade">
-        <div v-if="stageViewControlsEnabled && controlStripStore.stageMode === 'positionMode'" class="pointer-events-none absolute left-0 top-0 z-100 h-full w-full">
+        <div v-if="!isStageCollapsed && stageViewControlsEnabled && controlStripStore.stageMode === 'positionMode'" class="pointer-events-none absolute left-0 top-0 z-100 h-full w-full">
           <!-- Axis Selectors (Top Left) -->
           <div ref="positioningSelectorsRef" class="pointer-events-auto absolute left-4 top-4 flex gap-1 rounded-2xl bg-neutral-100/60 p-1 backdrop-blur-md dark:bg-neutral-900/60">
             <Button
@@ -673,10 +725,19 @@ onBeforeUnmount(() => {
           <!-- Quick Hide Button -->
           <button
             class="text-neutral-850 size-6 flex cursor-pointer items-center justify-center rounded-md transition-all duration-200 active:scale-95 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-neutral-700/60"
+            :title="isStageCollapsed ? 'Restore Stage' : 'Collapse Stage'"
+            @click="handleToggleStageCollapse"
+          >
+            <div :class="isStageCollapsed ? 'i-ph:eye size-3.5' : 'i-ph:eye-slash size-3.5'" />
+          </button>
+          <!-- Full Hide Button -->
+          <button
+            v-if="!isStageCollapsed"
+            class="text-neutral-850 size-6 flex cursor-pointer items-center justify-center rounded-md transition-all duration-200 active:scale-95 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-neutral-700/60"
             title="Hide Stage"
             @click="handleHideStage"
           >
-            <div class="i-ph:eye-slash size-3.5" />
+            <div class="i-ph:x size-3.5" />
           </button>
         </div>
       </div>
@@ -691,7 +752,7 @@ onBeforeUnmount(() => {
         leave-to-class="opacity-0 translate-y-2 scale-95"
       >
         <div
-          v-if="whisperDockIsOpen && (isGeneratingSuggestions || actorSuggestions.length > 0)"
+          v-if="!isStageCollapsed && whisperDockIsOpen && (isGeneratingSuggestions || actorSuggestions.length > 0)"
           class="pointer-events-none absolute bottom-16 left-0 z-50 w-full flex flex-col items-center justify-end px-6 pb-2"
         >
           <!-- The list of suggestion pills -->
@@ -760,7 +821,7 @@ onBeforeUnmount(() => {
         ref="whisperDockWrapperRef"
         :class="[
           'absolute bottom-0 left-0 w-full h-16 z-50 transition-opacity duration-300 ease-in-out',
-          (showControls || whisperDockIsOpen) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+          !isStageCollapsed && (showControls || whisperDockIsOpen) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
         ]"
       >
         <WhisperDock
@@ -774,7 +835,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Selfie Viewfinder Overlay -->
-      <div v-if="selfieViewfinderActive" class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+      <div v-if="!isStageCollapsed && selfieViewfinderActive" class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
         <!-- Semi-transparent overlay mask -->
         <div class="absolute inset-0 bg-neutral-950/40" />
         <!-- Glowing Crop Box -->
