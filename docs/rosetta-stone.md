@@ -1,6 +1,22 @@
 # AIRI Rosetta Stone
 
-Concept-to-file-path index for rapid context retrieval. Use this to find where anything lives — UI, data, providers, modules, audio, memory, or the integration plumbing between them.
+Canonical concept-to-file-path index for rapid context retrieval. Use this to find where anything lives — UI, data, providers, modules, audio, memory, or the integration plumbing between them.
+
+## How to use this document
+
+1. Find the subsystem or surface below, then follow its canonical paths and linked detail document.
+2. Inspect the nearby current source before changing it. Source wins if this index has drifted.
+3. Update this index in the same change when you add, move, or replace a canonical entry point, or when you establish a repeatable failure mode worth preserving.
+
+| If you are changing… | Start here | Then consult |
+| :--- | :--- | :--- |
+| Desktop wiring, Electron IPC, or windows | [Application Entry & Wiring](#1-application-entry--wiring) | [Lessons Learned](#16-lessons-learned) for cross-window pitfalls |
+| A visible UI surface, settings page, or chatbox | [Core UI & Surfaces](#2-core-ui--surfaces), [Settings & Editing](#3-settings--editing), or [Chatbox Elements](#4-chatbox-elements) | The component's nearby implementation |
+| Persistence or sync | [Data Layer & Persistence](#5-data-layer--persistence) | [`docs/data-catalog.md`](./data-catalog.md) |
+| A model/provider, inference, or audio path | [Provider System](#6-provider-system) or [Audio Pipeline](#8-audio-pipeline) | [`docs/provider-catalog.md`](./provider-catalog.md) where applicable |
+| A feature module, memory, or prompt behavior | [Module System](#7-module-system), [Memory Systems](#9-memory-systems), or [Engine & Subsystems](#10-engine--subsystems) | The linked store and settings page |
+| Cross-window state, notifications, or chat ingestion | [BroadcastChannels](#13-broadcastchannels) and [Lessons Learned](#16-lessons-learned) | The named channel/event contract |
+| Localization | [Key Directories](#14-key-directories) | [`docs/settings-yaml.md`](./settings-yaml.md) |
 
 ---
 
