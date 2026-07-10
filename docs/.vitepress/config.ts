@@ -139,6 +139,48 @@ export default defineConfig({
             ],
           },
           {
+            text: 'Showcase',
+            icon: 'lucide:images',
+            items: [
+              { text: 'Gallery', link: withBase('/en/docs/showcase/') },
+              {
+                text: 'Character System',
+                items: [
+                  { text: 'AIRI Card System', link: withBase('/en/docs/showcase/01-card-system') },
+                  { text: 'AnimaDex Wizard', link: withBase('/en/docs/showcase/02-animadex-wizard') },
+                ],
+              },
+              {
+                text: 'Stage & Models',
+                items: [
+                  { text: 'Model Selector', link: withBase('/en/docs/showcase/03-model-selector') },
+                  { text: 'Live2D System', link: withBase('/en/docs/showcase/04-live2d-system') },
+                ],
+              },
+              {
+                text: 'Chat & Desktop',
+                items: [
+                  { text: 'Chatbox Redesign', link: withBase('/en/docs/showcase/05-chatbox-redesign') },
+                  { text: 'Control Strip', link: withBase('/en/docs/showcase/06-control-strip') },
+                ],
+              },
+              {
+                text: 'AI & Cognition',
+                items: [
+                  { text: 'AI Producer', link: withBase('/en/docs/showcase/07-producer-subsystem') },
+                  { text: 'Situational Awareness', link: withBase('/en/docs/showcase/08-situational-awareness') },
+                ],
+              },
+              {
+                text: 'Creative & Platforms',
+                items: [
+                  { text: 'Artistry', link: withBase('/en/docs/showcase/09-artistry') },
+                  { text: 'Discord Integration', link: withBase('/en/docs/showcase/10-discord-integration') },
+                ],
+              },
+            ],
+          },
+          {
             text: 'Manual',
             icon: 'lucide:book-open',
             items: [

@@ -91,6 +91,8 @@ For the full list of major features added in this fork (34 systems and counting)
 - **Zero-Trust Privacy** — no telemetry, no analytics, local-first, opt-in cloud sync
 - **Platform Hardening** — CORS bypass, single instance lock, cross-window IndexedDB sync, native module safeguards, production Electron sandbox
 
+> :camera: **[See the Feature Showcase](./docs/content/en/docs/showcase/index.md)** — visual walkthroughs with screenshots and key capabilities for the most impactful features. (Also available in the in-app docs under _Showcase_ once you build.)
+
 ---
 
 ## Download
