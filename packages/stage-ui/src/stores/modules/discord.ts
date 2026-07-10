@@ -433,7 +433,7 @@ export const useDiscordStore = defineStore('discord', () => {
 
     try {
       // Signal the end of the voice stream to clear passthrough players
-      window.electron?.ipcRenderer?.send('gemini-audio-end')
+      ;(window as any).electron?.ipcRenderer?.send('gemini-audio-end')
 
       const channelName = 'eventa:invoke:electron:discord:send-voice-note'
 
@@ -465,7 +465,7 @@ export const useDiscordStore = defineStore('discord', () => {
   function clearAudioTurn() {
     console.log('[DiscordStore] Clearing audio turn bucket.')
     audioTurnBuffer.value = []
-    window.electron?.ipcRenderer?.send('gemini-audio-end')
+    ;(window as any).electron?.ipcRenderer?.send('gemini-audio-end')
   }
 
   async function sendImageToDiscord(channelId: string, base64: string, content?: string, filename?: string) {
