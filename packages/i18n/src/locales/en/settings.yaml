@@ -288,6 +288,7 @@ pages:
       manual: Manual
       advanced: Advanced
       chronicles: Chronicles
+      showcase: Showcase
   data:
     title: Data
     description: Manage stored AIRI data, exports, and resets

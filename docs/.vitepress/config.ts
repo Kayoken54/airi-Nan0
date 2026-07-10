@@ -1,5 +1,7 @@
 import type { DefaultTheme } from 'vitepress'
 
+import type { SharedSidebarItem } from '../shared-sidebar'
+
 import { join, posix, resolve } from 'node:path'
 import { env } from 'node:process'
 
@@ -13,6 +15,7 @@ import { tasklist } from '@mdit/plugin-tasklist'
 import { defineConfig, postcssIsolateStyles } from 'vitepress'
 
 import { version } from '../../package.json'
+import { SHARED_SIDEBAR } from '../shared-sidebar'
 import { teamMembers } from './contributors'
 import {
   discord,
@@ -26,6 +29,14 @@ import {
   x,
 } from './meta'
 import { frontmatterAssets } from './plugins/vite-frontmatter-assets'
+
+function toVitepressItems(items: SharedSidebarItem[]): DefaultTheme.SidebarItem[] {
+  return items.map(item => ({
+    text: item.text,
+    ...(item.link ? { link: withBase(`/en/docs/${item.link}`) } : {}),
+    ...(item.items ? { items: toVitepressItems(item.items) } : {}),
+  })) as DefaultTheme.SidebarItem[]
+}
 
 function withBase(url: string) {
   return env.BASE_URL
@@ -127,88 +138,11 @@ export default defineConfig({
         logo: withBase('/favicon.svg'),
 
         sidebar: [
-          {
-            text: 'Overview',
-            icon: 'lucide:rocket',
-            items: [
-              { text: 'Introduction', link: withBase('/en/docs/overview/') },
-              { text: 'Versions & Downloads', link: withBase('/en/docs/overview/versions') },
-              { text: 'About AI VTuber', link: withBase('/en/docs/overview/about-ai-vtuber') },
-              { text: 'About Neuro-sama', link: withBase('/en/docs/overview/about-neuro-sama') },
-              { text: 'Other Similar Projects', link: withBase('/en/docs/overview/other-similar-projects') },
-            ],
-          },
-          {
-            text: 'Showcase',
-            icon: 'lucide:images',
-            items: [
-              { text: 'Gallery', link: withBase('/en/docs/showcase/') },
-              {
-                text: 'Character System',
-                items: [
-                  { text: 'AIRI Card System', link: withBase('/en/docs/showcase/01-card-system') },
-                  { text: 'AnimaDex Wizard', link: withBase('/en/docs/showcase/02-animadex-wizard') },
-                ],
-              },
-              {
-                text: 'Stage & Models',
-                items: [
-                  { text: 'Model Selector', link: withBase('/en/docs/showcase/03-model-selector') },
-                  { text: 'Live2D System', link: withBase('/en/docs/showcase/04-live2d-system') },
-                ],
-              },
-              {
-                text: 'Chat & Desktop',
-                items: [
-                  { text: 'Chatbox Redesign', link: withBase('/en/docs/showcase/05-chatbox-redesign') },
-                  { text: 'Control Strip', link: withBase('/en/docs/showcase/06-control-strip') },
-                ],
-              },
-              {
-                text: 'AI & Cognition',
-                items: [
-                  { text: 'AI Producer', link: withBase('/en/docs/showcase/07-producer-subsystem') },
-                  { text: 'Situational Awareness', link: withBase('/en/docs/showcase/08-situational-awareness') },
-                ],
-              },
-              {
-                text: 'Creative & Platforms',
-                items: [
-                  { text: 'Artistry', link: withBase('/en/docs/showcase/09-artistry') },
-                  { text: 'Discord Integration', link: withBase('/en/docs/showcase/10-discord-integration') },
-                ],
-              },
-            ],
-          },
-          {
-            text: 'Manual',
-            icon: 'lucide:book-open',
-            items: [
-              {
-                text: 'Quick Start',
-                items: [
-                  { text: 'Desktop Version', link: withBase('/en/docs/manual/tamagotchi/') },
-                  { text: 'Web Version', link: withBase('/en/docs/manual/web/') },
-                ],
-              },
-              {
-                text: 'Configuration',
-                items: [
-                  { text: 'Configuration Guide', link: withBase('/en/docs/manual/config/') },
-                ],
-              },
-              {
-                text: 'Architecture & Design',
-                items: [
-                  { text: 'Interaction Pipelines', link: withBase('/en/docs/contributing/architecture/arch-chat-stt-proactivity-pipelines') },
-                  { text: 'ComfyUI Native Engine', link: withBase('/en/docs/contributing/architecture/arch-comfyui-native-api-engine') },
-                  { text: 'Gateway Security', link: withBase('/en/docs/contributing/architecture/arch-gateway-security-hardening') },
-                  { text: 'Memory System', link: withBase('/en/docs/contributing/architecture/arch-memory-system-overview') },
-                  { text: 'Live2D Optimization', link: withBase('/en/docs/contributing/architecture/arch-live2d-wasm-optimization') },
-                ],
-              },
-            ],
-          },
+          ...SHARED_SIDEBAR.map(section => ({
+            text: section.text,
+            icon: section.icon,
+            items: toVitepressItems(section.items),
+          })),
           {
             text: 'Contributing',
             icon: 'lucide:users',
@@ -237,32 +171,6 @@ export default defineConfig({
                   { text: 'Introduction', link: withBase('/en/docs/contributing/design-guidelines/') },
                   { text: 'Artists & Developers (Resources)', link: withBase('/en/docs/contributing/design-guidelines/resources') },
                   { text: 'Tools', link: withBase('/en/docs/contributing/design-guidelines/tools') },
-                ],
-              },
-            ],
-          },
-          {
-            text: 'Chronicles',
-            icon: 'lucide:calendar-days',
-            items: [
-              {
-                text: 'Maintainer Status',
-                items: [
-                  { text: 'Integration Checklist', link: withBase('/en/docs/chronicles/integration-checklist') },
-                ],
-              },
-              {
-                text: 'Project Evolution',
-                items: [
-                  { text: 'Project Roadmap', link: withBase('/en/docs/chronicles/roadmap') },
-                  { text: 'Feature Report', link: withBase('/en/docs/chronicles/feature-report') },
-                ],
-              },
-              {
-                text: 'Version History',
-                items: [
-                  { text: 'Initial Publish v0.1.0', link: withBase('/en/docs/chronicles/version-v0.1.0/') },
-                  { text: 'Before Story v0.0.1', link: withBase('/en/docs/chronicles/version-v0.0.1/') },
                 ],
               },
             ],

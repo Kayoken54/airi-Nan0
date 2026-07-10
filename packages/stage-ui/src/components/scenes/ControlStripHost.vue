@@ -518,7 +518,7 @@ async function streamAudioToDiscordVoice(audioBuffer: AudioBuffer) {
       binary += String.fromCharCode(bytes[i])
     }
     const base64 = btoa(binary)
-    window.electron?.ipcRenderer?.send('gemini-audio-chunk', base64)
+    ;(window as any).electron?.ipcRenderer?.send('gemini-audio-chunk', base64)
   }
   catch (err) {
     console.error('[Stage:Playback] Failed to stream audio to Discord voice channel:', err)
