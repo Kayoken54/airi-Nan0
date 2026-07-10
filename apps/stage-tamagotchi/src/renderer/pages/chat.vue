@@ -136,6 +136,23 @@ function handleToggleImageDirector() {
   } as any)
 }
 
+function handleSetSpawnMode(mode: 'bg' | 'widget' | 'inline') {
+  if (!activeCardId.value || !activeCard.value)
+    return
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions?.airi,
+        artistry: {
+          ...activeCard.value.extensions?.airi?.artistry,
+          spawnMode: mode,
+        },
+      },
+    },
+  } as any)
+}
+
 function handleToggleHeartbeats() {
   if (!activeCardId.value || !activeCard.value)
     return
@@ -554,6 +571,26 @@ function selectSurface(surface: typeof activeSurface.value) {
                       class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
                     />
                   </div>
+                </div>
+
+                <!-- Section: Image Spawn Mode -->
+                <div class="select-none px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                  Image Spawn Mode
+                </div>
+                <div class="mx-2 mb-1.5 flex gap-0.5 rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-900">
+                  <button
+                    v-for="mode in (['bg', 'widget', 'inline'] as const)"
+                    :key="mode"
+                    :class="[
+                      'flex-1 py-1 text-[10px] font-bold rounded-md transition-all text-center whitespace-nowrap',
+                      activeCard?.extensions?.airi?.artistry?.spawnMode === mode
+                        ? 'bg-white dark:bg-neutral-800 text-primary-600 dark:text-primary-400 shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+                    ]"
+                    @click="handleSetSpawnMode(mode)"
+                  >
+                    {{ mode === 'bg' ? 'Background' : mode === 'widget' ? 'Widget' : 'Inline' }}
+                  </button>
                 </div>
 
                 <!-- Toggle: Heartbeats -->
