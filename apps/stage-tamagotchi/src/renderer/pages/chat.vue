@@ -18,6 +18,7 @@ import chat_media from '../components/chat/chat_media.vue'
 // Import Sub-Surfaces
 import chat_messages from '../components/chat/chat_messages.vue'
 import chat_notes from '../components/chat/chat_notes.vue'
+import chat_rehearsal from '../components/chat/chat_rehearsal.vue'
 import chat_studio from '../components/chat/chat_studio.vue'
 import chat_world from '../components/chat/chat_world.vue'
 import WindowTitleBar from '../components/Window/TitleBar.vue'
@@ -78,7 +79,7 @@ const rightPanelMediaCollapsed = useLocalStorage('airi:chat:rp-media-collapsed',
 
 // Left Panel Routing States
 const isLeftPanelOpen = useLocalStorage('airi:chat:left-panel-open', true)
-const activeSurface = useLocalStorage<'messages' | 'director' | 'world' | 'characters' | 'media' | 'archives' | 'notes'>('airi:chat:left-panel-active', 'messages')
+const activeSurface = useLocalStorage<'messages' | 'director' | 'world' | 'characters' | 'media' | 'archives' | 'notes' | 'rehearsal'>('airi:chat:left-panel-active', 'messages')
 
 const activeSurfaceComponent = computed(() => {
   const map = {
@@ -89,6 +90,7 @@ const activeSurfaceComponent = computed(() => {
     media: chat_media,
     archives: chat_lifetime,
     notes: chat_notes,
+    rehearsal: chat_rehearsal,
   }
   return markRaw(map[activeSurface.value] || chat_messages)
 })
@@ -666,6 +668,7 @@ function selectSurface(surface: typeof activeSurface.value) {
                 { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
                 { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
                 { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
+                { id: 'rehearsal', label: 'Rehearsal', icon: 'i-solar:clapperboard-text-bold-duotone' },
               ] as const)"
               :key="item.id"
               class="w-full flex items-center gap-3 rounded-xl p-2.5 text-left text-xs font-semibold transition-all"
@@ -715,6 +718,7 @@ function selectSurface(surface: typeof activeSurface.value) {
               { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
               { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
               { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
+              { id: 'rehearsal', label: 'Rehearsal', icon: 'i-solar:clapperboard-text-bold-duotone' },
             ] as const)"
             :key="item.id"
             class="w-full flex items-center gap-3 rounded-xl p-2.5 text-left text-xs font-semibold transition-all"
