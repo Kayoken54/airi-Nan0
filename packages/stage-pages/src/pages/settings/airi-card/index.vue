@@ -368,7 +368,10 @@ watch(inputFiles, async (newFiles) => {
     // Validate the normalized AIRI card shape
     const validation = safeParse(AiriCardSchema, normalizedForValidation)
     if (!validation.success) {
-      const errorMsg = validation.issues.map(i => `${i.path?.[0]?.key || 'root'}: ${i.message}`).join(', ')
+      const errorMsg = validation.issues.map((i) => {
+        const pathStr = i.path?.map(p => p.key).filter(k => k !== undefined && k !== null).join('.') || 'root'
+        return `${pathStr}: ${i.message}`
+      }).join(', ')
       toast.error('Card validation failed', {
         description: errorMsg,
       })
@@ -449,13 +452,34 @@ function parseStMessageExamples(exampleStr: string): string[][] {
   }).filter(block => block.length > 0)
 }
 
+function removeNullValues(obj: any): any {
+  if (obj === null) {
+    return undefined
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(removeNullValues)
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const clean: any = {}
+    for (const key of Object.keys(obj)) {
+      const val = removeNullValues(obj[key])
+      if (val !== undefined) {
+        clean[key] = val
+      }
+    }
+    return clean
+  }
+  return obj
+}
+
 function addCardPreviewNormalize(card: any) {
   // Detect ST V2 (data wrapper) vs V1 (root fields)
   const data = card.data || card
 
+  let normalized: any
   // If it's already an AIRI card, we still want to ensure universal fields like messageExample are valid arrays
   if (card.format === 'airi-card' || card.systemPrompt !== undefined) {
-    return {
+    normalized = {
       ...card,
       version: card.version || '1.0.0',
       // If messageExample is a string (stale AIRI or raw ST), normalize it to AIRI format[][]
@@ -464,26 +488,29 @@ function addCardPreviewNormalize(card: any) {
         : card.messageExample,
     }
   }
-
-  return {
-    name: data.name || 'Imported Card',
-    version: data.character_version || '1.0.0',
-    description: data.description ?? '',
-    notes: data.creator_notes ?? '',
-    personality: data.personality ?? '',
-    scenario: data.scenario ?? '',
-    systemPrompt: data.system_prompt ?? '',
-    postHistoryInstructions: data.post_history_instructions ?? '',
-    greetings: [
-      data.first_mes,
-      ...(data.alternate_greetings ?? []),
-    ].filter(Boolean),
-    messageExample: parseStMessageExamples(data.mes_example || ''),
-    extensions: {
-      airi: data.extensions?.airi,
-      ...data.extensions,
-    },
+  else {
+    normalized = {
+      name: data.name || 'Imported Card',
+      version: data.character_version || '1.0.0',
+      description: data.description ?? '',
+      notes: data.creator_notes ?? '',
+      personality: data.personality ?? '',
+      scenario: data.scenario ?? '',
+      systemPrompt: data.system_prompt ?? '',
+      postHistoryInstructions: data.post_history_instructions ?? '',
+      greetings: [
+        data.first_mes,
+        ...(data.alternate_greetings ?? []),
+      ].filter(Boolean),
+      messageExample: parseStMessageExamples(data.mes_example || ''),
+      extensions: {
+        airi: data.extensions?.airi,
+        ...data.extensions,
+      },
+    }
   }
+
+  return removeNullValues(normalized)
 }
 
 // Transform cards Map to array for display
