@@ -15,7 +15,7 @@ const emits = defineEmits<{
 </script>
 
 <template>
-  <Bar :text="text" :description="description">
+  <Bar :text="text" :description="description" as="div">
     <Button @click="emits('click')">
       <slot />
     </Button>

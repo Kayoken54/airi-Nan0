@@ -99,7 +99,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
 
     try {
       await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string, nsfw?: boolean, groups?: string[], tags?: string[] }, void>((val, key) => {
-        if (key.startsWith('display-model-')) {
+        if (key.startsWith('display-model-') && !key.endsWith('-textures')) {
           if (!val.file) {
             console.warn(`[DisplayModels] Model ${key} is missing file property! Skipping.`, val)
             return

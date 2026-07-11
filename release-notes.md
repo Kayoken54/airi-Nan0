@@ -1,31 +1,38 @@
-# 🚀 AIRI v0.9.14-stable.20260706 — Release Notes
+# 🚀 AIRI v0.9.16-stable.20260711 — Release Notes
 
-This release introduces **Introspective Memory Feedback Loops**, implements **Automatic Edge-Snapping Auto-Hide** for the Control Strip, adds **Discord Direct Message (DM) controls**, and refines the **AnimaDex Wizard** with auto-assignment utilities.
+This release introduces the **Rehearsal Room (unified emotion/motion iteration)**, upgrades the **Actor Stage (VRM rendering performance and magic wand overlays)**, stabilizes the **Captions renderer**, and refines the **AIRI Card Settings & Import pipeline**.
 
 ---
 
 ## ✨ Key Highlights
 
-### 🧠 Memory Features & Introspective Feedback Loops
-* **Action Reflection Loops**: Implemented introspective feedback loops where your character's recent activities (such as journaling, dreaming, or creating art) are injected into their immediate context. This allows them to reflect on their own recent actions and naturally incorporate those memories into their next response.
-* **Dream & Artistry Reflective Prompts**: Created guided prompts that let your character know what they just dreamed or painted, allowing them to reference these moments dynamically during chat.
-* **Memory Summary Stability**: Added safety locking to the short-term memory manager to prevent duplicate concurrent summary runs, ensuring memory histories remain stable.
-* **Custom Journal Prompts**: Added a customizable system prompt template for shaping Journal Moments.
+### 🎭 Actor Stage
+* **VRM Rendering Performance**: Removed a high-overhead deep watcher on Three.js `vrmGroup` objects, replacing it with shallow watchers on specific coordinates to improve frame rates.
+* **Grouped Control Pill**: Redesigned the top-right controls into a smaller, unified control pill with an integrated quick-hide button.
+* **Right-Click Only Controls**: Swapped trigger logic in model controls to PopoverAnchor, limiting menu openings exclusively to right-clicks.
+* **WhisperDock & Chatbox Suggestion Overlays**: Added a pulsing shadow and scale transformation to the magic wand suggestion icon in the chat composer when the input field is not empty, and added suggestion overlays to both WhisperDock and the Chatbox.
+* **Clean Text Loading Shimmer**: Swapped suggestion skeleton shimmer slots for a clean text spinner loader.
+* **Suggest/Send Button Glow**: Added a dynamic glow effect to suggest and send buttons when typing in the composer.
+* **Clean Suggestion Formatting**: Decodes unicode characters and linebreaks in suggestions at the source.
+* **Autonomous Artistry Indicators**: Added a "Drawing" status overlay in the top-left corner during active scene generation and displays the elapsed drawing time upon completion.
 
-### 🎛️ Control Strip Snap-to-Edge & Auto-Hide
-* **Auto-Hide Mode**: Implemented an automatic edge-snapping auto-hide mode with full support for macOS work area/screen boundaries.
-* **Popover Retention**: Automatically holds the Control Strip in an expanded state whenever a popover menu is actively open.
+### 💬 Chatbox Window
+* **Rehearsal Room Sidebar (New)**: Launched the Rehearsal Room surface inside the sidebar, featuring a unified workspace to prototype, test, and iterate on character emotions and acting motion prompts.
+* **Studio Settings Popover Shortcut**: Replaced the "Proactivity Settings" button in the Chat Memory popover with a "Studio Settings" clapperboard button, which pops open the character studio in a separate, concurrent window.
+* **Persistent Avatar Selector**: Added a Preview/Apply toggle to the Avatars popover in the Control Strip so users can permanently save selected display models to active character cards.
+* **Control Strip Default Button Configuration**: Added the Characters Card Switcher (`actor-characters`) to the Control Strip by default, allowing users to quickly swap cards out-of-the-box.
+* **Control Strip Sizing & Contrast Fixes**: Increased the popover window boundaries to `500px` to prevent clipping of action footers, and corrected dark-theme background variables in the Avatars menu to resolve a white-on-white text contrast bug.
+* **Window Snapping & Boundary Clamping**: Enforced absolute boundary clamping within the monitor's `workArea` in the Electron window manager to prevent off-screen jumps, and disabled native OS resizing.
+* **Segmented Layout Presets**: Added horizontal segmented layout presets to the chat settings.
+* **Local ObjectURL Resolver**: Expired or temporary ComfyUI image URLs are now dynamically resolved and loaded from local IndexedDB ObjectURLs at render time.
+* **Prompt Markdown Translation**: Automatically translates markdown image tags into text descriptions before sending them into the LLM context, preventing broken rendering loops.
 
-### 💬 Discord DM Access Control
-* **Master Toggle for DMs**: Added a settings toggle to restrict or enable DM command ingestion and private message listening on Discord.
-* **Sync Isolation**: Excluded the `settings/discord/enabled` configuration flag from cloud sync to avoid syncing local integration status.
+### 📝 Captions
+* **Caption Window Border Resizing**: Allowed resizing the caption window by disabling mouse event overrides whenever the mouse cursor is near the borders.
+* **Stable Highlight Search**: Implemented a sliding search window and alphanumeric checks to keep active text highlighting stable during real-time streaming.
+* **Sentence-by-Sentence Audio**: Suggestions now play back sentence-by-sentence with full user caption bridging.
 
-### 🧙 AnimaDex Wizard & Auto-Assign Tools
-* **Studio Auto-Assign Utility**: Added a new utility to batch auto-assign voices and motions to existing cards directly in the Studio panel.
-* **Extensible Voice Assigner**: Refactored the voice auto-assigner tool to hook into an extensible provider registry.
-* **Wizard Action Splits**: Split the final "Confirm & Create" step in the onboarding wizard into 3 explicit actions and resolved Step 3 scrolling issues.
-
-### 🗣️ TTS & Choice Improvements
-* **AWS Polly Enhancements**: Integrated new AWS Polly generative and long-form voice models.
-* **Punctuation Filtering**: Automatically filters out and drops punctuation-only text chunks before sending them to the TTS dispatcher to prevent silent vocal triggers.
-* **Producer Choice Mutings**: Instantly cancels suggestion audio playback when a message is sent or when the producer bubble component unmounts.
+### 📇 AIRI Card Settings & Configuration
+* **Card Manager Selfie Shortcut**: Added a camera button to the card list in settings. If the card is active, it broadcasts a 3-second countdown to the Stage window to snap a selfie. If inactive, it triggers a friendly guide toast.
+* **Card Import Validation & Null Sanitization**: Implemented a recursive sanitizer that strips out explicit `null` fields (which can be introduced by ChatGPT translations or external card tools) before validating card JSON files. Upgraded the validation error toast to show the full nested property path (e.g., `extensions.airi.visual_assets...`) instead of just reporting the top-level `extensions` wrapper.
+* **Control Strip Configuration Safeguards**: Added strict documentation warnings in `control-strip.ts` to prevent developers/agents from bumping the layout version string unnecessarily, preserving existing custom user arrangements.
