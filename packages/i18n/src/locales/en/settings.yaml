@@ -1090,6 +1090,12 @@ pages:
       perplexity:
         description: Search-Augmented - Real-time web-connected intelligence
         title: Perplexity
+      opencode-go:
+        description: Developer API Platform - Plans start at $10 a month
+        title: OpenCode Go
+      alibaba-cloud:
+        description: Model Studio - Large-scale model service platform by Alibaba Cloud
+        title: Alibaba Cloud
       player2:
         description: player2.game
         title: Player2
