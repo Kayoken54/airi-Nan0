@@ -3,7 +3,10 @@
 
 <script setup lang="ts">
 import { CharacterAvatar, CursorFloating } from '@proj-airi/stage-ui/components'
+import { useBroadcastChannel } from '@vueuse/core'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
+import { ref } from 'vue'
+import { toast } from 'vue-sonner'
 
 const props = defineProps<Props>()
 
@@ -26,6 +29,40 @@ interface Props {
   consciousnessModel: string
   voiceModel: string
   displayModelId?: string
+}
+
+const selfieCountdown = ref<number | null>(null)
+
+const { post: postViewfinderState } = useBroadcastChannel<{ active: boolean, countdown: number | null }, { active: boolean, countdown: number | null }>({ name: 'airi:stage-selfie-viewfinder' })
+const { post: postCapture } = useBroadcastChannel<{ characterId: string, includeBg: boolean, channelId?: string }, { characterId: string, includeBg: boolean, channelId?: string }>({ name: 'airi:stage-capture' })
+
+function handleSelfieClick() {
+  if (!props.isActive) {
+    toast.error('Please activate this character first to take a selfie.')
+    return
+  }
+  if (selfieCountdown.value !== null)
+    return
+
+  selfieCountdown.value = 3
+  postViewfinderState({ active: true, countdown: 3 })
+
+  const interval = setInterval(() => {
+    if (selfieCountdown.value === null) {
+      clearInterval(interval)
+      return
+    }
+    selfieCountdown.value--
+    if (selfieCountdown.value === 0) {
+      selfieCountdown.value = null
+      postViewfinderState({ active: false, countdown: null })
+      postCapture({ characterId: props.id, includeBg: true })
+      clearInterval(interval)
+    }
+    else {
+      postViewfinderState({ active: true, countdown: selfieCountdown.value })
+    }
+  }, 1000)
 }
 </script>
 
@@ -223,6 +260,21 @@ interface Props {
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenuRoot>
+
+      <button
+        :class="['rounded-lg p-1.5 transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700/50']"
+        title="Take selfie"
+        @click.stop="handleSelfieClick"
+      >
+        <div
+          :class="[
+            isActive
+              ? 'i-solar:camera-bold-duotone text-neutral-500 dark:text-neutral-400'
+              : 'i-solar:camera-linear text-neutral-300 dark:text-neutral-600',
+          ]"
+          class="text-sm"
+        />
+      </button>
 
       <button
         :class="['rounded-lg p-1.5 transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700/50']"
