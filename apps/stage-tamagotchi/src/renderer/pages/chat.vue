@@ -23,7 +23,7 @@ import chat_studio from '../components/chat/chat_studio.vue'
 import chat_world from '../components/chat/chat_world.vue'
 import WindowTitleBar from '../components/Window/TitleBar.vue'
 
-import { electronApplySizePreset } from '../../shared/eventa'
+import { electronApplySizePreset, electronOpenSettings } from '../../shared/eventa'
 
 // Active Surface Ref
 const activeSurfaceRef = ref<any>(null)
@@ -36,7 +36,18 @@ const liveSessionStore = useLiveSessionStore()
 const settingsChat = useSettingsChat()
 
 const applySizePreset = useElectronEventaInvoke(electronApplySizePreset)
+const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const isSettingsOpen = ref(false)
+
+function handleOpenStudio() {
+  if (!activeCardId.value)
+    return
+  void openSettings({
+    route: `/settings/airi-card?cardId=${activeCardId.value}&tab=studio`,
+  }).catch((err: any) => {
+    console.error('Failed to open Studio settings:', err)
+  })
+}
 
 function handleApplyChatPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
   applySizePreset({ target: 'chat', preset })
@@ -362,6 +373,7 @@ function selectSurface(surface: typeof activeSurface.value) {
             @manage-sessions="handleManageSessions"
             @search-memories="handleSearchMemories"
             @clear-messages="handleClearMessages"
+            @open-studio="handleOpenStudio"
           />
 
           <!-- Brain LLM Icon Button (opens downwards) -->

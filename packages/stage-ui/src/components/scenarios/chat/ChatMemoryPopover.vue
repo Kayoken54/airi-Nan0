@@ -25,6 +25,7 @@ const emit = defineEmits<{
   (e: 'manage-sessions'): void
   (e: 'search-memories'): void
   (e: 'clear-messages'): void
+  (e: 'open-studio'): void
 }>()
 
 const router = useRouter()
@@ -85,12 +86,6 @@ async function handleRebuildFromHistory() {
 
 function navigateToMemory() {
   router.push('/settings/memory')
-}
-
-function navigateToProactivity() {
-  if (!activeCardId.value)
-    return
-  router.push(`/settings/airi-card?cardId=${activeCardId.value}&tab=proactivity`)
 }
 </script>
 
@@ -227,11 +222,11 @@ function navigateToProactivity() {
 
           <button
             class="w-full flex items-center justify-between rounded-xl p-2 text-left transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            @click="navigateToProactivity"
+            @click="emit('open-studio')"
           >
             <div class="flex items-center gap-2">
-              <div class="i-solar:target-linear text-neutral-400" />
-              <span class="text-xs text-neutral-600 font-medium dark:text-neutral-300">Proactivity Settings</span>
+              <div class="i-solar:clapperboard-play-linear text-neutral-400" />
+              <span class="text-xs text-neutral-600 font-medium dark:text-neutral-300">Studio Settings</span>
             </div>
             <div class="i-solar:alt-arrow-right-linear text-xs text-neutral-400" />
           </button>
