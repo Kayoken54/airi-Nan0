@@ -81,14 +81,16 @@ export const useCustomVrmAnimationsStore = defineStore('custom-vrm-animations', 
       const nextAnimations: Record<string, CustomVrmAnimation> = {}
 
       try {
-        await localforage.iterate<StoredCustomVrmAnimation, void>((stored, storageKey) => {
-          if (!storageKey.startsWith(STORAGE_PREFIX))
-            return
-
-          const id = storageKey.slice(STORAGE_PREFIX.length)
-          const animation = createAnimationRecord(id, stored)
-          nextAnimations[animation.key] = animation
-        })
+        const keys = await localforage.keys()
+        const animKeys = keys.filter(key => key.startsWith(STORAGE_PREFIX))
+        for (const storageKey of animKeys) {
+          const stored = await localforage.getItem<StoredCustomVrmAnimation>(storageKey)
+          if (stored) {
+            const id = storageKey.slice(STORAGE_PREFIX.length)
+            const animation = createAnimationRecord(id, stored)
+            nextAnimations[animation.key] = animation
+          }
+        }
 
         customAnimations.value = nextAnimations
         customAnimationsLoaded.value = true

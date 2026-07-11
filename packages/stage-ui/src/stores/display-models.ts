@@ -98,11 +98,14 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     const models = [...displayModelsPresets]
 
     try {
-      await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string, nsfw?: boolean, groups?: string[], tags?: string[] }, void>((val, key) => {
-        if (key.startsWith('display-model-') && !key.endsWith('-textures')) {
+      const keys = await localforage.keys()
+      const modelKeys = keys.filter(key => key.startsWith('display-model-') && !key.endsWith('-textures'))
+      for (const key of modelKeys) {
+        const val = await localforage.getItem<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string, nsfw?: boolean, groups?: string[], tags?: string[] }>(key)
+        if (val) {
           if (!val.file) {
             console.warn(`[DisplayModels] Model ${key} is missing file property! Skipping.`, val)
-            return
+            continue
           }
           models.push({
             id: key,
@@ -117,7 +120,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
             tags: val.tags,
           })
         }
-      })
+      }
     }
     catch (err) {
       console.error(err)

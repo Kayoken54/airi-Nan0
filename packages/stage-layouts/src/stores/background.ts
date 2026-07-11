@@ -175,45 +175,47 @@ export const useBackgroundStore = defineStore('stage-layouts:background', () => 
 
     const stored: BackgroundItem[] = []
     try {
-      await localforage.iterate<PersistedBackgroundItem, void>((val, key) => {
-        if (!key.startsWith(STORAGE_PREFIX))
-          return
+      const keys = await localforage.keys()
+      const bgKeys = keys.filter(key => key.startsWith(STORAGE_PREFIX))
+      for (const key of bgKeys) {
+        const val = await localforage.getItem<PersistedBackgroundItem>(key)
+        if (val) {
+          const storedBlob = val.file instanceof Blob ? val.file : undefined
+          const storedSrc = typeof val.src === 'string' && val.src.length > 0 ? val.src : undefined
 
-        const storedBlob = val.file instanceof Blob ? val.file : undefined
-        const storedSrc = typeof val.src === 'string' && val.src.length > 0 ? val.src : undefined
+          if (storedBlob) {
+            const objectUrl = ensureObjectUrl(key, storedBlob)
+            stored.push({
+              ...val,
+              id: key,
+              kind: BackgroundKind.Image,
+              src: objectUrl,
+              file: undefined,
+              component: undefined,
+              removable: true,
+            })
+            continue
+          }
 
-        if (storedBlob) {
-          const objectUrl = ensureObjectUrl(key, storedBlob)
-          stored.push({
-            ...val,
-            id: key,
-            kind: BackgroundKind.Image,
-            src: objectUrl,
-            file: undefined,
-            component: undefined,
-            removable: true,
-          })
-          return
-        }
+          if (storedSrc) {
+            stored.push({
+              ...val,
+              id: key,
+              kind: BackgroundKind.Image,
+              src: storedSrc,
+              file: undefined,
+              component: undefined,
+              removable: true,
+            })
 
-        if (storedSrc) {
-          stored.push({
-            ...val,
-            id: key,
-            kind: BackgroundKind.Image,
-            src: storedSrc,
-            file: undefined,
-            component: undefined,
-            removable: true,
-          })
-
-          if (storedSrc.startsWith('data:')) {
-            setTimeout(() => {
-              void migrateDataUrlToBlob(key, val, storedSrc)
-            }, 0)
+            if (storedSrc.startsWith('data:')) {
+              setTimeout(() => {
+                void migrateDataUrlToBlob(key, val, storedSrc)
+              }, 0)
+            }
           }
         }
-      })
+      }
     }
     catch (error) {
       console.error('Failed to load backgrounds from IndexedDB', error)

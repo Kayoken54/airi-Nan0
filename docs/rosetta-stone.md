@@ -504,3 +504,9 @@ Cross-window communication relies on named `BroadcastChannel` instances. These a
 
 - **Flow**: LLM turn triggers `runArtistTask` → Director LLM grades visual interest (1-100) → saves `DirectorNote` via `recordDirectorDecision()` → `history.vue` reactively merges notes with chat messages, sorted by `createdAt`, rendered by `DirectorNoteBubble.vue`.
 - **Cross-Window Sync**: Pinia stores are per-window. Writing to IndexedDB from one window doesn't update in-memory state in others. Fix: broadcast modifications over `BroadcastChannel('airi:director-notes-sync')` — each store instance listens, filters by active `sessionId`, and updates locally.
+
+### IndexedDB & localforage Performance
+
+- **localforage.iterate() Memory Leaks**: Avoid using `localforage.iterate()` to filter keys or check key patterns (e.g. `key.startsWith()`). Under the hood, `localforage.iterate` deserializes the **entire value** of every key into memory before invoking the callback. If the store holds large binary data (like MMD texture blobs, images, or motion files), this causes massive memory usage (often gigabytes of RAM) on startup or sync.
+- **The Correct Pattern**: Query keys first using `localforage.keys()`, filter the key strings, and then call `localforage.getItem(key)` only for the target items that need to be loaded.
+

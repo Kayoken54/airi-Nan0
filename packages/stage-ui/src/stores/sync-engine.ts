@@ -546,11 +546,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 4. Load all local backgrounds from localforage
       const localBgs = new Map<string, any>()
-      await localforage.iterate<any, void>((val, key) => {
-        if (key.startsWith('bg-') && !deletedBgIds.has(key)) {
+      const keys549 = await localforage.keys()
+      const bgKeys549 = keys549.filter(key => key.startsWith('bg-') && !deletedBgIds.has(key))
+      for (const key of bgKeys549) {
+        const val = await localforage.getItem<any>(key)
+        if (val) {
           localBgs.set(key, val)
         }
-      })
+      }
       await logDebug(`localBgs size (before uploads/downloads): ${localBgs.size}`)
 
       // 5. Upload backgrounds present locally but missing/incomplete on remote
@@ -752,11 +755,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 4. Load all local models from localforage (excluding presets & deleted models)
       const localModels = new Map<string, any>()
-      await localforage.iterate<any, void>((val, key) => {
-        if (key.startsWith('display-model-') && !key.endsWith('-textures') && !deletedModelIds.has(key)) {
+      const keys755 = await localforage.keys()
+      const modelKeys755 = keys755.filter(key => key.startsWith('display-model-') && !key.endsWith('-textures') && !deletedModelIds.has(key))
+      for (const key of modelKeys755) {
+        const val = await localforage.getItem<any>(key)
+        if (val) {
           localModels.set(key, val)
         }
-      })
+      }
 
       // 5. Upload local-only models (not in remote manifest and not in local deleted list)
       for (const [id, entry] of localModels.entries()) {
@@ -1141,11 +1147,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 4. Load local custom motions (keys starting with `mmd-motion-` and not deleted)
       const localMotions = new Map<string, any>()
-      await localforage.iterate<any, void>((val, key) => {
-        if (key.startsWith('mmd-motion-') && !deletedMotionIds.has(key)) {
+      const keys1144 = await localforage.keys()
+      const motionKeys1144 = keys1144.filter(key => key.startsWith('mmd-motion-') && !deletedMotionIds.has(key))
+      for (const key of motionKeys1144) {
+        const val = await localforage.getItem<any>(key)
+        if (val) {
           localMotions.set(key, val)
         }
-      })
+      }
 
       // 5. Upload local-only motions to remote
       for (const [id, entry] of localMotions.entries()) {
@@ -1256,11 +1265,14 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
           const mmdStore = useMmd()
           // Read localforage and rebuild customMotions list
           const nextMotions: any[] = []
-          await localforage.iterate<any, void>((val, key) => {
-            if (key.startsWith('mmd-motion-')) {
+          const keys1259 = await localforage.keys()
+          const motionKeys1259 = keys1259.filter(key => key.startsWith('mmd-motion-'))
+          for (const key of motionKeys1259) {
+            const val = await localforage.getItem<any>(key)
+            if (val) {
               nextMotions.push({ id: val.id, name: val.name })
             }
-          })
+          }
           mmdStore.customMotions = nextMotions
         }
         catch (e) {
@@ -1339,14 +1351,17 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 4. Load local custom VRMAs (keys starting with `custom-vrma-animation-` and not deleted)
       const localAnims = new Map<string, any>()
-      await localforage.iterate<any, void>((val, key) => {
-        if (key.startsWith('custom-vrma-animation-')) {
-          const id = key.substring('custom-vrma-animation-'.length)
-          if (!deletedAnimIds.has(id)) {
+      const keys1342 = await localforage.keys()
+      const animKeys1342 = keys1342.filter(key => key.startsWith('custom-vrma-animation-'))
+      for (const key of animKeys1342) {
+        const id = key.substring('custom-vrma-animation-'.length)
+        if (!deletedAnimIds.has(id)) {
+          const val = await localforage.getItem<any>(key)
+          if (val) {
             localAnims.set(id, val)
           }
         }
-      })
+      }
 
       // 5. Upload local-only animations to remote
       for (const [id, entry] of localAnims.entries()) {
