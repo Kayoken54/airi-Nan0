@@ -805,7 +805,12 @@ onMounted(async () => {
     }
   }, { immediate: true })
   // update model position
-  watch([modelOffset, vrmGroup], () => {
+  watch([
+    () => modelOffset.value.x,
+    () => modelOffset.value.y,
+    () => modelOffset.value.z,
+    vrmGroup,
+  ], () => {
     if (vrmGroup.value) {
       vrmGroup.value.position.set(
         modelOffset.value.x,
@@ -813,7 +818,7 @@ onMounted(async () => {
         modelOffset.value.z,
       )
     }
-  }, { immediate: true, deep: true })
+  }, { immediate: true })
   // update model rotation
   watch([modelRotationY, vrmGroup], () => {
     if (vrmGroup.value) {

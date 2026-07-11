@@ -273,7 +273,7 @@ async function applyBoundsUpdate(nextPopover: string | null, nextPlacement: 'lef
     }
     else {
       x = current.x + (current.width - stripLength.value) / 2
-      y = current.y + (placement === 'top' ? 288 : 0)
+      y = current.y + (placement === 'top' ? 452 : 0)
     }
   }
 
@@ -286,15 +286,15 @@ async function applyBoundsUpdate(nextPopover: string | null, nextPlacement: 'lef
   if (nextPopover) {
     if (controlStripStore.orientation === 'vertical') {
       targetW = 324
-      targetH = Math.max(336, h)
+      targetH = Math.max(500, h)
       targetX = x - (nextPlacement === 'left' ? 276 : 0)
       targetY = y - (targetH - h) / 2
     }
     else {
-      targetW = Math.max(336, w)
-      targetH = 336
+      targetW = Math.max(500, w)
+      targetH = 500
       targetX = x - (targetW - w) / 2
-      targetY = y - (nextPlacement === 'top' ? 288 : 0)
+      targetY = y - (nextPlacement === 'top' ? 452 : 0)
     }
   }
 

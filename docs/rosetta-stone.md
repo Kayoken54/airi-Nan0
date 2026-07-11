@@ -452,6 +452,7 @@ Cross-window communication relies on named `BroadcastChannel` instances. These a
 | `docs/` | Proposal docs, reference sheets, how-to guides |
 | `docs/content/en/docs/` | In-app manual content (vitepress) |
 | `docs/design-prospective-rich-journal.md` | Specification for the Cognitive Memory / Dreaming UI ("the rich journal") |
+| `docs/proposal-chatbox-slash-commands.md` | Feature proposal for slash commands (`/imagine`, `/suggest`, `/website`, `/mcp`) |
 
 ---
 

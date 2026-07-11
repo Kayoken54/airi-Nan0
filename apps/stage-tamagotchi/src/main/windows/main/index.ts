@@ -87,7 +87,7 @@ export async function setupMainWindow(params: {
   ;(window as any).__is_main_window = true
 
   window.setMovable(!mainWindowConfig?.locked)
-  window.setResizable(!mainWindowConfig?.locked)
+  window.setResizable(false)
 
   if (params.onWindowCreated) {
     params.onWindowCreated(window)
@@ -340,6 +340,25 @@ export async function setupMainWindow(params: {
         newY = targetBottom
         snapped = true
       }
+    }
+
+    // Enforce work area bounds clamping to ensure window stays visible within the viewport
+    if (newX < workArea.x) {
+      newX = workArea.x
+      snapped = true
+    }
+    else if (newX + bounds.width > workArea.x + workArea.width) {
+      newX = workArea.x + workArea.width - bounds.width
+      snapped = true
+    }
+
+    if (newY < workArea.y) {
+      newY = workArea.y
+      snapped = true
+    }
+    else if (newY + bounds.height > workArea.y + workArea.height) {
+      newY = workArea.y + workArea.height - bounds.height
+      snapped = true
     }
 
     if (snapped && (Math.round(newX) !== bounds.x || Math.round(newY) !== bounds.y)) {
