@@ -86,17 +86,54 @@ const hiddenExpressions = ref<string[]>([])
 const motionMappings = ref<Record<string, string>>({})
 const hiddenMotions = ref<string[]>([])
 
-// Sync local state when modelId changes
+// Raw capability lists sourced from getOrLoadModelCapabilities
+// These are model-file-level, not renderer-runtime — works even when model is off-stage
+const cachedExpressions = ref<string[]>([])
+const cachedMotions = ref<string[]>([])
+const capabilitiesLoading = ref(false)
+
+// Sync local state + capabilities when modelId changes
 watch(() => props.modelId, async (newId) => {
   if (!newId)
     return
+
   const model = displayModelsStore.displayModels.find(m => m.id === newId)
+  console.log(`[ModelCustomizer] modelId changed → ${newId}`, {
+    found: !!model,
+    format: model?.format,
+    cachedExpressions: model?.expressions?.length ?? 'none',
+    cachedMotions: model?.motions?.length ?? 'none',
+    emotionMappings: model?.emotionMappings,
+    motionMappings: model?.motionMappings,
+  })
+
   if (model) {
     emotionMappings.value = model.emotionMappings || {}
     favoriteExpressions.value = model.favoriteExpressions || []
     hiddenExpressions.value = model.hiddenExpressions || []
     motionMappings.value = model.motionMappings || {}
     hiddenMotions.value = model.hiddenMotions || []
+  }
+
+  // Resolve expression + motion lists via the store resolver.
+  // Returns cache hit immediately, otherwise parses raw file and writes back to IndexedDB.
+  capabilitiesLoading.value = true
+  try {
+    const caps = await displayModelsStore.getOrLoadModelCapabilities(newId)
+    cachedExpressions.value = caps.expressions
+    cachedMotions.value = caps.motions
+    console.log(`[ModelCustomizer] capabilities resolved for ${newId}:`, {
+      expressions: caps.expressions,
+      motions: caps.motions,
+    })
+  }
+  catch (e) {
+    console.error(`[ModelCustomizer] Failed to load capabilities for ${newId}:`, e)
+    cachedExpressions.value = []
+    cachedMotions.value = []
+  }
+  finally {
+    capabilitiesLoading.value = false
   }
 }, { immediate: true })
 
@@ -115,55 +152,58 @@ async function saveMetadata() {
   }
 }
 
-// Expression Lists mapping from active stores
+// Expression/motion lists driven by getOrLoadModelCapabilities (not live renderer stores).
+// isActive still reads from the renderer for on-stage feedback, but the list itself is
+// sourced from the model file — works whether or not the model is currently on stage.
 const rawExpressions = computed<UnifiedExpression[]>(() => {
   const mType = modelType.value
-  if (mType === 'unknown')
+  if (mType === 'unknown' || capabilitiesLoading.value)
     return []
 
   const mappings = emotionMappings.value
   const favorites = favoriteExpressions.value
   const hidden = hiddenExpressions.value
+  const keys = cachedExpressions.value
 
   if (mType === 'live2d') {
-    return live2dStore.availableExpressions.map(e => ({
-      key: e.fileName,
-      displayName: mappings[e.fileName] || e.name || e.fileName.split(/[\\/]/).pop()?.replace(/\.exp3$/, '') || e.fileName,
-      isActive: !!live2dStore.activeExpressions[e.fileName],
-      actMapping: mappings[e.fileName],
-      isFavorite: favorites.includes(e.fileName),
-      isVisible: !hidden.includes(e.fileName),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: !!live2dStore.activeExpressions[key],
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
     }))
   }
   if (mType === 'vrm') {
-    return modelStore.availableExpressions.map((name: string) => ({
-      key: name,
-      displayName: mappings[name] || name,
-      isActive: false, // VRM store uses custom actions
-      actMapping: mappings[name],
-      isFavorite: favorites.includes(name),
-      isVisible: !hidden.includes(name),
-      category: name === name.toUpperCase() ? 'preset' : 'custom',
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: false,
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
+      category: key === key.toUpperCase() ? 'preset' : 'custom',
     }))
   }
   if (mType === 'mmd') {
-    return mmdStore.availableMorphs.map(name => ({
-      key: name,
-      displayName: mappings[name] || name,
-      isActive: mmdStore.previewExpression === name,
-      actMapping: mappings[name],
-      isFavorite: favorites.includes(name),
-      isVisible: !hidden.includes(name),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: mmdStore.previewExpression === key,
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
     }))
   }
   if (mType === 'spine') {
-    return spineStore.availableAnimations.map(anim => ({
-      key: anim.name,
-      displayName: mappings[anim.name] || anim.name,
-      isActive: !!spineStore.activeAnimations[props.modelId]?.[anim.name],
-      actMapping: mappings[anim.name],
-      isFavorite: favorites.includes(anim.name),
-      isVisible: !hidden.includes(anim.name),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: !!spineStore.activeAnimations[props.modelId]?.[key],
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
     }))
   }
   return []
@@ -172,53 +212,48 @@ const rawExpressions = computed<UnifiedExpression[]>(() => {
 const rawMotions = computed<UnifiedMotion[]>(() => {
   const card = activeCard.value
   const mType = modelType.value
-  if (mType === 'unknown')
+  if (mType === 'unknown' || capabilitiesLoading.value)
     return []
 
   const mappings = motionMappings.value
   const hidden = hiddenMotions.value
   const idleCycles = card?.extensions?.airi?.acting?.idleAnimations || []
+  const keys = cachedMotions.value
 
   if (mType === 'live2d') {
-    return live2dStore.availableMotions.map(m => ({
-      key: m.fileName,
-      displayName: mappings[m.fileName] || m.motionName || m.fileName,
-      isActive: live2dStore.currentMotion.group === m.motionName,
-      group: m.motionName || 'Motions',
-      duration: 3.0, // fallback
-      hasSound: !!m.sound,
-      isInIdleCycle: idleCycles.includes(`live2d:${m.motionName}`),
-      isVisible: !hidden.includes(m.fileName),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: live2dStore.currentMotion?.group === key,
+      group: 'Motions',
+      duration: 3.0,
+      hasSound: false,
+      isInIdleCycle: idleCycles.includes(`live2d:${key}`),
+      isVisible: !hidden.includes(key),
     }))
   }
   if (mType === 'mmd') {
-    const list = [...(mmdStore.availableMotions as any[]), ...(mmdStore.customMotions as any[])]
-    return list.map((item) => {
-      const isStr = typeof item === 'string'
-      const key = isStr ? item : item.id
-      const name = isStr ? item : item.name
-      return {
-        key,
-        displayName: mappings[key] || name.split(/[\\/]/).pop() || name,
-        isActive: mmdStore.currentMotion === name,
-        group: 'Animations',
-        duration: 5.0,
-        hasSound: false,
-        isInIdleCycle: idleCycles.includes(`mmd:${key}`),
-        isVisible: !hidden.includes(key),
-      }
-    })
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key.split(/[\\/]/).pop() || key,
+      isActive: mmdStore.currentMotion === key,
+      group: 'Animations',
+      duration: 5.0,
+      hasSound: false,
+      isInIdleCycle: idleCycles.includes(`mmd:${key}`),
+      isVisible: !hidden.includes(key),
+    }))
   }
   if (mType === 'spine') {
-    return spineStore.availableAnimations.map(anim => ({
-      key: anim.name,
-      displayName: mappings[anim.name] || anim.name,
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
       isActive: false,
       group: 'Animations',
-      duration: anim.duration || 1.0,
+      duration: 1.0,
       hasSound: false,
-      isInIdleCycle: idleCycles.includes(`spine:${anim.name}`),
-      isVisible: !hidden.includes(anim.name),
+      isInIdleCycle: idleCycles.includes(`spine:${key}`),
+      isVisible: !hidden.includes(key),
     }))
   }
   return []
@@ -556,7 +591,7 @@ async function suggestDialogue() {
         </p>
       </div>
 
-      <!-- Segment Toggle: Expressions / Motions -->
+      <!-- Segment Toggle: Emotions / Motions -->
       <div class="shrink-0 pb-1">
         <div class="flex rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-800">
           <button
@@ -566,7 +601,7 @@ async function suggestDialogue() {
               : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'"
             @click="activeTab = 'expressions'"
           >
-            Expressions
+            Emotions
           </button>
           <button
             class="flex-1 cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-all"
@@ -580,10 +615,16 @@ async function suggestDialogue() {
         </div>
       </div>
 
+      <!-- Loading indicator while capabilities resolve -->
+      <div v-if="capabilitiesLoading" class="py-4 text-center text-[10px] text-neutral-400">
+        <div class="i-solar:spinner-bold inline-block animate-spin text-base" />
+        <span class="ml-1">Loading model capabilities…</span>
+      </div>
+
       <!-- Filter Controls -->
-      <div class="flex shrink-0 items-center justify-between py-2">
+      <div v-if="!capabilitiesLoading" class="flex shrink-0 items-center justify-between py-2">
         <span class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-          {{ activeTab === 'expressions' ? 'Expressions' : 'Motions' }}
+          {{ activeTab === 'expressions' ? 'Emotions' : 'Motions' }}
           <span class="ml-1 font-normal opacity-60">({{ activeTab === 'expressions' ? rawExpressions.length : rawMotions.length }})</span>
         </span>
         <div class="flex gap-1">
