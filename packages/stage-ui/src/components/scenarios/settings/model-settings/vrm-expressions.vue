@@ -3,8 +3,9 @@ import { useModelStore } from '@proj-airi/stage-ui-three'
 import { Button, Input, Select } from '@proj-airi/ui'
 import { nanoid } from 'nanoid'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
+import { useDisplayModelsStore } from '../../../../stores/display-models'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { Container } from '../../../data-pane'
 
@@ -12,6 +13,25 @@ const airiCardStore = useAiriCardStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const modelStore = useModelStore()
 const { availableExpressions, activeExpressions, emotionMappings, favoriteExpression } = storeToRefs(modelStore)
+const displayModelsStore = useDisplayModelsStore()
+
+watch([emotionMappings, favoriteExpression], async () => {
+  if (!activeCardId.value)
+    return
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
+    return
+
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    model.emotionMappings = { ...emotionMappings.value }
+    model.favoriteExpressions = favoriteExpression.value ? [favoriteExpression.value] : []
+    const localforageModule = await import('localforage').then(m => m.default || m)
+    await localforageModule.setItem(displayModelId, JSON.parse(JSON.stringify(model)))
+    displayModelsStore.broadcastModelsSync(Date.now())
+    await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+  }
+}, { deep: true })
 
 const uniqueExpressions = computed(() => [...new Set(availableExpressions.value)])
 

@@ -22,16 +22,18 @@ const {
   emotionMappings,
 } = storeToRefs(live2dStore)
 
-const saveLive2dState = useDebounceFn(() => {
+const saveLive2dState = useDebounceFn(async () => {
   if (!activeCard.value)
     return
 
-  // Only auto-save customization state if this model is actually applied to the active character card.
-  // This prevents auto-save triggers from corrupting/polluting the active card before "Apply" is clicked,
-  // and avoids cross-process local storage sync race conditions that revert the selected preview model.
-  if (settingsStore.stageModelSelected !== airiCardStore.getCardDisplayModelId(activeCardId.value))
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
     return
 
+  if (settingsStore.stageModelSelected !== displayModelId)
+    return
+
+  // Save transient properties to Card
   const extensions = JSON.parse(JSON.stringify(activeCard.value.extensions))
   if (!extensions.airi)
     extensions.airi = { modules: {} }
@@ -42,10 +44,19 @@ const saveLive2dState = useDebounceFn(() => {
     ...extensions.airi.modules.live2d,
     activeExpressions: { ...activeExpressions.value },
     modelParameters: { ...modelParameters.value },
-    emotionMappings: { ...emotionMappings.value },
   }
-
   airiCardStore.updateCard(activeCardId.value, { extensions })
+
+  // Save mapping properties to Display Model
+  const displayModelsStore = await import('../../../../stores/display-models').then(m => m.useDisplayModelsStore())
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    model.emotionMappings = { ...emotionMappings.value }
+    const localforageModule = await import('localforage').then(m => m.default || m)
+    await localforageModule.setItem(displayModelId, JSON.parse(JSON.stringify(model)))
+    displayModelsStore.broadcastModelsSync(Date.now())
+    await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+  }
 }, 1000)
 
 watch([activeExpressions, modelParameters, emotionMappings], () => {

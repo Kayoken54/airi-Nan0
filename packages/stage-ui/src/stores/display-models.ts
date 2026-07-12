@@ -53,6 +53,11 @@ export interface DisplayModelFile {
   tags?: string[]
   expressions?: string[]
   motions?: string[]
+  emotionMappings?: Record<string, string>
+  motionMappings?: Record<string, string>
+  hiddenExpressions?: string[]
+  hiddenMotions?: string[]
+  favoriteExpressions?: string[]
 }
 
 export interface DisplayModelURL {
@@ -68,6 +73,11 @@ export interface DisplayModelURL {
   tags?: string[]
   expressions?: string[]
   motions?: string[]
+  emotionMappings?: Record<string, string>
+  motionMappings?: Record<string, string>
+  hiddenExpressions?: string[]
+  hiddenMotions?: string[]
+  favoriteExpressions?: string[]
 }
 
 const displayModelsPresets: DisplayModel[] = [
@@ -101,7 +111,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       const keys = await localforage.keys()
       const modelKeys = keys.filter(key => key.startsWith('display-model-') && !key.endsWith('-textures'))
       for (const key of modelKeys) {
-        const val = await localforage.getItem<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string, nsfw?: boolean, groups?: string[], tags?: string[] }>(key)
+        const val = await localforage.getItem<any>(key)
         if (val) {
           if (!val.file) {
             console.warn(`[DisplayModels] Model ${key} is missing file property! Skipping.`, val)
@@ -118,6 +128,13 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
             nsfw: val.nsfw,
             groups: val.groups,
             tags: val.tags,
+            expressions: val.expressions,
+            motions: val.motions,
+            emotionMappings: val.emotionMappings,
+            motionMappings: val.motionMappings,
+            hiddenExpressions: val.hiddenExpressions,
+            hiddenMotions: val.hiddenMotions,
+            favoriteExpressions: val.favoriteExpressions,
           })
         }
       }
@@ -974,6 +991,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     getOrLoadModelCapabilities,
     displayModels,
     displayModelsFromIndexedDBLoading,
+    broadcastModelsSync,
 
     loadDisplayModelsFromIndexedDB,
     getDisplayModel,

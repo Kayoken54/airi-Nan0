@@ -105,41 +105,45 @@ const filterRenamedOnly = ref(false)
 const editingMotionKey = ref<string | null>(null)
 const editingMotionValue = ref('')
 
-const saveLive2dState = useDebounceFn(() => {
+const saveLive2dState = useDebounceFn(async () => {
   if (!activeCard.value || !activeCardId.value)
     return
 
-  // Only auto-save customization state if this model is actually applied to the active character card.
-  // This prevents auto-save triggers from corrupting/polluting the active card before "Apply" is clicked,
-  // and avoids cross-process local storage sync race conditions that revert the selected preview model.
-  if (settings.stageModelSelected !== airiCardStore.getCardDisplayModelId(activeCardId.value))
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
     return
 
-  const extensions = JSON.parse(JSON.stringify(activeCard.value.extensions))
-  if (!extensions.airi)
-    extensions.airi = { modules: {} }
-  if (!extensions.airi.modules)
-    extensions.airi.modules = {}
+  if (settings.stageModelSelected !== displayModelId)
+    return
 
-  extensions.airi.modules.live2d = {
-    ...extensions.airi.modules.live2d,
-    motionMappings: { ...motionMappings.value },
-    hiddenMotions: [...hiddenMotions.value],
-
+  const displayModelsStore = await import('../../../../stores/display-models').then(m => m.useDisplayModelsStore())
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    model.motionMappings = { ...motionMappings.value }
+    model.hiddenMotions = [...hiddenMotions.value]
+    const localforageModule = await import('localforage').then(m => m.default || m)
+    await localforageModule.setItem(displayModelId, JSON.parse(JSON.stringify(model)))
+    displayModelsStore.broadcastModelsSync(Date.now())
+    await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
   }
-
-  airiCardStore.updateCard(activeCardId.value, { extensions })
 }, 1000)
 
 watch([motionMappings, hiddenMotions], () => {
   saveLive2dState()
 }, { deep: true })
 
-watch(activeCard, (card) => {
-  if (card?.extensions?.airi?.modules?.live2d) {
-    const live2dData = card.extensions.airi.modules.live2d as any
-    motionMappings.value = live2dData.motionMappings || {}
-    hiddenMotions.value = live2dData.hiddenMotions || []
+watch(activeCard, async (card) => {
+  if (!card)
+    return
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
+    return
+
+  const displayModelsStore = await import('../../../../stores/display-models').then(m => m.useDisplayModelsStore())
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    motionMappings.value = model.motionMappings || {}
+    hiddenMotions.value = model.hiddenMotions || []
   }
 }, { immediate: true })
 function normalize(s: string) {

@@ -147,9 +147,9 @@ export const useMmd = defineStore('mmd', () => {
     }
   }
 
-  const availableMorphs = useLocalStorageManualReset<string[]>('settings/mmd/available-morphs', () => [])
-  const morphMappings = useLocalStorageManualReset<Record<string, string>>('settings/mmd/morph-mappings', {})
-  const hiddenMorphs = useLocalStorageManualReset<string[]>('settings/mmd/hidden-morphs', () => [])
+  const availableMorphs = ref<string[]>([])
+  const morphMappings = ref<Record<string, string>>({})
+  const hiddenMorphs = ref<string[]>([])
 
   const idleMotionName = computed({
     get: () => currentMotion.value,
@@ -249,9 +249,9 @@ export const useMmd = defineStore('mmd', () => {
   const skyBoxIntensity = useLocalStorageManualReset<number>('settings/mmd/skyBoxIntensity', 0.1)
 
   function resetState() {
-    availableMorphs.reset()
-    morphMappings.reset()
-    hiddenMorphs.reset()
+    availableMorphs.value = []
+    morphMappings.value = {}
+    hiddenMorphs.value = []
     scale.reset()
     modelOffset.reset()
     modelRotationY.reset()

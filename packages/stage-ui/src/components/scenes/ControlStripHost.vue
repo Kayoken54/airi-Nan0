@@ -230,7 +230,9 @@ const emotionsQueue = createQueue<EmotionPayload>({
           }
           else {
             // New fallback: try to find motion by name in availableMotions (Ground Truth)
-            const motionMappings = (activeCard.value as any)?.extensions?.airi?.modules?.live2d?.motionMappings || {}
+            const displayModelId = (activeCard.value as any)?.extensions?.airi?.modules?.displayModelId
+            const activeModel = displayModelId ? displayModelsStore.displayModels.find(m => m.id === displayModelId) : null
+            const motionMappings = activeModel?.motionMappings || {}
 
             // Normalize helper for robust key matching across dynamic suffixes/directories
             const normalize = (s: string) =>

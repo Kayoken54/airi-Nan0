@@ -3,10 +3,12 @@ import { useSpine } from '@proj-airi/stage-ui-spine'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positioning'
 import { Button, FieldRange, Select, SelectTab } from '@proj-airi/ui'
+import { useDebounceFn } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { useDisplayModelsStore } from '../../../../stores/display-models'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useSettingsSpine } from '../../../../stores/settings/spine'
 import { Section } from '../../../layouts'
@@ -193,12 +195,54 @@ function resetAllAnimations() {
   }
 }
 
+const displayModelsStore = useDisplayModelsStore()
+
 const animationMappings = ref<Record<string, string>>({})
 const hiddenAnimations = ref<string[]>([])
 const showHiddenAnimations = ref(false)
 const filterRenamedOnly = ref(false)
 const editingAnimationKey = ref<string | null>(null)
 const editingAnimationValue = ref('')
+
+const saveSpineState = useDebounceFn(async () => {
+  if (!activeCard.value || !activeCardId.value)
+    return
+
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
+    return
+
+  if (stageModelSelected.value !== displayModelId)
+    return
+
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    model.motionMappings = { ...animationMappings.value }
+    model.hiddenMotions = [...hiddenAnimations.value]
+    const localforageModule = await import('localforage').then(m => m.default || m)
+    await localforageModule.setItem(displayModelId, JSON.parse(JSON.stringify(model)))
+    displayModelsStore.broadcastModelsSync(Date.now())
+    await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+  }
+}, 1000)
+
+watch([animationMappings, hiddenAnimations], () => {
+  saveSpineState()
+}, { deep: true })
+
+watch(activeCard, async (card) => {
+  if (!card)
+    return
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
+    return
+
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    animationMappings.value = model.motionMappings || {}
+    hiddenAnimations.value = model.hiddenMotions || []
+  }
+}, { immediate: true })
 
 const filteredAnimations = computed(() => {
   return availableAnimations.value.filter((animation) => {

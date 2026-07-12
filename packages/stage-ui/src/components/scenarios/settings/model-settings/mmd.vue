@@ -2,11 +2,12 @@
 import { useMmd } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { Button, Checkbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ModelSceneSettings from './components/ModelSceneSettings.vue'
 
+import { useDisplayModelsStore } from '../../../../stores/display-models'
 import { useAiriCardStore } from '../../../../stores/modules'
 import { useSettings } from '../../../../stores/settings'
 import { usePositioningStore } from '../../../../stores/settings/positioning'
@@ -51,6 +52,80 @@ const mouseTrackingEnabled = computed({
 const airiCardStore = useAiriCardStore()
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { updateCard } = airiCardStore
+const displayModelsStore = useDisplayModelsStore()
+
+// Watch mappings to save to display model metadata
+watch([morphMappings, hiddenMorphs], async () => {
+  if (!activeCardId.value)
+    return
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
+    return
+
+  if (stageModelSelected.value !== displayModelId)
+    return
+
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    model.emotionMappings = { ...morphMappings.value }
+    model.hiddenExpressions = [...hiddenMorphs.value]
+    const localforageModule = await import('localforage').then(m => m.default || m)
+    await localforageModule.setItem(displayModelId, JSON.parse(JSON.stringify(model)))
+    displayModelsStore.broadcastModelsSync(Date.now())
+    await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+  }
+}, { deep: true })
+
+// Watch card changes to load mappings & run legacy local storage migration
+watch(activeCard, async (card) => {
+  if (!card)
+    return
+  const displayModelId = airiCardStore.getCardDisplayModelId(activeCardId.value)
+  if (!displayModelId)
+    return
+
+  const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+  if (model) {
+    // Check for legacy local storage mappings to migrate
+    const legacyMmdMappingsStr = localStorage.getItem('settings/mmd/morph-mappings')
+    const legacyMmdHiddenStr = localStorage.getItem('settings/mmd/hidden-morphs')
+    let migrated = false
+
+    if (legacyMmdMappingsStr) {
+      try {
+        const legacyMappings = JSON.parse(legacyMmdMappingsStr)
+        if (Object.keys(legacyMappings).length > 0) {
+          model.emotionMappings = { ...model.emotionMappings, ...legacyMappings }
+          migrated = true
+        }
+        localStorage.removeItem('settings/mmd/morph-mappings')
+      }
+      catch (e) {}
+    }
+
+    if (legacyMmdHiddenStr) {
+      try {
+        const legacyHidden = JSON.parse(legacyMmdHiddenStr)
+        if (legacyHidden.length > 0) {
+          model.hiddenExpressions = Array.from(new Set([...(model.hiddenExpressions || []), ...legacyHidden]))
+          migrated = true
+        }
+        localStorage.removeItem('settings/mmd/hidden-morphs')
+      }
+      catch (e) {}
+    }
+
+    if (migrated) {
+      const localforageModule = await import('localforage').then(m => m.default || m)
+      await localforageModule.setItem(displayModelId, JSON.parse(JSON.stringify(model)))
+      displayModelsStore.broadcastModelsSync(Date.now())
+      await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+    }
+
+    morphMappings.value = model.emotionMappings || {}
+    hiddenMorphs.value = model.hiddenExpressions || []
+  }
+}, { immediate: true })
 
 function isMotionSelected(motion: string) {
   const key = `mmd:${motion}`

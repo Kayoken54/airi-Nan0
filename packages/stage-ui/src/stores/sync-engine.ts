@@ -679,7 +679,25 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
       // 2. Read remote manifest
       let manifest: {
-        models: Record<string, { id: string, format: string, name: string, importedAt: number, previewImage?: string, hasTextures: boolean, hasPreview?: boolean, nsfw?: boolean, groups?: string[], tags?: string[], expressions?: string[], motions?: string[] }>
+        models: Record<string, {
+          id: string
+          format: string
+          name: string
+          importedAt: number
+          previewImage?: string
+          hasTextures: boolean
+          hasPreview?: boolean
+          nsfw?: boolean
+          groups?: string[]
+          tags?: string[]
+          expressions?: string[]
+          motions?: string[]
+          emotionMappings?: Record<string, string>
+          motionMappings?: Record<string, string>
+          hiddenExpressions?: string[]
+          hiddenMotions?: string[]
+          favoriteExpressions?: string[]
+        }>
         deleted?: string[]
       } = { models: {}, deleted: [] }
       let manifestExists = false
@@ -762,6 +780,49 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
         if (val) {
           localModels.set(key, val)
         }
+      }
+
+      // 4.5 Auto-extract missing capabilities (expressions/motions) only for active models
+      try {
+        // Collect model IDs referenced by cards
+        const referencedModelIds = new Set<string>()
+        const cardsVal = await storage.getItemRaw<any>('local:airi-cards')
+        if (cardsVal) {
+          const parsedCards = Array.isArray(cardsVal) ? cardsVal : Object.entries(cardsVal)
+          for (const item of parsedCards) {
+            const card = Array.isArray(item) ? item[1] : item
+            const displayModelId = card?.extensions?.airi?.modules?.displayModelId
+            if (displayModelId) {
+              referencedModelIds.add(displayModelId)
+            }
+          }
+        }
+
+        const { useDisplayModelsStore } = await import('./display-models')
+        const displayModelsStore = useDisplayModelsStore()
+
+        for (const [id, val] of localModels.entries()) {
+          // Skip capabilities extraction for models that are not actively used by any cards
+          if (!referencedModelIds.has(id)) {
+            continue
+          }
+
+          const hasExpressions = val.expressions && val.expressions.length > 0
+          const hasMotions = val.motions && val.motions.length > 0
+          if (!hasExpressions || !hasMotions) {
+            console.log(`[SyncEngine] Extracting missing capabilities for active model: ${id} (${val.name})`)
+            const caps = await displayModelsStore.getOrLoadModelCapabilities(id)
+            if (caps) {
+              const updatedVal = await localforage.getItem<any>(id)
+              if (updatedVal) {
+                localModels.set(id, updatedVal)
+              }
+            }
+          }
+        }
+      }
+      catch (e) {
+        console.error('[SyncEngine] Error in model capabilities auto-extraction:', e)
       }
 
       // 5. Upload local-only models (not in remote manifest and not in local deleted list)
@@ -869,6 +930,11 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             tags: entry.tags,
             expressions: entry.expressions,
             motions: entry.motions,
+            emotionMappings: entry.emotionMappings,
+            motionMappings: entry.motionMappings,
+            hiddenExpressions: entry.hiddenExpressions,
+            hiddenMotions: entry.hiddenMotions,
+            favoriteExpressions: entry.favoriteExpressions,
           }
           manifestModified = true
 
@@ -948,25 +1014,80 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
             localModified = true
           }
 
-          // 5. Merge expressions (local-wins — source of truth is the locally loaded model)
-          if (localEntry.expressions && localEntry.expressions.length > 0
-            && JSON.stringify(localEntry.expressions) !== JSON.stringify(remoteEntry.expressions)) {
-            remoteEntry.expressions = localEntry.expressions
+          // 5. Merge expressions (union)
+          const localExpressions = localEntry.expressions || []
+          const remoteExpressions = remoteEntry.expressions || []
+          if (JSON.stringify(localExpressions) !== JSON.stringify(remoteExpressions)) {
+            const mergedExpressions = Array.from(new Set([...localExpressions, ...remoteExpressions]))
+            remoteEntry.expressions = mergedExpressions
+            localEntry.expressions = mergedExpressions
             manifestModified = true
-          }
-          else if (remoteEntry.expressions && remoteEntry.expressions.length > 0 && !localEntry.expressions?.length) {
-            localEntry.expressions = remoteEntry.expressions
             localModified = true
           }
 
-          // 6. Merge motions (local-wins — source of truth is the locally loaded model)
-          if (localEntry.motions && localEntry.motions.length > 0
-            && JSON.stringify(localEntry.motions) !== JSON.stringify(remoteEntry.motions)) {
-            remoteEntry.motions = localEntry.motions
+          // 6. Merge motions (union)
+          const localMotions = localEntry.motions || []
+          const remoteMotions = remoteEntry.motions || []
+          if (JSON.stringify(localMotions) !== JSON.stringify(remoteMotions)) {
+            const mergedMotions = Array.from(new Set([...localMotions, ...remoteMotions]))
+            remoteEntry.motions = mergedMotions
+            localEntry.motions = mergedMotions
             manifestModified = true
+            localModified = true
           }
-          else if (remoteEntry.motions && remoteEntry.motions.length > 0 && !localEntry.motions?.length) {
-            localEntry.motions = remoteEntry.motions
+
+          // 7. Merge emotionMappings (map merge)
+          const localEmotionMappings = localEntry.emotionMappings || {}
+          const remoteEmotionMappings = remoteEntry.emotionMappings || {}
+          if (JSON.stringify(localEmotionMappings) !== JSON.stringify(remoteEmotionMappings)) {
+            const mergedEmotionMappings = { ...remoteEmotionMappings, ...localEmotionMappings }
+            remoteEntry.emotionMappings = mergedEmotionMappings
+            localEntry.emotionMappings = mergedEmotionMappings
+            manifestModified = true
+            localModified = true
+          }
+
+          // 8. Merge motionMappings (map merge)
+          const localMotionMappings = localEntry.motionMappings || {}
+          const remoteMotionMappings = remoteEntry.motionMappings || {}
+          if (JSON.stringify(localMotionMappings) !== JSON.stringify(remoteMotionMappings)) {
+            const mergedMotionMappings = { ...remoteMotionMappings, ...localMotionMappings }
+            remoteEntry.motionMappings = mergedMotionMappings
+            localEntry.motionMappings = mergedMotionMappings
+            manifestModified = true
+            localModified = true
+          }
+
+          // 9. Merge hiddenExpressions (union)
+          const localHiddenExpressions = localEntry.hiddenExpressions || []
+          const remoteHiddenExpressions = remoteEntry.hiddenExpressions || []
+          if (JSON.stringify(localHiddenExpressions) !== JSON.stringify(remoteHiddenExpressions)) {
+            const mergedHiddenExpressions = Array.from(new Set([...localHiddenExpressions, ...remoteHiddenExpressions]))
+            remoteEntry.hiddenExpressions = mergedHiddenExpressions
+            localEntry.hiddenExpressions = mergedHiddenExpressions
+            manifestModified = true
+            localModified = true
+          }
+
+          // 10. Merge hiddenMotions (union)
+          const localHiddenMotions = localEntry.hiddenMotions || []
+          const remoteHiddenMotions = remoteEntry.hiddenMotions || []
+          if (JSON.stringify(localHiddenMotions) !== JSON.stringify(remoteHiddenMotions)) {
+            const mergedHiddenMotions = Array.from(new Set([...localHiddenMotions, ...remoteHiddenMotions]))
+            remoteEntry.hiddenMotions = mergedHiddenMotions
+            localEntry.hiddenMotions = mergedHiddenMotions
+            manifestModified = true
+            localModified = true
+          }
+
+          // 11. Merge favoriteExpressions (union)
+          const localFavExpressions = localEntry.favoriteExpressions || []
+          const remoteFavExpressions = remoteEntry.favoriteExpressions || []
+          if (JSON.stringify(localFavExpressions) !== JSON.stringify(remoteFavExpressions)) {
+            const mergedFavExpressions = Array.from(new Set([...localFavExpressions, ...remoteFavExpressions]))
+            remoteEntry.favoriteExpressions = mergedFavExpressions
+            localEntry.favoriteExpressions = mergedFavExpressions
+            manifestModified = true
             localModified = true
           }
 
@@ -1708,17 +1829,29 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
 
   const conflicts = ref<any[]>([])
 
+  const debugLogBuffer: string[] = []
+
   async function logDebug(msg: string) {
     console.log(`[SyncEngine] ${msg}`)
+    const logLine = `[${new Date().toISOString()}] ${msg}\n`
+    debugLogBuffer.push(logLine)
+  }
+
+  async function flushDebugLogs() {
+    if (debugLogBuffer.length === 0)
+      return
     try {
-      const logLine = `[${new Date().toISOString()}] ${msg}\n`
       const client = getActiveClient()
       if (activeProvider.value === 'local-fs' && hasElectron()) {
-        await client.writeFile('sync-engine-debug.log', logLine, 'utf-8', true)
+        const fullLog = debugLogBuffer.join('')
+        await client.writeFile('sync-engine-debug.log', fullLog, 'utf-8', true)
       }
     }
     catch (e) {
-      console.error('[SyncEngine] Debug log failed:', e)
+      console.error('[SyncEngine] Debug log flush failed:', e)
+    }
+    finally {
+      debugLogBuffer.length = 0
     }
   }
 
@@ -2721,6 +2854,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
       if (typeof window !== 'undefined') {
         (window as any).__airiIsSyncing = false
       }
+      await flushDebugLogs()
     }
   }
 
@@ -2843,6 +2977,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     finally {
       storageState.isImportingRemoteData = false
       isSyncing.value = false
+      await flushDebugLogs()
     }
   }
 
@@ -2929,6 +3064,7 @@ export const useSyncEngineStore = defineStore('sync-engine', () => {
     finally {
       storageState.isImportingRemoteData = false
       isSyncing.value = false
+      await flushDebugLogs()
     }
   }
 

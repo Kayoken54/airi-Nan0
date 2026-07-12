@@ -9,7 +9,7 @@ import { until, useBroadcastChannel } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { safeParse } from 'valibot'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -288,6 +288,103 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
   }
 
+  async function migrateCardMappingsToModel() {
+    try {
+      const displayModelsStore = useDisplayModelsStore()
+      await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+
+      let cardsModified = false
+      const nextCards = new Map(cards.value)
+
+      for (const [cardId, card] of nextCards.entries()) {
+        const modulesExt = (card.extensions?.airi?.modules as any) || {}
+        const displayModelId = modulesExt.displayModelId
+        if (!displayModelId)
+          continue
+
+        const model = displayModelsStore.displayModels.find(m => m.id === displayModelId)
+        if (!model)
+          continue
+
+        const live2dExt = modulesExt.live2d || {}
+        const legacyEmotionMappings = live2dExt.emotionMappings || modulesExt.emotionMappings
+        const legacyMotionMappings = live2dExt.motionMappings || modulesExt.motionMappings
+        const legacyHiddenExpressions = modulesExt.hiddenExpressions
+        const legacyHiddenMotions = live2dExt.hiddenMotions || modulesExt.hiddenMotions
+        const legacyFavoriteExpressions = modulesExt.favoriteExpressions || (modulesExt.favoriteExpression ? [modulesExt.favoriteExpression] : undefined)
+
+        let modelModified = false
+        const rawModel = toRaw(model)
+        const updatedModel: any = {
+          ...rawModel,
+          file: 'file' in rawModel ? toRaw((rawModel as any).file) : undefined,
+          previewImage: rawModel.previewImage,
+          emotionMappings: rawModel.emotionMappings ? JSON.parse(JSON.stringify(toRaw(rawModel.emotionMappings))) : {},
+          motionMappings: rawModel.motionMappings ? JSON.parse(JSON.stringify(toRaw(rawModel.motionMappings))) : {},
+          hiddenExpressions: rawModel.hiddenExpressions ? JSON.parse(JSON.stringify(toRaw(rawModel.hiddenExpressions))) : [],
+          hiddenMotions: rawModel.hiddenMotions ? JSON.parse(JSON.stringify(toRaw(rawModel.hiddenMotions))) : [],
+          favoriteExpressions: rawModel.favoriteExpressions ? JSON.parse(JSON.stringify(toRaw(rawModel.favoriteExpressions))) : [],
+          groups: rawModel.groups ? JSON.parse(JSON.stringify(toRaw(rawModel.groups))) : [],
+          tags: rawModel.tags ? JSON.parse(JSON.stringify(toRaw(rawModel.tags))) : [],
+          expressions: rawModel.expressions ? JSON.parse(JSON.stringify(toRaw(rawModel.expressions))) : [],
+          motions: rawModel.motions ? JSON.parse(JSON.stringify(toRaw(rawModel.motions))) : [],
+        }
+
+        if (legacyEmotionMappings && Object.keys(legacyEmotionMappings).length > 0) {
+          updatedModel.emotionMappings = { ...updatedModel.emotionMappings, ...legacyEmotionMappings }
+          modelModified = true
+        }
+        if (legacyMotionMappings && Object.keys(legacyMotionMappings).length > 0) {
+          updatedModel.motionMappings = { ...updatedModel.motionMappings, ...legacyMotionMappings }
+          modelModified = true
+        }
+        if (legacyHiddenExpressions && legacyHiddenExpressions.length > 0) {
+          updatedModel.hiddenExpressions = Array.from(new Set([...(updatedModel.hiddenExpressions || []), ...legacyHiddenExpressions]))
+          modelModified = true
+        }
+        if (legacyHiddenMotions && legacyHiddenMotions.length > 0) {
+          updatedModel.hiddenMotions = Array.from(new Set([...(updatedModel.hiddenMotions || []), ...legacyHiddenMotions]))
+          modelModified = true
+        }
+        if (legacyFavoriteExpressions && legacyFavoriteExpressions.length > 0) {
+          updatedModel.favoriteExpressions = Array.from(new Set([...(updatedModel.favoriteExpressions || []), ...legacyFavoriteExpressions]))
+          modelModified = true
+        }
+
+        if (modelModified) {
+          console.info(`[AiriCard:Migration] Migrating mappings from card "${cardId}" to model "${displayModelId}"`)
+          const localforageModule = await import('localforage').then(m => m.default || m)
+          await localforageModule.setItem(displayModelId, updatedModel)
+
+          if (card.extensions?.airi?.modules) {
+            const mods = card.extensions.airi.modules as any
+            if (mods.live2d) {
+              delete mods.live2d.motionMappings
+              delete mods.live2d.hiddenMotions
+              delete mods.live2d.emotionMappings
+            }
+            delete mods.emotionMappings
+            delete mods.motionMappings
+            delete mods.hiddenExpressions
+            delete mods.hiddenMotions
+            delete mods.favoriteExpressions
+            delete mods.favoriteExpression
+          }
+          cardsModified = true
+        }
+      }
+
+      if (cardsModified) {
+        await persistCards(nextCards)
+        displayModelsStore.broadcastModelsSync(Date.now())
+        await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
+      }
+    }
+    catch (e) {
+      console.error('[AiriCard] Migration of mappings failed:', e)
+    }
+  }
+
   async function loadCards(silent = false) {
     if (!silent)
       cardsLoading.value = true
@@ -297,6 +394,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       if (raw && Array.isArray(raw)) {
         cards.value = new Map(raw)
       }
+      await migrateCardMappingsToModel()
     }
     catch (e) {
       console.error('[AiriCard] Failed to load cards from IndexedDB:', e)
@@ -649,12 +747,36 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       if (seq !== syncCardStateSequence)
         return
 
-      if (selectedModel?.format === DisplayModelFormat.Live2dZip && (force || modelChanged)) {
-        // Only trigger full view update if the model profile itself changed or forced
-        live2dStore.shouldUpdateView()
-      }
-      else if (selectedModel?.format === DisplayModelFormat.VRM && (force || modelChanged)) {
-        vrmStore.shouldUpdateView()
+      if (selectedModel) {
+        if (selectedModel.format === DisplayModelFormat.Live2dZip) {
+          live2dStore.emotionMappings = selectedModel.emotionMappings || {}
+          if (selectedModel.favoriteExpressions && selectedModel.favoriteExpressions.length > 0) {
+            // Restore active expression presets from model's favorites
+            const fav = selectedModel.favoriteExpressions[0]
+            if (fav && live2dStore.availableExpressions.some(e => e.fileName === fav)) {
+              live2dStore.activeExpressions[fav] = 1
+            }
+          }
+          if (force || modelChanged) {
+            live2dStore.shouldUpdateView()
+          }
+        }
+        else if (selectedModel.format === DisplayModelFormat.VRM) {
+          vrmStore.emotionMappings = selectedModel.emotionMappings || {}
+          if (selectedModel.favoriteExpressions && selectedModel.favoriteExpressions.length > 0) {
+            vrmStore.favoriteExpression = selectedModel.favoriteExpressions[0] || ''
+          }
+          if (force || modelChanged) {
+            vrmStore.shouldUpdateView()
+          }
+        }
+        else if (selectedModel.format === DisplayModelFormat.PMXZip || selectedModel.format === DisplayModelFormat.PMD || selectedModel.format === DisplayModelFormat.PMXDirectory) {
+          const mmdStore = await import('@proj-airi/stage-ui-mmd/stores/mmd').then(m => m.useMmd())
+          mmdStore.morphMappings = selectedModel.emotionMappings || {}
+          if (force || modelChanged) {
+            mmdStore.shouldUpdateView()
+          }
+        }
       }
     }
   }
