@@ -319,13 +319,13 @@ function triggerExpressionEffect(key: string) {
   toast.info(`Triggered expression: ${key}`)
 }
 
-function triggerMotionEffect(key: string, group: string) {
+function triggerMotionEffect(key: string) {
   if (!stageEnabled.value) {
     toast.error('Stage window must be open to preview motions.')
     return
   }
   if (modelType.value === 'live2d') {
-    live2dStore.triggerMotion(group)
+    live2dStore.triggerMotion(key)
   }
   else if (modelType.value === 'mmd') {
     mmdStore.playOneShotAction(key)
@@ -476,7 +476,7 @@ async function playRehearsal() {
         triggerExpressionEffect(t.value)
       }
       else {
-        triggerMotionEffect(t.value, t.value)
+        triggerMotionEffect(t.value)
       }
     }
 
@@ -762,7 +762,7 @@ async function suggestDialogue() {
                 ]"
               >
                 <!-- Left: Active dot + name -->
-                <div class="min-w-0 flex flex-1 cursor-pointer items-center gap-2" @click="triggerMotionEffect(mot.key, mot.group)">
+                <div class="min-w-0 flex flex-1 cursor-pointer items-center gap-2" @click="triggerMotionEffect(mot.key)">
                   <div
                     :class="['h-2 w-2 rounded-full shrink-0 transition-colors', mot.isActive ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600']"
                   />

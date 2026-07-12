@@ -102,7 +102,28 @@ export const useLive2d = defineStore('live2d', () => {
       shouldUpdateViewHooks.value.forEach(hook => hook(event.reason))
     }
     else if (event?.type === 'live2d-trigger-motion') {
-      triggerMotionHooks.value.forEach(hook => hook(event.group, event.index))
+      let resolvedGroup = event.group
+      let resolvedIndex = event.index
+
+      // If group looks like a raw filename key, resolve it from the loaded available-motions list
+      const isRawFile = event.group.toLowerCase().endsWith('.json') || event.group.includes('/')
+      if (isRawFile) {
+        const targetBase = event.group.split(/[\\/]/).pop()?.toLowerCase()
+        const matched = availableMotions.value.find((m) => {
+          if (m.fileName === event.group)
+            return true
+          const mBase = m.fileName.split(/[\\/]/).pop()?.toLowerCase()
+          return !!targetBase && targetBase === mBase
+        })
+
+        if (matched) {
+          resolvedGroup = matched.motionName
+          resolvedIndex = matched.motionIndex
+          console.info('[Live2D Store] Resolved raw motion key to:', { resolvedGroup, resolvedIndex })
+        }
+      }
+
+      triggerMotionHooks.value.forEach(hook => hook(resolvedGroup, resolvedIndex))
     }
     else if (event?.type === 'live2d-trigger-emotion') {
       triggerEmotionHooks.value.forEach(hook => hook(event.name, event.intensity))
@@ -147,10 +168,17 @@ export const useLive2d = defineStore('live2d', () => {
   }
 
   function executeTriggerEmotion(emotionKey: string, intensity: number = 1) {
-    // 1. Find all fileNames mapped to this emotionKey (explicit mapping)
-    let targetFileNames = Object.entries(emotionMappings.value)
-      .filter(([_, mappedEmotion]) => mappedEmotion === emotionKey)
-      .map(([fileName, _]) => fileName)
+    // 0. Direct match against available expressions fileName
+    let targetFileNames = availableExpressions.value
+      .filter(e => e.fileName === emotionKey || e.fileName.toLowerCase().endsWith(emotionKey.toLowerCase()) || emotionKey.toLowerCase().endsWith(e.fileName.toLowerCase()))
+      .map(e => e.fileName)
+
+    // 1. Find all fileNames mapped to this emotionKey (explicit mapping) if no direct match
+    if (targetFileNames.length === 0) {
+      targetFileNames = Object.entries(emotionMappings.value)
+        .filter(([_, mappedEmotion]) => mappedEmotion === emotionKey)
+        .map(([fileName, _]) => fileName)
+    }
 
     // 2. Fallback: Case-insensitive match against available expressions if no explicit mapping
     if (targetFileNames.length === 0) {
