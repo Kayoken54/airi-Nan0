@@ -1,22 +1,18 @@
 <script setup lang="ts">
-import ModelCustomizer from '@proj-airi/stage-ui/src/components/scenarios/settings/model-settings/ModelCustomizer.vue'
-
+import { ModelCustomizer } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings'
 // Model-specific Stores
 import { DisplayModelFormat, useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 // AIRI Stores
-import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSettingsControlStrip } from '@proj-airi/stage-ui/stores/settings/control-strip'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 
 // Setup Stores
-const airiCardStore = useAiriCardStore()
 const stageModelStore = useSettingsStageModel()
 const controlStripStore = useSettingsControlStrip()
 const displayModelsStore = useDisplayModelsStore()
 
-const { activeCard } = storeToRefs(airiCardStore)
 const { stageModelSelected } = storeToRefs(stageModelStore)
 const { stageEnabled } = storeToRefs(controlStripStore)
 
