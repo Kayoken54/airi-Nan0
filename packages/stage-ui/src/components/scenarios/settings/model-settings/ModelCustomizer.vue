@@ -9,10 +9,10 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
+import { useChatOrchestratorStore } from '../../../../stores/chat'
 import { DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useSettingsControlStrip } from '../../../../stores/settings/control-strip'
-import { useSpeechRuntimeStore } from '../../../../stores/speech-runtime'
 
 interface Props {
   modelId: string
@@ -29,7 +29,7 @@ const props = withDefaults(defineProps<Props>(), {
 const airiCardStore = useAiriCardStore()
 const controlStripStore = useSettingsControlStrip()
 const displayModelsStore = useDisplayModelsStore()
-const speechRuntimeStore = useSpeechRuntimeStore()
+const orchestrator = useChatOrchestratorStore()
 
 const live2dStore = useLive2d()
 const mmdStore = useMmd()
@@ -469,30 +469,41 @@ async function playRehearsal() {
 
   try {
     const text = playgroundText.value.trim()
-    console.info('[Rehearsal Playback] Slicing and streaming tokens to Speech Intent:', text)
+    console.info('[Rehearsal Playback] Streaming via Chat Orchestrator hooks:', text)
 
-    const intent = speechRuntimeStore.openIntent({
-      ownerId: activeCardId.value || 'default',
-    })
+    const dummyContext = {
+      assistantMessageId: `rehearsal-${Date.now()}`,
+      assistantMessageCreatedAt: Date.now(),
+    }
+
+    // Start of response
+    await orchestrator.emitBeforeSendHooks('', dummyContext as any)
 
     // Split content into markers and text segments
     const parts = text.split(/(<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>))/gi)
     for (const part of parts) {
       if (!part)
         continue
+
+      // Delay slightly between streams to simulate standard streaming token rate
+      await new Promise(resolve => setTimeout(resolve, 80))
+
       if (part.startsWith('<|')) {
-        console.info('[Rehearsal Playback] Streaming Special Tag:', part)
-        intent.writeSpecial(part)
+        console.info('[Rehearsal Playback] Emitting Special Tag:', part)
+        await orchestrator.emitTokenSpecialHooks(part, dummyContext as any)
       }
       else {
-        console.info('[Rehearsal Playback] Streaming Literal Text:', part)
-        intent.writeLiteral(part)
+        console.info('[Rehearsal Playback] Emitting Literal Text:', part)
+        await orchestrator.emitTokenLiteralHooks(part, dummyContext as any)
       }
     }
-    intent.writeFlush()
-    intent.end()
 
-    // Reset state after a brief visual delay to represent playback triggers starting
+    // End of stream
+    await orchestrator.emitStreamEndHooks(dummyContext as any)
+
+    const content = text.replace(/<\|ACT:[^|]+\|>/g, '').trim()
+    await orchestrator.emitAssistantResponseEndHooks(content, dummyContext as any)
+
     setTimeout(() => {
       isRehearsing.value = false
     }, 1000)
