@@ -357,26 +357,26 @@ Use the following catalog to hunt for and register specific models in the local 
   - *Model Filename/ID:* _____________________
 
 ### B. Live2D Models
-- [ ] **Ready-to-Go Expressions:** A model with clean, pre-built named expression files (e.g., `happy.exp3.json`, `sad.exp3.json`).
-  - *Model Filename/ID:* _____________________
+- [x] **Ready-to-Go Expressions:** A model with clean, pre-built named expression files (e.g., `happy.exp3.json`, `sad.exp3.json`).
+  - *Model Filename/ID:* Anya - kitten vtuber.zip (`display-model-ROiozwAemT_lmJoYBWuRK`)
 - [ ] **Raw Filename Keys:** A model with raw technical filenames (e.g., `exp_09_12.exp3.json`) to trigger the rename banner.
   - *Model Filename/ID:* _____________________
-- [ ] **No Expressions:** A model that has zero expression files in its asset folder.
-  - *Model Filename/ID:* _____________________
-- [ ] **With Motions:** A model containing motion clips.
-  - *Model Filename/ID:* _____________________
+- [x] **No Expressions:** A model that has zero expression files in its asset folder.
+  - *Model Filename/ID:* model6.zip (`display-model-9j4Mk60ReAxCj_9JfYX_N`)
+- [x] **With Motions:** A model containing motion clips.
+  - *Model Filename/ID:* v2a6_306204_meilanni_Live2D.zip (`display-model-dDe8yJ_R_SSSKr-ddS-tx`)
 - [ ] **Motions with Sound:** A model containing `.motion3.json` files that reference audio files.
   - *Model Filename/ID:* _____________________
 - [ ] **Motions with Sound & Caption:** A model where motions trigger both audio and built-in text captions.
   - *Model Filename/ID:* _____________________
 - [ ] **No Motions:** A model that has zero motion files.
   - *Model Filename/ID:* _____________________
-- [ ] **Empty Asset Set:** A model that has neither motions nor expressions (completely blank).
-  - *Model Filename/ID:* _____________________
+- [x] **Empty Asset Set:** A model that has neither motions nor expressions (completely blank).
+  - *Model Filename/ID:* 302301_shisihangshi_Live2D.zip (`display-model-g16ESa6Q5E_EvoPTYIfBD`)
 
 ### C. MMD Models
-- [ ] **Unicode/Shift-JIS Keys:** A model with morph targets named in Japanese Shift-JIS (e.g., `まばたき`, `にっこり`).
-  - *Model Filename/ID:* _____________________
+- [x] **Unicode/Shift-JIS Keys:** A model with morph targets named in Japanese Shift-JIS (e.g., `まばたき`, `にっこり`).
+  - *Model Filename/ID:* inav2.0.pmx (`display-model--D2OMxL5fGuQmGApH3eAB`)
 - [ ] **ASCII/English Keys:** A model with morph targets named in standard ASCII/English.
   - *Model Filename/ID:* _____________________
 - [ ] **No Morph Targets:** A static MMD PMX model (e.g., a background prop or accessory) with no morph targets.

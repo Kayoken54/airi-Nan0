@@ -517,6 +517,22 @@ async function suggestDialogue() {
     toast.error('AI suggestion failed.')
   }
 }
+
+// Append ACT token to Rehearsal playground
+function appendToPlayground(type: 'emotion' | 'motion', key: string) {
+  const token = type === 'emotion'
+    ? `<|ACT:emotion="${key}"|>`
+    : `<|ACT:motion="${key}"|>`
+
+  // Append with a space prefix if playground is not empty
+  if (playgroundText.value.trim().length > 0) {
+    playgroundText.value = `${playgroundText.value.trim()} ${token}`
+  }
+  else {
+    playgroundText.value = token
+  }
+  toast.success(`Appended ${type} token to sandbox!`)
+}
 </script>
 
 <template>
@@ -649,7 +665,7 @@ async function suggestDialogue() {
       </div>
 
       <!-- Scrollable List Area -->
-      <div class="flex-1 overflow-y-auto pb-4">
+      <div v-if="!capabilitiesLoading" class="flex-1 overflow-y-auto pb-4">
         <!-- ====== EXPRESSIONS LIST ====== -->
         <template v-if="activeTab === 'expressions'">
           <div v-if="expressionsToRender.length === 0" class="py-8 text-center text-xs text-neutral-400">
@@ -697,6 +713,15 @@ async function suggestDialogue() {
 
               <!-- Right: Actions -->
               <div class="ml-2 flex shrink-0 items-center gap-0.5">
+                <!-- Append to Sandbox -->
+                <button
+                  v-if="props.showRehearsalSandbox"
+                  class="cursor-pointer rounded p-1 text-neutral-400 hover:bg-primary-500/10 dark:text-neutral-500 hover:text-primary-500"
+                  title="Insert into Sandbox"
+                  @click.stop="appendToPlayground('emotion', exp.displayName)"
+                >
+                  <div class="i-solar:document-add-bold-duotone text-sm" />
+                </button>
                 <!-- ACT Mapping -->
                 <button
                   class="cursor-pointer rounded p-1 transition-colors"
@@ -788,6 +813,15 @@ async function suggestDialogue() {
 
                 <!-- Right: Actions -->
                 <div class="ml-2 flex shrink-0 items-center gap-0.5">
+                  <!-- Append to Sandbox -->
+                  <button
+                    v-if="props.showRehearsalSandbox"
+                    class="cursor-pointer rounded p-1 text-neutral-400 hover:bg-primary-500/10 dark:text-neutral-500 hover:text-primary-500"
+                    title="Insert into Sandbox"
+                    @click.stop="appendToPlayground('motion', mot.displayName)"
+                  >
+                    <div class="i-solar:document-add-bold-duotone text-sm" />
+                  </button>
                   <!-- Loop / Cycle Toggle -->
                   <button
                     v-if="activeCard"
@@ -823,6 +857,39 @@ async function suggestDialogue() {
             </div>
           </template>
         </template>
+
+        <!-- Rehearsal UI Controls Legend -->
+        <div v-if="props.showRehearsalSandbox" class="mt-4 border border-neutral-100 rounded-xl bg-neutral-50/40 p-3 text-[10px] text-neutral-500 leading-relaxed dark:border-neutral-800/80 dark:bg-neutral-950/10">
+          <div class="mb-1.5 text-[11px] text-neutral-700 font-bold dark:text-neutral-300">
+            Rehearsal Controls Legend
+          </div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:document-add-bold-duotone shrink-0 text-sm text-primary-500" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Append Token:</span> Appends <code class="rounded bg-neutral-100 px-0.5 dark:bg-neutral-800">&lt;|ACT:...|&gt;</code> to the sandbox dialog template.
+              </div>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:infinity-bold-duotone shrink-0 text-sm text-neutral-400" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Idle Cycle:</span> Sets this motion to repeat in the character's automatic background idle cycle.
+              </div>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:pen-bold-duotone shrink-0 text-sm text-neutral-400" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Rename Key:</span> Changes technical asset filenames to clean words (e.g. <code class="rounded bg-neutral-100 px-0.5 dark:bg-neutral-800">happy</code>) so the AI understands them.
+              </div>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:eye-bold-duotone shrink-0 text-sm text-neutral-400" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Hide Key:</span> Removes dead or unused asset keys from the main view to keep lists clean.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 
