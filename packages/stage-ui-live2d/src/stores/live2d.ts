@@ -105,22 +105,26 @@ export const useLive2d = defineStore('live2d', () => {
       let resolvedGroup = event.group
       let resolvedIndex = event.index
 
-      // If group looks like a raw filename key, resolve it from the loaded available-motions list
-      const isRawFile = event.group.toLowerCase().endsWith('.json') || event.group.includes('/')
-      if (isRawFile) {
-        const targetBase = event.group.split(/[\\/]/).pop()?.toLowerCase()
-        const matched = availableMotions.value.find((m) => {
-          if (m.fileName === event.group)
-            return true
-          const mBase = m.fileName.split(/[\\/]/).pop()?.toLowerCase()
-          return !!targetBase && targetBase === mBase
-        })
+      // 1. Search mappings to see if event.group is a custom display name
+      let targetFileName = event.group
+      const mappedEntry = Object.entries(motionMap.value).find(([_, displayName]) => displayName === event.group)
+      if (mappedEntry) {
+        targetFileName = mappedEntry[0]
+      }
 
-        if (matched) {
-          resolvedGroup = matched.motionName
-          resolvedIndex = matched.motionIndex
-          console.info('[Live2D Store] Resolved raw motion key to:', { resolvedGroup, resolvedIndex })
-        }
+      // 2. Resolve targetFileName to the actual Live2D track group and index from availableMotions
+      const targetBase = targetFileName.split(/[\\/]/).pop()?.toLowerCase()
+      const matched = availableMotions.value.find((m) => {
+        if (m.fileName === targetFileName)
+          return true
+        const mBase = m.fileName.split(/[\\/]/).pop()?.toLowerCase()
+        return !!targetBase && targetBase === mBase
+      })
+
+      if (matched) {
+        resolvedGroup = matched.motionName
+        resolvedIndex = matched.motionIndex
+        console.info('[Live2D Store] Resolved custom/raw motion tag to:', { resolvedGroup, resolvedIndex })
       }
 
       triggerMotionHooks.value.forEach(hook => hook(resolvedGroup, resolvedIndex))

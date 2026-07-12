@@ -12,6 +12,7 @@ import { toast } from 'vue-sonner'
 import { DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useSettingsControlStrip } from '../../../../stores/settings/control-strip'
+import { useSpeechRuntimeStore } from '../../../../stores/speech-runtime'
 
 interface Props {
   modelId: string
@@ -28,6 +29,7 @@ const props = withDefaults(defineProps<Props>(), {
 const airiCardStore = useAiriCardStore()
 const controlStripStore = useSettingsControlStrip()
 const displayModelsStore = useDisplayModelsStore()
+const speechRuntimeStore = useSpeechRuntimeStore()
 
 const live2dStore = useLive2d()
 const mmdStore = useMmd()
@@ -113,6 +115,10 @@ watch(() => props.modelId, async (newId) => {
     hiddenExpressions.value = model.hiddenExpressions || []
     motionMappings.value = model.motionMappings || {}
     hiddenMotions.value = model.hiddenMotions || []
+
+    // Sync to store for stage window cross-process triggers
+    live2dStore.motionMap = { ...motionMappings.value }
+    live2dStore.emotionMappings = { ...emotionMappings.value }
   }
 
   // Resolve expression + motion lists via the store resolver.
@@ -147,6 +153,11 @@ async function saveMetadata() {
     model.motionMappings = { ...motionMappings.value }
     model.hiddenMotions = [...hiddenMotions.value]
     await localforage.setItem(props.modelId, JSON.parse(JSON.stringify(model)))
+
+    // Sync to store for stage window cross-process triggers
+    live2dStore.motionMap = { ...motionMappings.value }
+    live2dStore.emotionMappings = { ...emotionMappings.value }
+
     displayModelsStore.broadcastModelsSync(Date.now())
     await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
   }
@@ -458,40 +469,36 @@ async function playRehearsal() {
 
   try {
     const text = playgroundText.value.trim()
-    const actRegex = /<\|ACT:(emotion|motion)="([^"]+)"\|>/g
-    let match
-    const triggers: Array<{ type: 'emotion' | 'motion', value: string, index: number }> = []
-    while ((match = actRegex.exec(text)) !== null) {
-      triggers.push({
-        type: match[1] as 'emotion' | 'motion',
-        value: match[2],
-        index: match.index,
-      })
-    }
+    console.info('[Rehearsal Playback] Slicing and streaming tokens to Speech Intent:', text)
 
-    const cleanText = text.replace(/<\|ACT:[^|]+\|>/g, '').trim()
+    const intent = speechRuntimeStore.openIntent({
+      ownerId: activeCardId.value || 'default',
+    })
 
-    for (const t of triggers) {
-      if (t.type === 'emotion') {
-        triggerExpressionEffect(t.value)
+    // Split content into markers and text segments
+    const parts = text.split(/(<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>))/gi)
+    for (const part of parts) {
+      if (!part)
+        continue
+      if (part.startsWith('<|')) {
+        console.info('[Rehearsal Playback] Streaming Special Tag:', part)
+        intent.writeSpecial(part)
       }
       else {
-        triggerMotionEffect(t.value)
+        console.info('[Rehearsal Playback] Streaming Literal Text:', part)
+        intent.writeLiteral(part)
       }
     }
+    intent.writeFlush()
+    intent.end()
 
-    if (window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance(cleanText)
-      utterance.onend = () => { isRehearsing.value = false }
-      utterance.onerror = () => { isRehearsing.value = false }
-      window.speechSynthesis.speak(utterance)
-    }
-    else {
+    // Reset state after a brief visual delay to represent playback triggers starting
+    setTimeout(() => {
       isRehearsing.value = false
-    }
+    }, 1000)
   }
   catch (err) {
-    console.error('Rehearsal failed:', err)
+    console.error('Rehearsal playback streaming failed:', err)
     isRehearsing.value = false
   }
 }
