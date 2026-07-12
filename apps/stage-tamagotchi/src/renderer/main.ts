@@ -1,5 +1,6 @@
 import type { Plugin } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
+import type { Pinia } from 'pinia'
 
 import Tres from '@tresjs/core'
 
@@ -10,7 +11,6 @@ import { setupLayouts } from 'virtual:generated-layouts'
 import { createApp } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
-import { useNan0RuntimeStore } from '@proj-airi/stage-ui/stores/nan0'
 
 import App from './App.vue'
 
@@ -55,7 +55,13 @@ app
   .use(i18n)
   .use(Tres)
 
-// Nan0 must own cognition before any surface can submit a chat turn.
-await useNan0RuntimeStore(pinia).ensureInstalled()
-
 app.mount('#app')
+
+async function installNan0AfterMount(pinia: Pinia): Promise<void> {
+  const { useNan0RuntimeStore } = await import('@proj-airi/stage-ui/stores/nan0')
+  await useNan0RuntimeStore(pinia).ensureInstalled()
+}
+
+void installNan0AfterMount(pinia).catch((error) => {
+  console.error('[Nan0] Installation failed after renderer mount:', error)
+})
