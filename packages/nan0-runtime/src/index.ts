@@ -1,5 +1,6 @@
 export * from './types'
 export * from './kernel/Nan0Kernel'
+export * from './identity/ActorIdentity'
 export * from './host/Nan0HostAdapter'
 export * from './host/CallbackHostBindings'
 export * from './persistence/InMemoryStateStore'

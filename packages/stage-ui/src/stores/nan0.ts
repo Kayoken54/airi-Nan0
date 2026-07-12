@@ -80,21 +80,26 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         ? context.input.type.slice('input:'.length)
         : 'chat'
 
-      const actorId = String(
-        (context.message as any)?.actorId
-          ?? (context.message as any)?.userId
-          ?? (context.message as any)?.authorId
-          ?? 'kyo',
-      )
+      const sessionActorId = (context.message as any)?.actorId
+        ?? (context.message as any)?.userId
+        ?? (context.message as any)?.authorId
+      const isLocalKyoInput = source === 'text' || source === 'voice' || source === 'chat'
+      const actorId = String(sessionActorId ?? (isLocalKyoInput ? 'kyo' : 'unknown'))
+      const displayName = String((context.message as any)?.displayName ?? (actorId === 'kyo' ? 'Kyo' : actorId))
 
       const prepared = await kernel.prepareTurn({
         id: String(context.message.id ?? nanoid()),
         source: source === 'text' ? 'chat' : source as any,
         actorId,
-        displayName: String((context.message as any)?.displayName ?? 'Kyo'),
+        displayName,
         content: message,
         metadata: {
           sessionInputType: context.input?.type,
+          sourceIdentity: {
+            source,
+            actorId: sessionActorId == null ? undefined : String(sessionActorId),
+            displayName: (context.message as any)?.displayName,
+          },
         },
         timestamp: Number(context.message.createdAt ?? Date.now()),
       })

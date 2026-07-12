@@ -6,6 +6,7 @@ import type {
   Nan0MemoryRecord,
   Nan0Observation,
 } from '../types'
+import { createDefaultIdentityState, hydrateIdentityState, nan0Ownership, normalizeMemoryOwnership, resolveObservationOwnership } from '../identity/ActorIdentity'
 
 type ExpressionHandler = (expression: Nan0Expression) => void
 
@@ -29,6 +30,7 @@ function defaultInitialState(now: number): Nan0KernelState {
       curiosity: 0.55,
     },
     runtimeMetadata: {},
+    identity: createDefaultIdentityState(),
     memories: [],
   }
 }
@@ -73,8 +75,17 @@ export class Nan0Kernel {
     if (persistedState)
       this.state = persistedState
 
+    let identity = hydrateIdentityState(this.state.identity)
+    const memories = this.state.memories.map((memory) => {
+      const normalized = normalizeMemoryOwnership(memory, identity)
+      identity = normalized.identity
+      return normalized.memory
+    })
+
     this.state = {
       ...this.state,
+      identity,
+      memories,
       bootCount: this.state.bootCount + 1,
       updatedAt: this.now(),
     }
@@ -98,10 +109,18 @@ export class Nan0Kernel {
 
   async importLegacyMemories(data: LegacyNan0Export): Promise<number> {
     const existingIds = new Set(this.state.memories.map(memory => memory.id))
-    const imported = data.records.filter(record => !existingIds.has(record.id))
+    let identity = this.state.identity
+    const imported = data.records
+      .filter(record => !existingIds.has(record.id))
+      .map((record) => {
+        const normalized = normalizeMemoryOwnership(record, identity)
+        identity = normalized.identity
+        return normalized.memory
+      })
 
     this.state = {
       ...this.state,
+      identity,
       memories: [...this.state.memories, ...imported],
       updatedAt: this.now(),
     }
@@ -120,33 +139,40 @@ export class Nan0Kernel {
   async prepareTurn(observation: Nan0Observation): Promise<Nan0PreparedTurn> {
     this.assertBooted()
 
-    const text = observationText(observation).trim()
+    const { identity, ownership } = resolveObservationOwnership(observation, this.state.identity)
+    const canonicalObservation: Nan0Observation = {
+      ...observation,
+      actorId: ownership.actorId,
+      displayName: ownership.displayName,
+    }
+    const text = observationText(canonicalObservation).trim()
     const thoughtId = this.createId()
     const recalledMemories = text
-      ? this.retrieveRelevantMemories(text, observation.actorId, 10)
+      ? this.retrieveRelevantMemories(text, ownership.actorId, 10)
       : []
 
-    this.updateEmotionalStateForObservation(observation)
+    this.updateEmotionalStateForObservation(canonicalObservation)
 
     const userEvent: Nan0MemoryRecord = {
       id: this.createId(),
       kind: 'event',
-      actorId: observation.actorId,
+      actorId: ownership.actorId,
       content: text,
       tags: [observation.source, 'user-input'],
-      createdAt: observation.timestamp,
+      createdAt: canonicalObservation.timestamp,
       metadata: {
-        observationId: observation.id,
-        displayName: observation.displayName,
+        ...canonicalObservation.metadata,
+        observationId: canonicalObservation.id,
         thoughtId,
-        ...observation.metadata,
+        ownership,
       },
     }
 
     this.state = {
       ...this.state,
-      lastObservationAt: observation.timestamp,
+      lastObservationAt: canonicalObservation.timestamp,
       lastThoughtId: thoughtId,
+      identity,
       memories: text ? [...this.state.memories, userEvent] : this.state.memories,
       updatedAt: this.now(),
     }
@@ -154,10 +180,10 @@ export class Nan0Kernel {
     await this.dependencies.stateStore.save(this.state)
 
     return {
-      observation,
+      observation: canonicalObservation,
       thoughtId,
       recalledMemories,
-      systemContext: this.composeNan0Context(thoughtId, recalledMemories),
+      systemContext: this.composeNan0Context(thoughtId, ownership, recalledMemories),
     }
   }
 
@@ -178,6 +204,7 @@ export class Nan0Kernel {
     if (!content)
       return
 
+    const ownership = nan0Ownership(String(input.metadata?.source ?? 'assistant'))
     const memory: Nan0MemoryRecord = {
       id: this.createId(),
       kind: 'event',
@@ -187,9 +214,10 @@ export class Nan0Kernel {
       tags: ['assistant-output', 'nan0-expression'],
       createdAt: input.timestamp ?? this.now(),
       metadata: {
+        ...input.metadata,
         thoughtId: input.thoughtId,
         rawContent: input.rawContent,
-        ...input.metadata,
+        ownership,
       },
     }
 
@@ -252,6 +280,7 @@ export class Nan0Kernel {
 
   private composeNan0Context(
     thoughtId: string,
+    ownership: import('../types').Nan0ActorOwnership,
     memories: Nan0MemoryRecord[],
   ): string {
     const emotionalState = Object.entries(this.state.emotionalState)
@@ -277,6 +306,13 @@ THOUGHT CONTRACT
 - Address Kyo as Kyo when relevant.
 - Preserve ownership: Kyo's statements belong to Kyo. Nan0's statements belong to Nan0.
 - Treat prior events as lived continuity, not as trivia pasted into a prompt.
+
+CURRENT EVENT OWNERSHIP
+- canonical_actor_id: ${ownership.actorId}
+- display_name: ${ownership.displayName}
+- ${ownership.actorRole}
+- ${ownership.nan0Role}
+- ${ownership.ownershipRule}
 
 CURRENT EMOTIONAL STATE
 ${emotionalState || 'neutral'}

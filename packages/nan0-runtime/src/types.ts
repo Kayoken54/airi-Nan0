@@ -16,6 +16,40 @@ export interface Nan0Observation {
   timestamp: number
 }
 
+export type Nan0ActorKind = 'kyo' | 'nan0' | 'external' | 'unknown'
+
+export interface Nan0ExternalIdentity {
+  source: string
+  sourceActorId?: string
+  displayName?: string
+}
+
+export interface Nan0ActorIdentity {
+  actorId: string
+  displayName: string
+  kind: Nan0ActorKind
+  aliases: string[]
+  pronouns: string[]
+  externalIdentities: Record<string, Nan0ExternalIdentity>
+}
+
+export interface Nan0IdentityState {
+  actors: Record<string, Nan0ActorIdentity>
+  aliases: Record<string, string>
+}
+
+export interface Nan0ActorOwnership {
+  actorId: string
+  displayName: string
+  kind: Nan0ActorKind
+  source: string
+  rawActorId?: string
+  externalIdentity?: Nan0ExternalIdentity
+  actorRole: string
+  nan0Role: string
+  ownershipRule: string
+}
+
 export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
 
 interface Nan0ExpressionBase {
@@ -65,6 +99,7 @@ export interface Nan0KernelState {
   lastThoughtId?: string
   emotionalState: Record<string, number>
   runtimeMetadata: Record<string, unknown>
+  identity: Nan0IdentityState
   memories: Nan0MemoryRecord[]
 }
 
