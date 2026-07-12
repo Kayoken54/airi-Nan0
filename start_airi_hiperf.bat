@@ -7,7 +7,7 @@ if "%PORT_NUM%"=="" set PORT_NUM=5174
 
 echo [1/2] Building packages...
 set NODE_OPTIONS=--max-old-space-size=8192
-call pnpm run build
+call pnpm run build:packages
 
 echo [2/2] Starting Tamagotchi on Port %PORT_NUM%...
 set AIRI_RENDERER_PORT=%PORT_NUM%

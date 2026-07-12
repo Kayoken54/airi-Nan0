@@ -1,153 +1,46 @@
-# Project AIRI Agent Guide
+Read the relevant section of [`docs/rosetta-stone.md`](./docs/rosetta-stone.md) before broad architecture exploration or a cross-cutting change. It is the canonical concept-to-path index and records known failure modes. If it conflicts with current source, source wins; correct the Rosetta Stone when the change moves a canonical entry point or establishes a durable lesson.
 
-Concise but detailed reference for contributors working across the `moeru-ai/airi` monorepo. Improve code when you touch it; avoid one-off patterns.
+## Pair programming
 
-## Tech Stack (by surface)
+- Treat this as pair programming: stay in sync with the user's intent instead of racing to code.
+- A request to explore, review, diagnose, research, design, plan, or "talk/hash it out" is not authorization to change application code. Root-cause the issue, state the concrete proposed solution and tradeoffs, then wait for approval to implement. If asked to write a design document, change the document only—not code—unless the user also asks for implementation.
+- For a clearly requested, low-ambiguity code change, proceed within scope. For a material product, behavior, or architecture decision, first state the decision point and proposed approach; do not silently choose a direction that the user may reasonably want to review.
 
-- **Desktop (stage-tamagotchi)**: Electron, Vue, Vite, TypeScript, Pinia, VueUse, Eventa (IPC/RPC), UnoCSS, Vitest, ESLint.
-- **Web (stage-web)**: Vue 3 + Vue Router, Vite, TypeScript, Pinia, VueUse, UnoCSS, Vitest, ESLint. Backend: WIP.
-- **Mobile (stage-pocket)**: Vue 3 + Vue Router, Vite, TypeScript, Pinia, VueUse, UnoCSS, Vitest, ESLint, Kotlin, Swift, Capacitor.
-- **UI/Shared Packages**:
-  - `packages/stage-ui`: Core business components, composables, stores shared by stage-web & stage-tamagotchi (heart of stage work).
-  - `packages/stage-ui-three`: Three.js bindings + Vue components.
-  - `packages/stage-ui-pixi`: Planned Pixi bindings.
-  - `packages/stage-shared`: Shared logic across stage-ui, stage-ui-three, stage-web, stage-tamagotchi.
-  - `packages/ui`: Standardized primitives (inputs, textarea, buttons, layout) built on reka-ui; minimal business logic.
-  - `packages/i18n`: Central translations.
-  - Server channel: `packages/server-runtime`, `packages/server-sdk`, `packages/server-shared` (power `services/` and `plugins/`).
-  - Legacy: `crates/` (old Tauri desktop; current desktop is Electron).
+## Fork safety
 
-## Structure & Responsibilities
+- Never push to, rebase from, fetch, or otherwise inspect the `upstream` remote unless the user explicitly authorizes it. This fork is highly divergent, and upstream is reference-only.
+- `crates/` is the legacy Tauri application. The current desktop application is Electron in `apps/stage-tamagotchi`.
+- Do not run broad formatting, cleanup, or unrelated refactors as a completion ritual. Keep the diff scoped to the request.
 
-- **Apps**
-  - `apps/stage-web`: Web app; composables/stores in `src/composables`, `src/stores`; pages in `src/pages`; devtools in `src/pages/devtools`; router config via `vite.config.ts`.
-  - `apps/stage-tamagotchi`: Electron app; renderer pages in `src/renderer/pages`; devtools in `src/renderer/pages/devtools`; settings layout at `src/renderer/layouts/settings.vue`; router config via `electron.vite.config.ts`.
-  - Settings/devtools routes rely on `<route lang="yaml"> meta: layout: settings </route>`; ensure routes/icons are registered accordingly (`apps/stage-tamagotchi/src/renderer/layouts/settings.vue`, `apps/stage-web/src/layouts/settings.vue`).
-  - Shared page bases: `packages/stage-pages`.
-  - Stage pages: `apps/stage-web/src/pages`, `apps/stage-tamagotchi/src/renderer/pages` (plus devtools folders).
-- **Stage UI internals** (`packages/stage-ui/src`)
-  - Providers: `stores/providers.ts` and `stores/providers/` (standardized provider definitions).
-  - Modules: `stores/modules/` (AIRI orchestration building blocks).
-  - Composables: `composables/` (business-oriented Vue helpers).
-  - Components: `components/`; scenarios in `components/scenarios/` for page/use-case-specific pieces.
-  - Stories: `packages/stage-ui/stories`, `packages/stage-ui/histoire.config.ts` (e.g. `components/misc/Button.story.vue`).
-- **IPC/Eventa**: Always use `@moeru/eventa` for type-safe, framework/runtime-agnostic IPC/RPC. Define contracts centrally (e.g., `apps/stage-tamagotchi/src/shared`) and follow usage patterns in `apps/stage-tamagotchi/src/main/services/electron` for main/renderer integration.
-- **Dependency Injection**: Use `injeca` for services/electron modules/plugins/frontend; see `apps/stage-tamagotchi/src/main/index.ts` for composition patterns.
-- **Build/CI/Lint**: `.github/workflows` for pipelines; `eslint.config.js` for lint rules.
-- **Bundling libs**: Use `tsdown` for new modules (see `packages/vite-plugin-warpdrive`).
-- **Styles**: UnoCSS config at `uno.config.ts`; check `apps/stage-web/src/styles` for existing animations; prefer UnoCSS over Tailwind.
+## Commit and release safety
 
-## Rosetta Stone
+- This fork is developed directly on `main`, and community users may pull every published commit. Treat the remote as a release surface, never as agent-owned scratch space.
+- Never proactively commit or push. The user decides when a tested checkpoint becomes a local commit and when a local commit is published.
+- Never push untested changes. A requested push still requires appropriate successful validation for the complete commit being pushed; do not push around a failure or an unrun required check.
+- If a meaningful `.ts`, `.tsx`, `.vue`, or build/automation `.js` change is part of a requested commit or push, run the affected workspace's typecheck or build as appropriate first. Successful verification is required before any push; a compile/typecheck failure is a hard stop for publishing. A local WIP snapshot after a failure requires the user's explicit instruction.
+- Before a requested commit or push, inspect the full `git status` and review the complete intended diff. Pre-existing changes are not invisible: preserve them, report them separately, and do not include or discard them without authorization.
+- If the user asks for a clean working tree, account for every pending path—not only files changed in the current task. Do not claim it is clean while unrelated changes remain.
+- At handoff, mention an uncommitted tested checkpoint when one is ready, but leave the commit and push decision to the user.
+- Never automatically create, pop, or drop a Git stash. Before `git checkout`, `git switch`, or another worktree-changing operation, inspect `git status`; if it is dirty, pause, review the pending changes, and ask whether the user wants to commit them, explicitly stash them, or choose another path. If the user authorizes a stash, report its identifier immediately, keep it prominent through handoff, and explicitly resolve restoration with the user before the task is complete.
+- Never run `git reset --hard`, `git checkout -- <path>`, `git restore`, `git clean`, or another command that can discard work without explicit, current user permission for the exact operation. User frustration, criticism, or a request to fix a mistake is never permission to erase work.
+- Do not use a second worktree, temporary branch, index manipulation, or implicit autostash to evade the dirty-worktree decision. Use such a workflow only with explicit approval when it materially changes repository state.
 
-The full concept-to-file-path index lives in [`docs/rosetta-stone.md`](./docs/rosetta-stone.md) — UI surfaces, engine subsystems, data layer, provider system, modules, audio pipeline, memory, MCP, nicknames, and lessons learned. Check it first when you need to find where something lives.
+## Local implementation choices
 
-## Commands (pnpm with filters)
+- Follow the nearest existing pattern before introducing a new abstraction. For service composition and typed IPC/RPC, use the established `injeca` and `@moeru/eventa` patterns described in the Rosetta Stone.
+- Prefer `@proj-airi/ui` primitives and Iconify icons over raw controls or bespoke SVGs. Prefer UnoCSS to Tailwind.
+- For substantial UnoCSS class lists, use readable Vue class arrays, for example `:class="['px-2 py-1', 'flex items-center']"`. Do not use UnoCSS attribute-mode syntax. Reuse existing animations before adding a new one.
+- Do not add backward-compatibility guards or shims unless the task explicitly requires extended support. Make the intended current shape clear instead.
+- Put translations in `packages/i18n`. Before locating or editing a YAML key, read [`docs/settings-yaml.md`](./docs/settings-yaml.md) and use `scripts/yaml-manager.js` as it directs. Do not brute-force-search locale YAML or read the manager source unless the documented interface cannot answer the task.
+- Add comments for non-obvious decisions, workarounds, platform behavior, or algorithms—not narration. Use `// NOTICE:` for a workaround and include its cause and relevant reference when useful.
 
-> Use pnpm workspace filters to scope tasks. Examples below are generic; replace the filter with the target workspace name (e.g. `@proj-airi/stage-tamagotchi`, `@proj-airi/stage-web`, `@proj-airi/stage-ui`, etc.).
+## Validation
 
-- **Typecheck**
-  - `pnpm -F <package.json name> typecheck`
-  - Example: `pnpm -F @proj-airi/stage-tamagotchi typecheck` (runs `tsc` + `vue-tsc`).
-- **Unit tests (Vitest)**
-  - Targeted: `pnpm exec vitest run <path/to/file>`
-    e.g. `pnpm exec vitest run apps/stage-tamagotchi/src/renderer/stores/tools/builtin/widgets.test.ts`
-  - Workspace: `pnpm -F <package.json name> exec vitest run`
-    e.g. `pnpm -F @proj-airi/stage-tamagotchi exec vitest run`
-  - Root `pnpm test:run`: runs all tests across registered projects. If no tests are found, check `vitest.config.ts` include patterns.
-  - Root `vitest.config.ts` includes `apps/stage-tamagotchi` and other projects; each app/package can have its own `vitest.config`.
-- **Lint**
-  - `pnpm lint` and `pnpm lint:fix`
-  - Formatting is handled via ESLint; `pnpm lint:fix` applies formatting.
-- **Build**
-  - `pnpm -F <package.json name> build`
-  - Example: `pnpm -F @proj-airi/stage-tamagotchi build` (typecheck + electron-vite build).
+Choose the smallest validation that gives useful confidence; validation is not a ritual.
 
-## Development Practices
-
-- Favor clear module boundaries; shared logic goes in `packages/`.
-- Keep runtime entrypoints lean; move heavy logic into services/modules.
-- Prefer functional patterns + DI (`injeca`) for testability.
-- Use Valibot for schema validation; keep schemas close to their consumers.
-- Use Eventa (`@moeru/eventa`) for structured IPC/RPC contracts where needed.
-- Do not add backward-compatibility guards. If extended support is required, write refactor docs and spin up another Codex or Claude Code instance via shell command to complete the implementation with clear instructions and the expected post-refactor shape.
-- If the refactor scope is small, do a progressive refactor step by step.
-- When modifying code, always check for opportunities to do small, minimal progressive refactors alongside the change.
-
-## Styling & Components
-
-- Prefer Vue v-bind class arrays for readability when working with UnoCSS & tailwindcss: do `:class="['px-2 py-1','flex items-center','bg-white/50 dark:bg-black/50']"`, don't do `class="px-2 py-1 flex items-center bg-white/50 dark:bg-black/50"`, don't do `px="2" py="1" flex="~ items-center" bg="white/50 dark:black/50"`; avoid long inline `class=""`. Refactor legacy when you touch it.
-- Use/extend UnoCSS shortcuts/rules in `uno.config.ts`; add new shortcuts/rules/plugins there when standardizing styles. Prefer UnoCSS over Tailwind.
-- Check `apps/stage-web/src/styles` for existing animations; reuse or extend before adding new ones. If you need config references, see `apps/stage-web/tsconfig.json` and `uno.config.ts`.
-- Build primitives on `@proj-airi/ui` (reka-ui) instead of raw DOM; see `packages/ui/src/components/Form` for patterns.
-- Use Iconify icon sets; avoid bespoke SVGs.
-- Animations: keep intuitive, lively, and readable.
-- `useDark` (VueUse): set `disableTransition: false` or use existing composables in `packages/ui`.
-
-## Testing Practices
-
-- Vitest per project; keep runs targeted for speed.
-- Mock IPC/services with `vi.fn`/`vi.mock`; do not rely on real Electron runtime.
-- For external providers/services, add both mock-based tests and integration-style tests (with env guards) when feasible. You can mock imports with Vitest.
-- Grow component/e2e coverage progressively (Vitest browser env where possible). Use `expect` and assert mock calls/params.
-
-## TypeScript / IPC / Tools
-
-- Keep JSON Schemas provider-compliant (explicit `type: object`, required fields; avoid unbounded records).
-- Favor functional patterns + DI (`injeca`); avoid new class hierarchies unless extending browser APIs (classes are harder to mock/test).
-- Centralize Eventa contracts; use `@moeru/eventa` for all events.
-- When a user asks to use a specific tool or dependency, first check Context7 docs with the search tool, then inspect actual usage of the dependency in this repo.
-- If multiple names are returned from Context7 without a clear distinction, ask the user to choose or confirm the desired one.
-- If docs conflict with typecheck results, inspect the dependency source under `node_modules` to diagnose root cause and fix types/bugs.
-
-## i18n
-
-- Add/modify translations in `packages/i18n`; avoid scattering i18n across apps/packages.
-- **Translation File Mapping**:
-  - Key prefix `settings.` (e.g., `settings.pages.providers.provider.blip-local.title`) maps to `packages/i18n/src/locales/<locale>/settings.yaml` (strip the leading `settings.` in the file path).
-  - Key prefix `stage.` maps to `stage.yaml`.
-  - All other keys map to `base.yaml`.
-- **Large YAML Management**: For modifying translation files, use `scripts/yaml-manager.js` to avoid memory/overwrite issues and preserve file comments. Refer to [`docs/settings-yaml.md`](./docs/settings-yaml.md) for full context.
-  - Run the manager with: `npx tsx scripts/yaml-manager.js <command> <file> [args]`
-  - **Commands**:
-    - `npx tsx scripts/yaml-manager.js analyze <file>`: Show compact tree structure with line numbers.
-    - `npx tsx scripts/yaml-manager.js audit <file>`: Check for duplicate keys.
-    - `npx tsx scripts/yaml-manager.js update <file> <path.to.key> "<value>"`: Safely insert/update a value.
-    - `npx tsx scripts/yaml-manager.js sync <src> <dest>`: Find keys in source missing from destination.
-
-## CSS/UNO
-
-- Use/extend UnoCSS shortcuts in `uno.config.ts`.
-- Prefer grouped class arrays for readability; refactor legacy inline strings when possible.
-
-## Naming & Comments
-
-- File names: kebab-case.
-- Avoid classes unless extending runtime/browser APIs; FP + DI is easier to test/mock.
-- Add clear, concise comments for utils, math, OS-interaction, algorithm, shared, and architectural functions that explain what the function does.
-- When using a workaround, add a `// NOTICE:` comment explaining why, the root cause, and any source context. If validated via `node_modules` inspection or external sources (e.g., GitHub), include relevant line references and links in code-formatted text.
-- When moving/refactoring/fixing/updating code, keep existing comments intact and move them with the code. If a comment is truly unnecessary, replace it with a comment stating it previously described X and why it was removed.
-- Avoid stubby/hacky scaffolding; prefer small refactors that leave code cleaner.
-- Use markers:
-  - `// TODO:` follow-ups
-  - `// REVIEW:` concerns/needs another eye
-  - `// NOTICE:` magic numbers, hacks, important context, external references/links
-
-## Upstream Remote Restrictions
-
-- **Never** push to upstream, rebase from upstream, or touch/look at the upstream remote unless explicitly authorized by the user.
-- The `upstream` remote and this fork are highly divergent codebases (approximately 2000 commits apart). Rebasing/merging with upstream will cause severe conflicts and break the codebase.
-- The user does not have maintainer access to the upstream repository. It exists purely as a read-only remote for reference purposes if explicitly requested.
-
-## PR / Workflow Tips
-
-- Rebase pulls; branch naming `username/feat/short-name`; clear commit messages (gitmoji optional).
-- Summarize changes, how tested (commands), and follow-ups.
-- Improve legacy you touch; avoid one-off patterns.
-- Keep changes scoped; use workspace filters (`pnpm -F <workspace> <script>`).
-- Maintain structured `README.md` documentation for each `packages/` and `apps/` entry, covering what it does, how to use it, when to use it, and when not to use it.
-- Always run `pnpm typecheck` and `pnpm lint:fix` after finishing a task.
-- **Commit & Push Etiquette**:
-  - **Never** commit or push untested changes. Verify that your specific changes work as expected in the target environment.
-  - **Strict No-Push Policy**: Never push commits to the remote repository (e.g. `git push`) unless the user explicitly requests you to push in the chat. Keep commits local to allow the user to review and test them before they go live on upstream branches.
-  - Commit messages must signify **what is actually being submitted**, not just the intent or a vague "fix". If you fixed X, say `fix: X`; if you refactored Y, say `refactor: Y`.
-- Use Conventional Commits for commit messages (e.g., `feat: add runner reconnect backoff`).
+- A text, label, or comment-only edit normally needs no script.
+- For CSS or layout work, inspect the affected surface. Run a script only when the change can affect compilation or behavior.
+- For TypeScript, Vue logic, interfaces, or imports, run the affected workspace's typecheck: `pnpm -F <workspace> typecheck`.
+- For build configuration, entry points, packaging, or Electron integration, run the affected workspace build. `stage-tamagotchi`'s build includes typechecking; `stage-web`'s does not.
+- Treat `pnpm lint:fix` as a broad mutating cleanup tool, not validation. Use it only deliberately and review its whole diff.
+- State which validation you ran and why broader validation was unnecessary.

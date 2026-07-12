@@ -272,7 +272,7 @@ function handleKeydown(e: KeyboardEvent) {
             :class="[
               'size-7 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer border border-transparent',
               inputText.trim()
-                ? 'text-primary-500 bg-primary-500/10 shadow-[0_0_12px_rgba(139,92,246,0.3)] border-primary-500/30'
+                ? 'bg-primary-500/15 text-primary-500 shadow-[0_0_12px_rgba(168,85,247,0.45)] dark:bg-primary-500/20 dark:text-primary-400 border-primary-500/30 scale-[1.05] animate-pulse'
                 : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-600 dark:hover:text-neutral-200',
             ]"
             title="Get suggestions (Left-click triggers, Right-click settings)"

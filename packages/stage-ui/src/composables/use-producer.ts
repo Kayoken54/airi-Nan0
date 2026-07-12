@@ -248,10 +248,52 @@ export function useProducer() {
           messages: inputMessages,
           schema: ProducerResponseSchema,
           normalize: (parsed: any) => {
+            function decodeEscapes(str: string): string {
+              try {
+                // If it contains double-escaped backslashes or unicode codes, parse it out.
+                // Doing JSON.parse(JSON.stringify(str)) or similar doesn't decode,
+                // but JSON.parse('"' + str + '"') will process unicode/newline escape sequences.
+                // We must escape quotes and newlines first to prevent invalid JSON strings.
+                const sanitized = str
+                  .replace(/\\/g, '\\\\')
+                  .replace(/"/g, '\\"')
+                  .replace(/\n/g, '\\n')
+                  .replace(/\r/g, '\\r')
+                  .replace(/\t/g, '\\t')
+
+                // Now replace double-escaped ones that the LLM literally outputted as text like "\\n" or "\\u2014"
+                // so JSON.parse can translate them to their actual characters.
+                // We convert literal raw sequences:
+                // \\uXXXX -> \uXXXX
+                // \\n -> \n
+                // \\r -> \r
+                // \\t -> \t
+                // \\" -> \"
+                const rawProcessed = sanitized
+                  .replace(/\\\\u([0-9a-fA-F]{4})/g, '\\u$1')
+                  .replace(/\\\\n/g, '\\n')
+                  .replace(/\\\\r/g, '\\r')
+                  .replace(/\\\\t/g, '\\t')
+                  .replace(/\\\\"/g, '\\"')
+                  .replace(/\\\\'/g, '\'')
+                  .replace(/\\\\\\\//g, '/')
+
+                return JSON.parse(`"${rawProcessed}"`)
+              }
+              catch (e) {
+                // Fallback: simple replacements if JSON.parse fails
+                return str
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\r/g, '\r')
+                  .replace(/\\t/g, '\t')
+                  .replace(/\\u2014/g, '\u2014')
+              }
+            }
+
             if (parsed && Array.isArray(parsed.options)) {
               parsed.options = parsed.options.map((opt: any) => ({
-                title: String(opt.title || 'Option'),
-                message: String(opt.message || ''),
+                title: decodeEscapes(String(opt.title || 'Option')),
+                message: decodeEscapes(String(opt.message || '')),
               }))
             }
             return parsed

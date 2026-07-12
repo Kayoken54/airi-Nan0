@@ -378,8 +378,10 @@ const sceneOptions = computed(() => {
 const actingModelExpressionOptions = computed(() => {
   if (isLive2d.value) {
     const exps = live2dExpressions.value.map(e => e.name)
-    const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
-    const hiddenMotions = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.hiddenMotions || []
+    const displayModelId = cardStore.activeCard?.extensions?.airi?.modules?.displayModelId
+    const activeModel = displayModelId ? displayModelsStore.displayModels.find(m => m.id === displayModelId) : null
+    const motionMappings = activeModel?.motionMappings || {}
+    const hiddenMotions = activeModel?.hiddenMotions || []
 
     const mappedMotions: string[] = []
     const unmappedMotions: string[] = []
@@ -458,8 +460,10 @@ const actingModelExpressionOptions = computed(() => {
 
 const actingIdleAnimationOptions = computed(() => {
   if (isLive2d.value) {
-    const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
-    const hiddenMotions = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.hiddenMotions || []
+    const displayModelId = cardStore.activeCard?.extensions?.airi?.modules?.displayModelId
+    const activeModel = displayModelId ? displayModelsStore.displayModels.find(m => m.id === displayModelId) : null
+    const motionMappings = activeModel?.motionMappings || {}
+    const hiddenMotions = activeModel?.hiddenMotions || []
 
     const mappedMotions: { label: string, value: string }[] = []
     const unmappedMotions: { label: string, value: string }[] = []
@@ -563,7 +567,9 @@ function appendUniqueLine(target: typeof selectedActingModelExpressionPrompt, li
 function insertModelExpression(name: string) {
   if (isLive2d.value) {
     const isExpression = live2dExpressions.value.some(e => e.name === name)
-    const motionMappings = cardStore.activeCard?.extensions?.airi?.modules?.live2d?.motionMappings || {}
+    const displayModelId = cardStore.activeCard?.extensions?.airi?.modules?.displayModelId
+    const activeModel = displayModelId ? displayModelsStore.displayModels.find(m => m.id === displayModelId) : null
+    const motionMappings = activeModel?.motionMappings || {}
     const normalize = (s: string) =>
       s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
 

@@ -18,11 +18,12 @@ import chat_media from '../components/chat/chat_media.vue'
 // Import Sub-Surfaces
 import chat_messages from '../components/chat/chat_messages.vue'
 import chat_notes from '../components/chat/chat_notes.vue'
+import chat_rehearsal from '../components/chat/chat_rehearsal.vue'
 import chat_studio from '../components/chat/chat_studio.vue'
 import chat_world from '../components/chat/chat_world.vue'
 import WindowTitleBar from '../components/Window/TitleBar.vue'
 
-import { electronApplySizePreset } from '../../shared/eventa'
+import { electronApplySizePreset, electronOpenSettings } from '../../shared/eventa'
 
 // Active Surface Ref
 const activeSurfaceRef = ref<any>(null)
@@ -35,7 +36,18 @@ const liveSessionStore = useLiveSessionStore()
 const settingsChat = useSettingsChat()
 
 const applySizePreset = useElectronEventaInvoke(electronApplySizePreset)
+const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const isSettingsOpen = ref(false)
+
+function handleOpenStudio() {
+  if (!activeCardId.value)
+    return
+  void openSettings({
+    route: `/settings/airi-card?cardId=${activeCardId.value}&tab=studio`,
+  }).catch((err: any) => {
+    console.error('Failed to open Studio settings:', err)
+  })
+}
 
 function handleApplyChatPreset(preset: 'mini' | 'medium' | 'large' | 'full') {
   applySizePreset({ target: 'chat', preset })
@@ -78,7 +90,7 @@ const rightPanelMediaCollapsed = useLocalStorage('airi:chat:rp-media-collapsed',
 
 // Left Panel Routing States
 const isLeftPanelOpen = useLocalStorage('airi:chat:left-panel-open', true)
-const activeSurface = useLocalStorage<'messages' | 'director' | 'world' | 'characters' | 'media' | 'archives' | 'notes'>('airi:chat:left-panel-active', 'messages')
+const activeSurface = useLocalStorage<'messages' | 'director' | 'world' | 'characters' | 'media' | 'archives' | 'notes' | 'rehearsal'>('airi:chat:left-panel-active', 'messages')
 
 const activeSurfaceComponent = computed(() => {
   const map = {
@@ -89,6 +101,7 @@ const activeSurfaceComponent = computed(() => {
     media: chat_media,
     archives: chat_lifetime,
     notes: chat_notes,
+    rehearsal: chat_rehearsal,
   }
   return markRaw(map[activeSurface.value] || chat_messages)
 })
@@ -130,6 +143,23 @@ function handleToggleImageDirector() {
         artistry: {
           ...activeCard.value.extensions?.airi?.artistry,
           autonomousEnabled: !current,
+        },
+      },
+    },
+  } as any)
+}
+
+function handleSetSpawnMode(mode: 'bg' | 'widget' | 'inline') {
+  if (!activeCardId.value || !activeCard.value)
+    return
+  airiCardStore.updateCard(activeCardId.value, {
+    extensions: {
+      ...activeCard.value.extensions,
+      airi: {
+        ...activeCard.value.extensions?.airi,
+        artistry: {
+          ...activeCard.value.extensions?.airi?.artistry,
+          spawnMode: mode,
         },
       },
     },
@@ -343,6 +373,7 @@ function selectSurface(surface: typeof activeSurface.value) {
             @manage-sessions="handleManageSessions"
             @search-memories="handleSearchMemories"
             @clear-messages="handleClearMessages"
+            @open-studio="handleOpenStudio"
           />
 
           <!-- Brain LLM Icon Button (opens downwards) -->
@@ -556,6 +587,26 @@ function selectSurface(surface: typeof activeSurface.value) {
                   </div>
                 </div>
 
+                <!-- Section: Image Spawn Mode -->
+                <div class="select-none px-2 py-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
+                  Image Spawn Mode
+                </div>
+                <div class="mx-2 mb-1.5 flex gap-0.5 rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-900">
+                  <button
+                    v-for="mode in (['bg', 'widget', 'inline'] as const)"
+                    :key="mode"
+                    :class="[
+                      'flex-1 py-1 text-[10px] font-bold rounded-md transition-all text-center whitespace-nowrap',
+                      activeCard?.extensions?.airi?.artistry?.spawnMode === mode
+                        ? 'bg-white dark:bg-neutral-800 text-primary-600 dark:text-primary-400 shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
+                    ]"
+                    @click="handleSetSpawnMode(mode)"
+                  >
+                    {{ mode === 'bg' ? 'Background' : mode === 'widget' ? 'Widget' : 'Inline' }}
+                  </button>
+                </div>
+
                 <!-- Toggle: Heartbeats -->
                 <div
                   class="w-full flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 transition-all hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -629,6 +680,7 @@ function selectSurface(surface: typeof activeSurface.value) {
                 { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
                 { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
                 { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
+                { id: 'rehearsal', label: 'Rehearsal', icon: 'i-solar:clapperboard-text-bold-duotone' },
               ] as const)"
               :key="item.id"
               class="w-full flex items-center gap-3 rounded-xl p-2.5 text-left text-xs font-semibold transition-all"
@@ -678,6 +730,7 @@ function selectSurface(surface: typeof activeSurface.value) {
               { id: 'media', label: 'Media Library', icon: 'i-solar:gallery-bold-duotone' },
               { id: 'archives', label: 'Eternal Thread', icon: 'i-solar:dna-bold-duotone' },
               { id: 'notes', label: 'Notes', icon: 'i-solar:document-text-bold-duotone' },
+              { id: 'rehearsal', label: 'Rehearsal', icon: 'i-solar:clapperboard-text-bold-duotone' },
             ] as const)"
             :key="item.id"
             class="w-full flex items-center gap-3 rounded-xl p-2.5 text-left text-xs font-semibold transition-all"

@@ -582,12 +582,70 @@ function handleSelectRelated() {
   }
 }
 
+function selectRelatedAssetsForCard(cardId: string) {
+  const card = allCardsMap.value.get(cardId)
+  if (!card)
+    return
+
+  const targetIds = new Set<string>()
+  targetIds.add(`bg-char-${cardId}`)
+
+  const defaultModelId = card.extensions?.airi?.modules?.displayModelId
+  if (defaultModelId)
+    targetIds.add(`model-${defaultModelId}`)
+
+  const defaultBgId = card.extensions?.airi?.modules?.activeBackgroundId
+  if (defaultBgId) {
+    const localBgs = Array.from(backgroundStore.entries.values()).filter((e: any) => e.type !== 'builtin')
+    const allBgs = [...remoteBgs.value, ...localBgs]
+    const bgEntry = allBgs.find((e: any) => e.id === defaultBgId)
+    if (bgEntry) {
+      const charId = bgEntry.characterId || 'shared'
+      targetIds.add(charId === 'shared' ? 'bg-char-shared' : `bg-char-${charId}`)
+    }
+  }
+
+  const visualAssets = card.extensions?.airi?.visual_assets || {}
+  for (const asset of Object.values(visualAssets) as any[]) {
+    if (asset.manifestation?.modelId) {
+      targetIds.add(`model-${asset.manifestation.modelId}`)
+    }
+    if (asset.manifestation?.backgroundId) {
+      const localBgs = Array.from(backgroundStore.entries.values()).filter((e: any) => e.type !== 'builtin')
+      const allBgs = [...remoteBgs.value, ...localBgs]
+      const bgEntry = allBgs.find((e: any) => e.id === asset.manifestation.backgroundId)
+      if (bgEntry) {
+        const charId = bgEntry.characterId || 'shared'
+        targetIds.add(charId === 'shared' ? 'bg-char-shared' : `bg-char-${charId}`)
+      }
+    }
+  }
+
+  for (const group of syncTree.value) {
+    if (group.children) {
+      for (const child of group.children) {
+        if (child.required)
+          continue
+        if (targetIds.has(child.id)) {
+          child.checked = true
+          group.checked = true
+        }
+      }
+    }
+  }
+}
+
 function toggleChild(parentIndex: number, childIndex: number) {
   const parent = syncTree.value[parentIndex]
   const child = parent.children![childIndex]
   if (child.required)
     return
   child.checked = !child.checked
+
+  if (parent.id === 'chats' && child.checked) {
+    const cardId = child.id.replace('chat-', '')
+    selectRelatedAssetsForCard(cardId)
+  }
 
   const anyChecked = parent.children!.some(c => c.checked)
   parent.checked = anyChecked
@@ -603,6 +661,10 @@ function toggleParent(parentIndex: number) {
       if (child.required)
         continue
       child.checked = parent.checked
+      if (parent.id === 'chats' && child.checked) {
+        const cardId = child.id.replace('chat-', '')
+        selectRelatedAssetsForCard(cardId)
+      }
     }
   }
 }

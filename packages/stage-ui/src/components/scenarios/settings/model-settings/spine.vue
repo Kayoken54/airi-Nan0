@@ -4,10 +4,11 @@ import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { usePositioningStore } from '@proj-airi/stage-ui/stores/settings/positioning'
 import { Button, FieldRange, Select, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { useAiriCardStore } from '../../../../stores/modules/airi-card'
+import ModelCustomizer from './ModelCustomizer.vue'
+
 import { useSettingsSpine } from '../../../../stores/settings/spine'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
@@ -36,14 +37,8 @@ const {
 const { stageModelSelected } = storeToRefs(useSettings())
 const positioningStore = usePositioningStore()
 
-const airiCardStore = useAiriCardStore()
-const { activeCard, activeCardId } = storeToRefs(airiCardStore)
-
 const spineStore = useSpine()
 const {
-  currentAnimation,
-  activeAnimations,
-  availableAnimations,
   currentSkin,
   availableSkins,
   availableVariants,
@@ -117,156 +112,11 @@ function handleSkinSelect(skinName: string | number | undefined) {
   currentSkin.value = skinName
 }
 
-function toggleAnimation(name: string) {
-  const modelId = props.modelId || 'default'
-  const currentModelAnims = activeAnimations.value[modelId] || {}
-  const current = currentModelAnims[name] || false
-
-  activeAnimations.value = {
-    ...activeAnimations.value,
-    [modelId]: {
-      ...currentModelAnims,
-      [name]: !current,
-    },
-  }
-}
-
-function isAnimationInCycle(name: string) {
-  return activeCard.value?.extensions?.airi?.acting?.idleAnimations?.includes(`spine:${name}`) ?? false
-}
-
-function toggleAnimationInCycle(name: string) {
-  if (!activeCardId.value || !activeCard.value)
-    return
-
-  const key = `spine:${name}`
-  const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
-  const next = current.includes(key)
-    ? current.filter(k => k !== key)
-    : [...current, key]
-
-  airiCardStore.updateCard(activeCardId.value, {
-    extensions: {
-      ...activeCard.value.extensions,
-      airi: {
-        ...activeCard.value.extensions.airi,
-        acting: {
-          ...activeCard.value.extensions.airi.acting,
-          idleAnimations: next,
-        },
-      },
-    },
-  })
-}
-
-function handleAnimationSelect(animationName: string | number | undefined) {
-  if (animationName === '') {
-    currentAnimation.value = { ...currentAnimation.value, name: '' }
-    if (activeCardId.value && activeCard.value) {
-      const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
-      const next = current.filter(key => !key.startsWith('spine:'))
-      airiCardStore.updateCard(activeCardId.value, {
-        extensions: {
-          ...activeCard.value.extensions,
-          airi: {
-            ...activeCard.value.extensions.airi,
-            acting: {
-              ...activeCard.value.extensions.airi.acting,
-              idleAnimations: next,
-            },
-          },
-        },
-      })
-    }
-    return
-  }
-  if (typeof animationName !== 'string')
-    return
-  currentAnimation.value = { ...currentAnimation.value, name: animationName }
-}
-
-function resetAllAnimations() {
-  const modelId = props.modelId || 'default'
-  activeAnimations.value = {
-    ...activeAnimations.value,
-    [modelId]: {},
-  }
-}
-
-const animationMappings = ref<Record<string, string>>({})
-const hiddenAnimations = ref<string[]>([])
-const showHiddenAnimations = ref(false)
-const filterRenamedOnly = ref(false)
-const editingAnimationKey = ref<string | null>(null)
-const editingAnimationValue = ref('')
-
-const filteredAnimations = computed(() => {
-  return availableAnimations.value.filter((animation) => {
-    // Filter hidden
-    if (!showHiddenAnimations.value && hiddenAnimations.value.includes(animation.name)) {
-      return false
-    }
-    // Filter renamed
-    if (filterRenamedOnly.value && !animationMappings.value[animation.name]) {
-      return false
-    }
-    return true
-  })
-})
-
-function toggleVisibility(name: string) {
-  if (hiddenAnimations.value.includes(name)) {
-    hiddenAnimations.value = hiddenAnimations.value.filter(p => p !== name)
-  }
-  else {
-    hiddenAnimations.value = [...hiddenAnimations.value, name]
-  }
-}
-
-function startEditing(animation: any) {
-  editingAnimationKey.value = animation.name
-  editingAnimationValue.value = animationMappings.value[animation.name] || ''
-}
-
-function saveAnimationName(name: string) {
-  if (editingAnimationValue.value.trim() === '') {
-    const updated = { ...animationMappings.value }
-    delete updated[name]
-    animationMappings.value = updated
-  }
-  else {
-    animationMappings.value = { ...animationMappings.value, [name]: editingAnimationValue.value.trim() }
-  }
-  editingAnimationKey.value = null
-  editingAnimationValue.value = ''
-}
-
-function cancelEditing() {
-  editingAnimationKey.value = null
-  editingAnimationValue.value = ''
-}
-
-const showRenamedOnlyForOverlays = ref(false)
-
-// Watch for changes in animationMappings to set the default
-watch(animationMappings, (mappings) => {
-  if (Object.keys(mappings).length > 0) {
-    showRenamedOnlyForOverlays.value = true
-  }
-}, { immediate: true })
-
-const filteredOverlays = computed(() => {
-  if (showRenamedOnlyForOverlays.value) {
-    return availableAnimations.value.filter(anim => animationMappings.value[anim.name])
-  }
-  return availableAnimations.value
-})
-
 const customizationTabs = computed(() => [
-  { value: 'expressions', label: t('settings.live2d.customization.tabs.expressions') },
-  { value: 'animations', label: t('settings.live2d.customization.tabs.animations') },
+  { value: 'customizer', label: 'Customizer', icon: 'i-solar:settings-bold-duotone' },
+  { value: 'appearance', label: 'Appearance', icon: 'i-solar:magic-stick-3-bold-duotone' },
 ])
-const activeCustomizationTab = ref('expressions')
+const activeCustomizationTab = ref('customizer')
 </script>
 
 <template>
@@ -284,45 +134,18 @@ const activeCustomizationTab = ref('expressions')
   >
     <SelectTab v-model="activeCustomizationTab" :options="customizationTabs" size="sm" compact class="mb-4" />
 
-    <!-- Expressions Tab -->
-    <div v-if="activeCustomizationTab === 'expressions'">
-      <!-- Independent Animations (Grid) -->
-      <div class="mb-2 flex items-center justify-between px-1">
-        <span class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">Independent Overlays</span>
-        <div class="flex gap-1">
-          <button
-            class="rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
-            @click="showRenamedOnlyForOverlays = !showRenamedOnlyForOverlays"
-          >
-            {{ showRenamedOnlyForOverlays ? 'Show All' : 'Show Renamed' }}
-          </button>
-          <button
-            class="rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 transition-colors dark:bg-neutral-800 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
-            @click="resetAllAnimations"
-          >
-            Reset All
-          </button>
-        </div>
-      </div>
-      <div v-if="filteredOverlays.length > 0" class="mb-4 flex flex-wrap gap-1">
-        <button
-          v-for="anim in filteredOverlays"
-          :key="anim.name"
-          :class="[
-            'relative rounded-md px-2 py-1 text-xs transition-all duration-150',
-            'border border-solid select-none',
-            (activeAnimations[props.modelId || 'default'] || {})[anim.name]
-              ? 'bg-primary-500/20 border-primary-400 text-primary-600 dark:text-primary-300 font-medium'
-              : 'bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700',
-          ]"
-          @click="toggleAnimation(anim.name)"
-        >
-          {{ animationMappings[anim.name] || anim.name }}
-        </button>
-      </div>
+    <!-- Customizer Tab (Unified Expressions/Motions) -->
+    <div v-if="activeCustomizationTab === 'customizer'">
+      <ModelCustomizer :model-id="props.modelId || stageModelSelected" />
+    </div>
 
+    <!-- Appearance Tab -->
+    <div v-else-if="activeCustomizationTab === 'appearance'">
       <!-- Variant -->
       <div v-if="hasMultipleVariants" class="mt-4">
+        <div class="mb-1 text-xs text-neutral-400 font-bold tracking-wider uppercase">
+          Variant
+        </div>
         <Select
           :model-value="currentVariant"
           :options="variantOptions"
@@ -333,6 +156,9 @@ const activeCustomizationTab = ref('expressions')
 
       <!-- Skin -->
       <div class="mt-4">
+        <div class="mb-1 text-xs text-neutral-400 font-bold tracking-wider uppercase">
+          Skin
+        </div>
         <Select
           :model-value="currentSkin"
           :options="skinOptions"
@@ -342,139 +168,8 @@ const activeCustomizationTab = ref('expressions')
       </div>
     </div>
 
-    <!-- Animations Tab -->
-    <div v-else-if="activeCustomizationTab === 'animations'" :class="['w-full', 'min-w-0']">
-      <!-- Base Idle Animation -->
-      <div class="mb-2 px-1 text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-        Base Idle Animation
-      </div>
-      <!-- Controls Bar -->
-      <div class="mb-2 flex items-center justify-between gap-2">
-        <div class="flex gap-1">
-          <Button
-            size="sm"
-            :variant="showHiddenAnimations ? 'primary' : 'secondary'"
-            @click="showHiddenAnimations = !showHiddenAnimations"
-          >
-            <template #icon>
-              <div :class="showHiddenAnimations ? 'i-solar:eye-bold-duotone' : 'i-solar:eye-closed-bold-duotone'" />
-            </template>
-            {{ showHiddenAnimations ? 'Showing Hidden' : 'Hide Hidden' }}
-          </Button>
-          <Button
-            size="sm"
-            :variant="filterRenamedOnly ? 'primary' : 'secondary'"
-            @click="filterRenamedOnly = !filterRenamedOnly"
-          >
-            <template #icon>
-              <div class="i-solar:pen-bold-duotone" />
-            </template>
-            {{ filterRenamedOnly ? 'Renamed Only' : 'All' }}
-          </Button>
-        </div>
-        <div class="text-xs text-neutral-500">
-          {{ filteredAnimations.length }} animations
-        </div>
-      </div>
-      <!-- Fixed Height Scrollable List -->
-      <div class="mb-4 max-h-[300px] overflow-y-auto border border-neutral-200 rounded-lg bg-white dark:border-neutral-700 dark:bg-neutral-900">
-        <!-- None Option -->
-        <div
-          :class="[
-            'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 transition-colors cursor-pointer',
-            !currentAnimation.name ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
-          ]"
-          @click="handleAnimationSelect('')"
-        >
-          <div class="flex items-center gap-2">
-            <div v-if="!currentAnimation.name" class="h-2 w-2 rounded-full bg-primary-500" />
-            <div class="text-sm text-neutral-900 font-medium dark:text-neutral-100">
-              None
-            </div>
-          </div>
-        </div>
-
-        <div v-if="filteredAnimations.length === 0" class="p-4 text-center text-sm text-neutral-500 dark:text-neutral-400">
-          No animations match filters
-        </div>
-        <div
-          v-for="animation in filteredAnimations"
-          :key="animation.name"
-          :class="[
-            'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
-            currentAnimation.name === animation.name || isAnimationInCycle(animation.name) ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
-          ]"
-        >
-          <!-- Left Side: Name -->
-          <div class="min-w-0 flex-1 cursor-pointer" @click="handleAnimationSelect(animation.name)">
-            <div class="flex items-center gap-2">
-              <!-- Active Indicator -->
-              <div v-if="currentAnimation.name === animation.name" class="h-2 w-2 rounded-full bg-primary-500" />
-
-              <!-- Name (Editable) -->
-              <div v-if="editingAnimationKey === animation.name" class="flex flex-1 items-center gap-1" @click.stop>
-                <input
-                  v-model="editingAnimationValue"
-                  type="text"
-                  :placeholder="animation.name"
-                  class="max-w-[230px] w-full border-b border-primary-500 bg-transparent text-sm dark:text-neutral-100 focus:outline-none"
-                  @keydown.enter="saveAnimationName(animation.name)"
-                  @keydown.esc="cancelEditing"
-                >
-                <button class="text-xs text-green-500 hover:text-green-600" @click="saveAnimationName(animation.name)">
-                  <div class="i-solar:check-circle-bold-duotone text-lg" />
-                </button>
-                <button class="text-xs text-red-500 hover:text-red-600" @click="cancelEditing">
-                  <div class="i-solar:close-circle-bold-duotone text-lg" />
-                </button>
-              </div>
-              <div v-else class="max-w-[230px] truncate text-sm text-neutral-900 font-medium dark:text-neutral-100">
-                {{ animationMappings[animation.name] || animation.name }}
-              </div>
-            </div>
-            <div class="ml-4 text-xs text-neutral-500 dark:text-neutral-400">
-              {{ animation.duration.toFixed(2) }}s
-            </div>
-          </div>
-
-          <!-- Right Side: Actions -->
-          <div class="flex items-center gap-1" @click.stop>
-            <!-- Loop / Cycle Toggle -->
-            <button
-              v-if="activeCard"
-              :class="[
-                'rounded p-1 transition-colors',
-                isAnimationInCycle(animation.name)
-                  ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
-                  : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
-              ]"
-              :title="isAnimationInCycle(animation.name) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
-              @click="toggleAnimationInCycle(animation.name)"
-            >
-              <div class="i-solar:infinity-bold-duotone text-sm" />
-            </button>
-
-            <!-- Edit Button -->
-            <button
-              class="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-              title="Rename"
-              @click="startEditing(animation)"
-            >
-              <div class="i-solar:pen-bold-duotone text-sm" />
-            </button>
-
-            <!-- Visibility Toggle -->
-            <button
-              class="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-              :title="hiddenAnimations.includes(animation.name) ? 'Show' : 'Hide'"
-              @click="toggleVisibility(animation.name)"
-            >
-              <div :class="hiddenAnimations.includes(animation.name) ? 'i-solar:eye-closed-bold-duotone' : 'i-solar:eye-bold-duotone'" class="text-sm" />
-            </button>
-          </div>
-        </div>
-      </div>
-
+    <!-- Global Spine Settings -->
+    <div class="mt-4 border-t border-neutral-100 pt-4 space-y-4 dark:border-neutral-800">
       <FieldRange v-model="spineDefaultMixDuration" as="div" :min="0" :max="2" :step="0.05" :default-value="0.2" :label="t('settings.spine.animation.mix-duration')" />
       <FieldRange v-model="animationSpeed" as="div" :min="0.1" :max="3" :step="0.05" :default-value="1" :label="t('settings.spine.animation.speed')" />
     </div>

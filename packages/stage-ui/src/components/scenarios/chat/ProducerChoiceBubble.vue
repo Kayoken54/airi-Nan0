@@ -33,13 +33,17 @@ const suggestionCount = useLocalStorage('airi:producer:suggestion-count', 4)
 
 const { post } = useBroadcastChannel<any, any>({ name: 'airi-caption-overlay' })
 
+const utteredSegments = ref<{ text: string, color: string, actorId: string, isActive: boolean }[]>([])
+
 function showCaption(text: string) {
   console.log('[CaptionDebug] [Chatbox] showCaption called with text:', text)
   try {
     post({ type: 'caption-speaker', text: 'User' })
+    utteredSegments.value.forEach(s => s.isActive = false)
+    utteredSegments.value.push({ text, color: '#818cf8', actorId: 'user', isActive: true })
     post({
       type: 'caption-assistant',
-      segments: [{ text, color: '#818cf8', actorId: 'user', isActive: true }],
+      segments: JSON.parse(JSON.stringify(utteredSegments.value)),
     })
   }
   catch (e) {
@@ -50,6 +54,7 @@ function showCaption(text: string) {
 function clearCaption() {
   console.log('[CaptionDebug] [Chatbox] clearCaption called')
   try {
+    utteredSegments.value = []
     post({ type: 'caption-speaker', text: '' })
     post({ type: 'caption-assistant', segments: [] })
   }

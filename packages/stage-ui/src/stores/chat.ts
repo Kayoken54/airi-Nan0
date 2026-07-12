@@ -976,6 +976,27 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
         let isCheckingNoReply = true
 
         // Reconstruct messages for this turn using the segmented bridgedTurnsHistory.
+        const cleanMessageContent = (content: any): any => {
+          if (typeof content === 'string') {
+            // Regex to find markdown image patterns: ![Title](url)
+            return content.replace(/!\[([^\]]*)\]\([^)]+\)/g, (_, title) => {
+              return `Image Generated: ${title || 'Autonomous Scene'}`
+            })
+          }
+          if (Array.isArray(content)) {
+            return content.map((part) => {
+              if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
+                return {
+                  ...part,
+                  text: cleanMessageContent(part.text),
+                }
+              }
+              return part
+            })
+          }
+          return content
+        }
+
         let newMessages = inferenceMessages.map((msg: any) => {
           const { context: _context, id: _id, createdAt: _createdAt, ...withoutContext } = msg
           const rawMessage = toRaw(withoutContext)
@@ -986,24 +1007,24 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             // content (display-friendly, stripped). This prevents the model from "forgetting"
             // to use ACTOR/ACT/DELAY tokens as conversation history grows.
             const inferenceContent = (rawMessage as ChatAssistantMessage).rawContent || rest.content
-            return { ...toRaw(rest), content: inferenceContent }
+            return { ...toRaw(rest), content: cleanMessageContent(inferenceContent) }
           }
 
-          return rawMessage
+          return { ...rawMessage, content: cleanMessageContent(rawMessage.content) }
         })
 
         // Inject all previously completed bridged turns into newMessages history
         for (const turn of bridgedTurnsHistory) {
           newMessages.push({
             role: 'assistant',
-            content: turn.rawContent || turn.content,
+            content: cleanMessageContent(turn.rawContent || turn.content),
             tool_calls: turn.tool_calls,
           })
           for (const res of turn.tool_results) {
             newMessages.push({
               role: 'tool',
               tool_call_id: res.id,
-              content: typeof res.result === 'string' ? res.result : JSON.stringify(res.result),
+              content: typeof res.result === 'string' ? cleanMessageContent(res.result) : JSON.stringify(res.result),
             })
           }
         }

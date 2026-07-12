@@ -116,12 +116,87 @@ async function processContent() {
   }
 
   try {
-    const rawCompiled = await process(healed)
+    let rawCompiled = await process(healed)
+
+    // Resolve any image tag sources to their local IndexedDB Object URLs if the title matches a background entry
+    if (rawCompiled.includes('<img')) {
+      const { useBackgroundStore } = await import('../../stores/background')
+      const backgroundStore = useBackgroundStore()
+
+      // Parse compiled HTML to find <img> elements
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(rawCompiled, 'text/html')
+      const imgs = doc.querySelectorAll('img')
+      let modified = false
+
+      for (const img of imgs) {
+        const altText = img.getAttribute('alt') || img.getAttribute('title') || ''
+        const currentSrc = img.getAttribute('src') || ''
+
+        if (altText && (currentSrc.includes('ComfyUI_temp') || currentSrc.startsWith('http://') || currentSrc.startsWith('https://') || currentSrc.startsWith('local:'))) {
+          // Look up in background entries for a matching title
+          const cleanAlt = altText.trim().toLowerCase()
+          const matchedBg = Array.from(backgroundStore.entries.values()).find(
+            bg => bg.title.trim().toLowerCase() === cleanAlt,
+          )
+
+          if (matchedBg) {
+            const objectUrl = backgroundStore.getBackgroundUrl(matchedBg.id)
+            if (objectUrl) {
+              img.setAttribute('src', objectUrl)
+              modified = true
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        rawCompiled = doc.body.innerHTML
+      }
+    }
+
     processedContent.value = postProcessActorColors(DOMPurify.sanitize(rawCompiled))
   }
   catch (error) {
     console.warn('Failed to process markdown with syntax highlighting, using fallback:', error)
-    processedContent.value = postProcessActorColors(DOMPurify.sanitize(processSync(healed)))
+    let rawCompiled = processSync(healed)
+
+    // Fallback logic for basic compiled processing
+    if (rawCompiled.includes('<img')) {
+      try {
+        const { useBackgroundStore } = await import('../../stores/background')
+        const backgroundStore = useBackgroundStore()
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(rawCompiled, 'text/html')
+        const imgs = doc.querySelectorAll('img')
+        let modified = false
+
+        for (const img of imgs) {
+          const altText = img.getAttribute('alt') || img.getAttribute('title') || ''
+          const currentSrc = img.getAttribute('src') || ''
+          if (altText && (currentSrc.includes('ComfyUI_temp') || currentSrc.startsWith('http://') || currentSrc.startsWith('https://') || currentSrc.startsWith('local:'))) {
+            const cleanAlt = altText.trim().toLowerCase()
+            const matchedBg = Array.from(backgroundStore.entries.values()).find(
+              bg => bg.title.trim().toLowerCase() === cleanAlt,
+            )
+
+            if (matchedBg) {
+              const objectUrl = backgroundStore.getBackgroundUrl(matchedBg.id)
+              if (objectUrl) {
+                img.setAttribute('src', objectUrl)
+                modified = true
+              }
+            }
+          }
+        }
+        if (modified) {
+          rawCompiled = doc.body.innerHTML
+        }
+      }
+      catch (err) {}
+    }
+
+    processedContent.value = postProcessActorColors(DOMPurify.sanitize(rawCompiled))
   }
 }
 
@@ -167,6 +242,13 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
     return
   }
 
+  // Guard: Skip highlighting if the search text contains no alphanumeric characters
+  // (e.g. only quotes, asterisks, punctuation) to avoid matching wrong positions.
+  const hasAlphanumeric = /[a-z0-9]/i.test(activeText)
+  if (!hasAlphanumeric) {
+    return
+  }
+
   const searchText = activeText.trim().replace(/\s+/g, ' ').toLowerCase()
   if (!searchText)
     return
@@ -197,13 +279,24 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
   walk(el)
 
   const normalizedAccumulated = accumulatedText.toLowerCase()
+
+  // 1. Primary forward search: Look ahead starting at lastMatchIndex
   let matchIndex = normalizedAccumulated.indexOf(searchText, lastMatchIndex > 0 ? lastMatchIndex + 1 : 0)
   let matchedLength = searchText.length
 
+  // 2. Sliding window backup: If primary forward match fails, allow search with minor backtrack buffer (e.g. 15 chars)
+  // to absorb skipped quotes, double spaces, or token formatting differences.
+  if (matchIndex === -1 && lastMatchIndex > 0) {
+    const backtrackStart = Math.max(0, lastMatchIndex - 15)
+    matchIndex = normalizedAccumulated.indexOf(searchText, backtrackStart)
+  }
+
+  // 3. Absolute fallback: Search from the beginning of the text
   if (matchIndex === -1) {
     matchIndex = normalizedAccumulated.indexOf(searchText)
   }
 
+  // 4. Clean-string fuzzy fallback (ignoring punctuation/whitespace entirely)
   if (matchIndex === -1) {
     const cleanStr = (s: string) => s.replace(/[^a-z0-9]/gi, '').toLowerCase()
     const cleanSearch = cleanStr(searchText)
@@ -231,7 +324,11 @@ function applyHighlight(el: HTMLElement, activeText: string, actorColor?: string
   if (matchIndex === -1)
     return
 
-  lastMatchIndex = matchIndex
+  // Only update lastMatchIndex if the new match moves forward or keeps the same location,
+  // preventing temporary fallback matches from permanently rewinding the sliding search state.
+  if (matchIndex >= lastMatchIndex) {
+    lastMatchIndex = matchIndex
+  }
   const matchEndIndex = matchIndex + matchedLength
 
   let startNode: Text | null = null

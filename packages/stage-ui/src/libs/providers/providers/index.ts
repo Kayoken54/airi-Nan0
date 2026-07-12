@@ -27,6 +27,8 @@ import './modelscope'
 import './ollama'
 import './cloudflare-workers-ai'
 import './azure-ai-foundry'
+import './opencode-go'
+import './alibaba-cloud'
 
 export {
   getDefinedProvider,

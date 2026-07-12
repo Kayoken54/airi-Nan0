@@ -91,15 +91,18 @@ export const useBackgroundStore = defineStore('background', () => {
       const loadedEntries = new Map<string, BackgroundEntry>()
 
       // 1. Read existing backgrounds from IndexedDB
-      await localforage.iterate<BackgroundEntry, void>((val, key) => {
-        if (key.startsWith(STORAGE_PREFIX) || key.startsWith('builtin:')) {
+      const keys = await localforage.keys()
+      const bgKeys = keys.filter(key => key.startsWith(STORAGE_PREFIX) || key.startsWith('builtin:'))
+      for (const key of bgKeys) {
+        const val = await localforage.getItem<BackgroundEntry>(key)
+        if (val) {
           const entry = { ...val, id: key }
           if (entry.blob instanceof Blob) {
             ensureObjectUrl(key, entry.blob)
           }
           loadedEntries.set(key, entry)
         }
-      })
+      }
 
       // 2. Migration: check for legacy image-journal entries
       const legacyPrefix = 'image-journal-'

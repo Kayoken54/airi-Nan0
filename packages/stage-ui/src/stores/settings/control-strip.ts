@@ -12,12 +12,15 @@ export interface ControlStripButton {
   icon: string
 }
 
-// NOTICE: Bump this version string whenever DEFAULT_BUTTONS IDs or structure change significantly.
-// Stale localStorage data (from old code shapes) will be discarded and replaced with fresh defaults.
+// CRITICAL NOTICE: Bumping BUTTONS_CATALOG_VERSION will COMPLETELY WIPE every user's custom control strip button arrangement and force-reset them to defaults.
+// * DO NOT bump this version simply for adding new button IDs or changing defaults.
+// * The automatic merge logic below will safely append new DEFAULT_BUTTONS to existing user lists without wiping their custom states.
+// * ONLY bump this version if there is a severe, incompatible breaking change in the data structure itself (e.g. data schema type changes) where old layouts are fundamentally broken.
 const BUTTONS_CATALOG_VERSION = 'v4'
 
 const DEFAULT_BUTTONS: ControlStripButton[] = [
   { id: 'chat', enabled: true, label: 'Chat Toggle', icon: 'i-solar:chat-line-linear' },
+  { id: 'actor-characters', enabled: true, label: 'Characters', icon: 'i-solar:users-group-rounded-outline' },
   { id: 'mic', enabled: true, label: 'Microphone Toggle', icon: 'i-solar:muted-linear' },
   { id: 'stage', enabled: true, label: 'Actor Stage', icon: 'i-solar:clapperboard-play-bold-duotone' },
   { id: 'caption', enabled: true, label: 'Captions', icon: 'i-ph:closed-captioning-duotone' },

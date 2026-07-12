@@ -183,6 +183,24 @@ function toggleAvatarFavorite(modelId: string) {
 
 function selectAvatar(modelId: string) {
   settingsStore.stageModelSelected = modelId
+
+  if (avatarApplyMode.value === 'apply' && activeCard.value && activeCardId.value) {
+    const card = activeCard.value
+    void cardStore.updateCard(activeCardId.value, {
+      extensions: {
+        ...card.extensions,
+        airi: {
+          ...card.extensions?.airi,
+          displayModelId: modelId,
+          active_state: {
+            ...card.extensions?.airi?.active_state,
+            displayModelId: modelId,
+          },
+        },
+      },
+    })
+  }
+
   activePopover.value = null
 }
 
@@ -221,6 +239,7 @@ const GEMINI_LIVE_VOICES = ['Leda', 'Zephyr', 'Achernar', 'Algenib', 'Fenrir']
 const selectedManualProvider = ref('')
 const selectedManualModel = ref('')
 const selectedManualVoiceId = ref('')
+const avatarApplyMode = ref<'preview' | 'apply'>('preview')
 
 // Initialize manual selections when popover becomes active or when stores change
 watch([activeSpeechProvider, activeSpeechModel, activeSpeechVoiceId], () => {
@@ -615,7 +634,7 @@ const containerStyle = computed(() => {
     }
     if (activePopover.value) {
       if (orientation.value === 'vertical') {
-        const windowHeight = Math.max(336, stripLength.value)
+        const windowHeight = Math.max(500, stripLength.value)
         styles.top = `${(windowHeight - stripLength.value) / 2}px`
         if (popoverPlacement.value === 'right') {
           styles.left = '0px'
@@ -625,13 +644,13 @@ const containerStyle = computed(() => {
         }
       }
       else {
-        const windowWidth = Math.max(336, stripLength.value)
+        const windowWidth = Math.max(500, stripLength.value)
         styles.left = `${(windowWidth - stripLength.value) / 2}px`
         if (popoverPlacement.value === 'bottom') {
           styles.top = '0px'
         }
         else {
-          styles.top = '288px'
+          styles.top = '452px'
         }
       }
     }
@@ -1455,7 +1474,7 @@ function getShortLabel(btnId: string): string {
           popoverPlacement === 'top' ? 'bottom-full mb-3 left-1/2 -translate-x-1/2' : '',
           popoverPlacement === 'right' ? 'left-full ml-3 top-1/2 -translate-y-1/2' : '',
           popoverPlacement === 'left' ? 'right-full mr-3 top-1/2 -translate-y-1/2' : '',
-          'w-64 max-w-xs',
+          'w-64 max-w-xs max-h-[440px] overflow-y-auto scrollbar-thin',
         ]"
         @click.stop
       >
@@ -2363,6 +2382,32 @@ function getShortLabel(btnId: string): string {
             <span class="text-xs text-neutral-500 font-bold tracking-wider uppercase">Avatars</span>
             <button class="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" @click="activePopover = null">
               <span class="i-solar:close-circle-outline text-lg" />
+            </button>
+          </div>
+
+          <!-- Segmented Toggle: Preview vs Apply -->
+          <div class="flex rounded-xl bg-neutral-200/40 p-0.5 dark:bg-neutral-950/40">
+            <button
+              :class="[
+                'flex-1 text-[10px] font-bold py-1 rounded-lg transition-all cursor-pointer text-center',
+                avatarApplyMode === 'preview'
+                  ? 'bg-white text-neutral-800 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+                  : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300',
+              ]"
+              @click="avatarApplyMode = 'preview'"
+            >
+              Preview
+            </button>
+            <button
+              :class="[
+                'flex-1 text-[10px] font-bold py-1 rounded-lg transition-all cursor-pointer text-center',
+                avatarApplyMode === 'apply'
+                  ? 'bg-white text-neutral-800 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+                  : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300',
+              ]"
+              @click="avatarApplyMode = 'apply'"
+            >
+              Apply to Char
             </button>
           </div>
 

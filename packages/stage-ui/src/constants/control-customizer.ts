@@ -210,7 +210,7 @@ export const CUSTOMIZER_CATALOG: CustomizerGroup[] = [
         description: 'Swaps active character profile and loads new Live2D/VRM models.',
         icon: 'i-solar:users-group-rounded-outline',
         type: 'menu',
-        defaultOnStrip: false,
+        defaultOnStrip: true,
       },
       {
         id: 'actor-avatars',
