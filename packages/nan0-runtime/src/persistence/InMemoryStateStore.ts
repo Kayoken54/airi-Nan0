@@ -7,7 +7,8 @@ export class InMemoryStateStore implements Nan0StateStore {
     return this.state ? structuredClone(this.state) : null
   }
 
-  async save(state: Nan0KernelState): Promise<void> {
+  async save(state: Nan0KernelState): Promise<Nan0KernelState> {
     this.state = structuredClone(state)
+    return structuredClone(this.state)
   }
 }

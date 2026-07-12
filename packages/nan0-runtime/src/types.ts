@@ -92,6 +92,7 @@ export interface Nan0MemoryRecord {
 
 export interface Nan0KernelState {
   schemaVersion: 1
+  revision?: number
   bootCount: number
   createdAt: number
   updatedAt: number
@@ -105,7 +106,12 @@ export interface Nan0KernelState {
 
 export interface Nan0StateStore {
   load(): Promise<Nan0KernelState | null>
-  save(state: Nan0KernelState): Promise<void>
+  save(state: Nan0KernelState): Promise<Nan0KernelState>
+}
+
+export interface Nan0DiagnosticEvent {
+  event: string
+  details: Record<string, unknown>
 }
 
 export interface Nan0ReasoningRequest {
@@ -134,6 +140,7 @@ export interface Nan0KernelDependencies {
   createInitialState?: () => Nan0KernelState
   now?: () => number
   createId?: () => string
+  diagnostic?: (event: Nan0DiagnosticEvent) => void
 }
 
 export interface Nan0HostBindings {

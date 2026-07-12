@@ -406,6 +406,8 @@ Cross-window communication relies on named `BroadcastChannel` instances. These a
 | `airi-stores-live2d` | VRM/Three.js store synchronization — broadcasts view updates, emotion triggers, and transient motion triggers across windows |
 | `CHAT_STREAM_CHANNEL_NAME` | Chat stream + journal refresh events (exported constant from session-store) |
 
+Nan0 renderer ownership is intentionally not broadcast: only the dedicated `#/chat` renderer boots the Nan0 kernel, registers chat lifecycle hooks, and writes authoritative state. Other renderer hashes skip Nan0 installation. The runtime persistence store still merges memories by stable record ID with a monotonic revision so a stale snapshot cannot delete a newer observation or assistant output.
+
 ---
 
 ## 14. Key Directories

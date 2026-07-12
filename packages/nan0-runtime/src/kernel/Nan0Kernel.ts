@@ -20,6 +20,7 @@ export interface Nan0PreparedTurn {
 function defaultInitialState(now: number): Nan0KernelState {
   return {
     schemaVersion: 1,
+    revision: 0,
     bootCount: 0,
     createdAt: now,
     updatedAt: now,
@@ -90,7 +91,17 @@ export class Nan0Kernel {
       updatedAt: this.now(),
     }
 
-    await this.dependencies.stateStore.save(this.state)
+    this.diagnostic('kernel.boot.before-save', {
+      revision: this.state.revision ?? 0,
+      memoryCount: this.state.memories.length,
+      bootCount: this.state.bootCount,
+    })
+    this.state = await this.dependencies.stateStore.save(this.state)
+    this.diagnostic('kernel.boot.complete', {
+      revision: this.state.revision ?? 0,
+      memoryCount: this.state.memories.length,
+      bootCount: this.state.bootCount,
+    })
     this.booted = true
   }
 
@@ -103,7 +114,7 @@ export class Nan0Kernel {
       updatedAt: this.now(),
     }
 
-    await this.dependencies.stateStore.save(this.state)
+    this.state = await this.dependencies.stateStore.save(this.state)
     this.booted = false
   }
 
@@ -125,7 +136,7 @@ export class Nan0Kernel {
       updatedAt: this.now(),
     }
 
-    await this.dependencies.stateStore.save(this.state)
+    this.state = await this.dependencies.stateStore.save(this.state)
     return imported.length
   }
 
@@ -147,6 +158,12 @@ export class Nan0Kernel {
     }
     const text = observationText(canonicalObservation).trim()
     const thoughtId = this.createId()
+    this.diagnostic('prepareTurn.start', {
+      thoughtId,
+      observationId: observation.id,
+      actorId: ownership.actorId,
+      memoryCount: this.state.memories.length,
+    })
     const recalledMemories = text
       ? this.retrieveRelevantMemories(text, ownership.actorId, 10)
       : []
@@ -177,7 +194,13 @@ export class Nan0Kernel {
       updatedAt: this.now(),
     }
 
-    await this.dependencies.stateStore.save(this.state)
+    this.state = await this.dependencies.stateStore.save(this.state)
+    this.diagnostic('prepareTurn.persisted', {
+      thoughtId,
+      observationId: canonicalObservation.id,
+      revision: this.state.revision ?? 0,
+      memoryCount: this.state.memories.length,
+    })
 
     return {
       observation: canonicalObservation,
@@ -204,6 +227,20 @@ export class Nan0Kernel {
     if (!content)
       return
 
+    const existingOutput = this.state.memories.find(memory =>
+      memory.actorId === 'nan0'
+      && memory.tags.includes('assistant-output')
+      && memory.metadata.thoughtId === input.thoughtId,
+    )
+    if (existingOutput) {
+      this.diagnostic('recordAssistantTurn.skipped-existing', {
+        thoughtId: input.thoughtId,
+        memoryId: existingOutput.id,
+        memoryCount: this.state.memories.length,
+      })
+      return
+    }
+
     const ownership = nan0Ownership(String(input.metadata?.source ?? 'assistant'))
     const memory: Nan0MemoryRecord = {
       id: this.createId(),
@@ -228,7 +265,20 @@ export class Nan0Kernel {
       updatedAt: this.now(),
     }
 
-    await this.dependencies.stateStore.save(this.state)
+    this.diagnostic('recordAssistantTurn.before-save', {
+      thoughtId: input.thoughtId,
+      memoryId: memory.id,
+      memoryCount: this.state.memories.length,
+    })
+    this.state = await this.dependencies.stateStore.save(this.state)
+    const persisted = await this.dependencies.stateStore.load()
+    this.diagnostic('recordAssistantTurn.persisted', {
+      thoughtId: input.thoughtId,
+      memoryId: memory.id,
+      revision: persisted?.revision ?? 0,
+      memoryCount: persisted?.memories.length ?? 0,
+      outputExists: persisted?.memories.some(item => item.id === memory.id) ?? false,
+    })
   }
 
   /**
@@ -384,6 +434,10 @@ Respond only with Nan0's outward expression. Do not output JSON, labels, analysi
   private assertBooted(): void {
     if (!this.booted)
       throw new Error('Nan0Kernel must be booted before use.')
+  }
+
+  private diagnostic(event: string, details: Record<string, unknown>): void {
+    this.dependencies.diagnostic?.({ event, details })
   }
 
   private emitExpression(expression: Nan0Expression): void {

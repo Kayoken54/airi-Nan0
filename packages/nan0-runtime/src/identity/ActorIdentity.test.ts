@@ -67,6 +67,21 @@ describe('actor identity ownership', () => {
     expect(memory.metadata.ownership).toMatchObject({ actorId: 'nan0', displayName: 'Nan0' })
   })
 
+  it('records assistant output only once when completion hooks repeat the same thought', async () => {
+    const kernel = createKernel()
+    await kernel.boot()
+
+    await kernel.recordAssistantTurn({ thoughtId: 'thought-1', content: 'Mine.' })
+    await kernel.recordAssistantTurn({ thoughtId: 'thought-1', content: 'Mine again.' })
+
+    expect(kernel.getStateSnapshot().memories).toHaveLength(1)
+    expect(kernel.getStateSnapshot().memories[0]).toMatchObject({
+      actorId: 'nan0',
+      content: 'Mine.',
+      metadata: { thoughtId: 'thought-1' },
+    })
+  })
+
   it('resolves canonical aliases without crossing Kyo and Nan0', () => {
     const identity = createDefaultIdentityState()
 

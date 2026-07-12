@@ -58,8 +58,28 @@ app
 app.mount('#app')
 
 async function installNan0AfterMount(pinia: Pinia): Promise<void> {
-  const { useNan0RuntimeStore } = await import('@proj-airi/stage-ui/stores/nan0')
-  await useNan0RuntimeStore(pinia).ensureInstalled()
+  const [{ useNan0RuntimeStore }, { createNan0RendererIdentity }] = await Promise.all([
+    import('@proj-airi/stage-ui/stores/nan0'),
+    import('@proj-airi/stage-ui/stores/nan0-renderer'),
+  ])
+  const renderer = createNan0RendererIdentity(window.location.hash || '#/')
+  console.info('[Nan0]', JSON.stringify({
+    event: 'renderer.install.requested',
+    rendererInstanceId: renderer.instanceId,
+    rendererHash: renderer.hash,
+    isOwner: renderer.isOwner,
+  }))
+
+  if (!renderer.isOwner) {
+    console.info('[Nan0]', JSON.stringify({
+      event: 'renderer.install.skipped-non-owner',
+      rendererInstanceId: renderer.instanceId,
+      rendererHash: renderer.hash,
+    }))
+    return
+  }
+
+  await useNan0RuntimeStore(pinia).ensureInstalled(renderer)
 }
 
 void installNan0AfterMount(pinia).catch((error) => {
