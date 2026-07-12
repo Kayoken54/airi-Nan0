@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": 0,
+  "records": [
+    {
+      "id": "sample-memory-1",
+      "kind": "episode",
+      "actorId": "kyo",
+      "sessionId": "sample-session",
+      "content": "Kyo asked Nan0 to preserve thought-first speech and never speak without a thought ID.",
+      "emotionalWeight": 2,
+      "tags": [
+        "identity",
+        "speech-contract"
+      ],
+      "createdAt": 0,
+      "metadata": {
+        "source": "sample"
+      }
+    }
+  ]
+}

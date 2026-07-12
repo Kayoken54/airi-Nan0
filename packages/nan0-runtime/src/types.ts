@@ -44,8 +44,20 @@ export type Nan0Expression =
   | Nan0SilenceExpression
   | Nan0BodyExpression
 
+export interface Nan0MemoryRecord {
+  id: string
+  kind: 'event' | 'episode' | 'semantic' | 'relationship' | 'summary'
+  actorId?: string
+  sessionId?: string
+  content: string
+  emotionalWeight?: number
+  tags: string[]
+  createdAt: number
+  metadata: Record<string, unknown>
+}
+
 export interface Nan0KernelState {
-  schemaVersion: number
+  schemaVersion: 1
   bootCount: number
   createdAt: number
   updatedAt: number
@@ -53,6 +65,7 @@ export interface Nan0KernelState {
   lastThoughtId?: string
   emotionalState: Record<string, number>
   runtimeMetadata: Record<string, unknown>
+  memories: Nan0MemoryRecord[]
 }
 
 export interface Nan0StateStore {
@@ -94,4 +107,10 @@ export interface Nan0HostBindings {
   ): () => void
 
   dispatchExpression(expression: Nan0Expression): Promise<void>
+}
+
+export interface LegacyNan0Export {
+  schemaVersion: 1
+  exportedAt: number
+  records: Nan0MemoryRecord[]
 }

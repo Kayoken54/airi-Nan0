@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "description": "Nan0 identity-preserving cognition runtime for AIRI",
+  "description": "Nan0 cognition runtime integrated into AIRI",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -14,12 +14,15 @@
   "types": "./dist/index.d.mts",
   "files": [
     "dist",
+    "README.md",
     "package.json"
   ],
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "~5.9.3"
+  }
 }

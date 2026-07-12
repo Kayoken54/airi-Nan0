@@ -10,6 +10,7 @@ import { setupLayouts } from 'virtual:generated-layouts'
 import { createApp } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
+import { useNan0RuntimeStore } from '@proj-airi/stage-ui/stores/nan0'
 
 import App from './App.vue'
 
@@ -43,7 +44,9 @@ const router = createRouter({
   routes: setupLayouts(routes as RouteRecordRaw[]),
 })
 
-createApp(App)
+const app = createApp(App)
+
+app
   .use(MotionPlugin)
   // TODO: Fix autoAnimatePlugin type error
   .use(autoAnimatePlugin as unknown as Plugin)
@@ -51,4 +54,8 @@ createApp(App)
   .use(pinia)
   .use(i18n)
   .use(Tres)
-  .mount('#app')
+
+// Nan0 must own cognition before any surface can submit a chat turn.
+await useNan0RuntimeStore(pinia).ensureInstalled()
+
+app.mount('#app')
