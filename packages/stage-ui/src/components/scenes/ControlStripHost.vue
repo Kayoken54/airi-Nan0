@@ -69,6 +69,7 @@ const settingsStore = useSettings()
 const vhackStore = useVHackStore()
 const {
   stageModelRenderer,
+  stageModelSelected,
 } = storeToRefs(settingsStore)
 const { mouthOpenSize } = storeToRefs(useSpeakingStore())
 const { audioContext } = useAudioContext()
@@ -196,6 +197,21 @@ useEventListener(typeof window !== 'undefined' ? window : null, 'vrm-node-visibi
 })
 
 const { currentMotion } = storeToRefs(live2dStore)
+
+const activeModelMetadata = computed(() => {
+  return displayModelsStore.displayModels.find(m => m.id === stageModelSelected.value)
+})
+
+watch(activeModelMetadata, (model) => {
+  if (model) {
+    live2dStore.motionMap = { ...model.motionMappings }
+    live2dStore.emotionMappings = { ...model.emotionMappings }
+    console.info('[Stage Host] Synced active model mappings to live2dStore:', {
+      emotions: Object.keys(model.emotionMappings || {}).length,
+      motions: Object.keys(model.motionMappings || {}).length,
+    })
+  }
+}, { deep: true, immediate: true })
 
 // Animation scheduling has been decoupled
 

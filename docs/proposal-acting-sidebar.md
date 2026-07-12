@@ -118,9 +118,12 @@ These buttons are rendered dynamically based on whether `expressions.length > 0`
 
 ---
 
-### 3. Bottom Zone — Expressions & Motions Explorer
+### 3. Bottom Zone — Emotions & Motions Explorer
 
 A view listing available parameters, loaded dynamically from the active model.
+
+> [!IMPORTANT]
+> The first tab is labeled **Emotions** (not "Expressions") to reflect that this is the semantic, AI-facing vocabulary layer — not the raw technical asset list.
 
 #### Advanced Filtering & "Treasure Hunting" Toggles:
 To help users navigate through raw model files, the explorer includes specific filters:
@@ -138,6 +141,122 @@ To help users navigate through raw model files, the explorer includes specific f
 
 ---
 
+## Character Selector (Model-on-Set Picker)
+
+The Rehearsal Room is **not** a character narrative browser — it is a 3D model configurator. The selector reflects which physical model files are bound and available for configuration, not which story characters exist in the card.
+
+### Fundamental Departure from Studio
+
+The Studio's character selector represents every cast member regardless of their physical presence — a character with just an actor token, no TTS, no 3D model is still shown. The Rehearsal Room has zero interest in narrative-only characters. Its only question is: **"What 3D model files are physically on set?"**
+
+### The Derivation Rule
+
+```
+const boundModels = Object.entries(visual_assets)
+  .filter(([key, asset]) => {
+    const mod = modules[key] || {}
+    // modules value is the authoritative runtime director state
+    return mod.manifestation?.modelId || asset.manifestation?.modelId
+  })
+
+if (boundModels.length > 0:
+  → Show each as a clickable 5-col grid card
+  → Clicking sets activeModelId → passed to ModelCustomizer
+  → modules[key].manifestation.modelId is the runtime director value
+    (director may have swapped the model for a given actor on a per-turn basis)
+
+else:  // no per-actor bindings = Gen1 / simple single-model card
+  → Show modules.displayModelId as a non-interactive thumbnail
+  → Auto-pass it to ModelCustomizer
+  → No click behavior — nothing to switch between
+```
+
+### What Gets Shown vs. Excluded
+
+| Case | Shown? | Reason |
+|------|--------|--------|
+| Actor with `manifestation.modelId` | ✅ Clickable card | Has a 3D model bound |
+| Actor with no model binding | ❌ Not shown | Not on set |
+| Place / narrative concept | ❌ Not shown | Not a model |
+| Gen1 card (no actor tokens, no bindings) | ✅ Single thumbnail (non-interactive) | Shown via `modules.displayModelId` fallback |
+
+### Runtime Director Value
+
+In multi-character cards, the director system can dynamically change which model is displayed for a given actor slot on a per-turn basis. The binding resolution order is:
+
+```
+modules[key].manifestation.modelId    ← runtime director override (authoritative)
+  ↓ (fallback if not set)
+visual_assets[key].manifestation.modelId   ← static author-time binding
+```
+
+This means the selector reflects actual current runtime state, not just static card configuration.
+
+---
+
+## Capability Resolution: How Expression/Motion Lists Are Sourced
+
+This is the most important architectural distinction between the Rehearsal Room and the old per-model settings panels.
+
+### The Old (Wrong) Approach
+
+The old model settings panels read expression/motion lists directly from live renderer stores:
+```typescript
+// ❌ Only works when that specific model is actively loaded by the renderer
+live2dStore.availableExpressions // populated by running renderer
+mmdStore.availableMorphs // populated by running renderer
+spineStore.availableAnimations // populated by running renderer
+```
+
+This means if you select a character whose model is not currently on stage, you get an empty list.
+
+### The Correct Approach: `getOrLoadModelCapabilities`
+
+The Rehearsal Room (via `ModelCustomizer`) routes all list resolution through `displayModelsStore.getOrLoadModelCapabilities(modelId)`:
+
+```
+getOrLoadModelCapabilities(modelId)
+  │
+  ├── model.expressions && model.motions exist in memory?
+  │     → Return immediately (cache hit)
+  │
+  ├── Not cached → crack open the raw file:
+  │     Live2D zip  → parse .model3.json → FileReferences.Expressions + Motions
+  │     VRM binary  → parse glTF JSON chunk → VRM.blendShapeMaster.blendShapeGroups
+  │     Spine zip   → parse .json → animations keys
+  │     PMX binary  → scan binary for morph target names (utf-16le)
+  │     → Write results to model.expressions / model.motions
+  │     → Persist to IndexedDB via localforage
+  │
+  └── Return { expressions: string[], motions: string[] }
+```
+
+**The key insight:** a model's expression/motion list is fixed at the time the model file is authored. It does not grow or change at runtime. Therefore, once parsed and cached, the cached list is always correct — regardless of whether the model is currently loaded by the renderer or not.
+
+The live renderer stores (`live2dStore` etc.) are still used for:
+- **`isActive` state** — which expression is currently playing on stage
+- **Triggering effects** — `triggerEmotion()`, `triggerMotion()` etc. when the user clicks an item
+
+But the **list of available keys** comes exclusively from `getOrLoadModelCapabilities`.
+
+### Persistence Layer (What Gets Cached Where)
+
+All metadata converges on the **DisplayModel entry** in `localforage` (and reconciled via S3 remote `manifest.json`):
+
+| Data | Field on `DisplayModelFile` / `DisplayModelURL` |
+|------|--------------------------------------------------|
+| Raw expression key list | `model.expressions: string[]` |
+| Raw motion key list | `model.motions: string[]` |
+| Human-readable emotion labels | `model.emotionMappings: Record<string, string>` |
+| Human-readable motion labels | `model.motionMappings: Record<string, string>` |
+| Hidden expression keys | `model.hiddenExpressions: string[]` |
+| Hidden motion keys | `model.hiddenMotions: string[]` |
+| Starred/favorite expressions | `model.favoriteExpressions: string[]` |
+
+These are **model-scoped**, not card-scoped. The same model used across multiple characters or cards shares the same label vocabulary and visibility settings.
+
+---
+
 ## Model Settings Component Catalog
 
 Each model type's "Character Customizations" section has a different shape, feature set, and persistence strategy. This catalog inventories all five source files so the Rehearsal Room MVP can normalize them into a unified interface.
@@ -145,11 +264,17 @@ Each model type's "Character Customizations" section has a different shape, feat
 ### Source files
 
 | Model | Component | Sub-component (expressions) |
-|-------|-----------|-----------------------------|
+|-------|-----------|------------------------------|
 | Live2D | `packages/stage-ui/src/components/scenarios/settings/model-settings/live2d.vue` | `live2d-customization.vue` |
 | VRM | `packages/stage-ui/src/components/scenarios/settings/model-settings/vrm-expressions.vue` | *(inline)* |
 | MMD | `packages/stage-ui/src/components/scenarios/settings/model-settings/mmd.vue` | *(inline)* |
 | Spine | `packages/stage-ui/src/components/scenarios/settings/model-settings/spine.vue` | *(inline)* |
+
+> [!NOTE]
+> All of the above have been consolidated into the unified `ModelCustomizer.vue` component
+> (`packages/stage-ui/src/components/scenarios/settings/model-settings/ModelCustomizer.vue`).
+> The originals are preserved as reference but `ModelCustomizer` is the single implementation
+> going forward.
 
 ---
 
@@ -162,18 +287,15 @@ Raw parameter manipulation (individual sliders, bone values) is deferred — foc
 | Feature | Live2D | VRM | MMD | Spine |
 |---------|--------|-----|-----|-------|
 | **Store** | `live2dStore` | `modelStore` | `mmdStore` | `spineStore` |
-| **Key list** | `availableExpressions: {fileName, name}[]` | `availableExpressions: string[]` | `availableMorphs: string[]` | `availableAnimations: {name, duration}[]` |
+| **Key list source** | `getOrLoadModelCapabilities` → `model.expressions` | same | same | same |
 | **Expression nature** | Named parameter-override presets (`.exp3.json`) | BlendShapeClips (glTF VRM extension) | Morph targets (PMX vertex groups) | Animation tracks (layered on idle) |
 | **Activate/click** | `triggerEmotion(name)` | `triggerEmotion(name)` | `previewExpression = name` | `playOneShotAnimation(name)` |
 | **Active state** | `activeExpressions: Record<string, number>` | `activeExpressions: Record<string, number>` | `previewExpression: Ref<string \| null>` | `activeAnimations: Record<string, Record<string, boolean>>` |
-| **Editable labels** | ❌ *(not implemented yet)* | ❌ *(not implemented yet)* | ✅ `morphMappings: Record<string, string>` | ✅ `animationMappings: Record<string, string>` |
-| **Label save target** | N/A | N/A | `localStorage('settings/mmd/morph-mappings')` | Component-local `ref` — **volatile** |
-| **Visibility control** | ❌ *(not implemented yet)* | ❌ *(not implemented yet)* | ✅ `hiddenMorphs: string[]` | ✅ `hiddenAnimations: string[]` |
-| **Visibility save target** | N/A | N/A | `localStorage('settings/mmd/hidden-morphs')` | Component-local `ref` — **volatile** |
-| **ACT emotion mapping** | ✅ 7 slots: `happy, sad, angry, surprised, neutral, think, cool` — long-press modal | ✅ Same 7 slots — long-press modal | ❌ *(not implemented yet)* | ❌ *(not implemented yet)* |
-| **Mapping persist** | `emotionMappings` → `extensions.airi.modules.live2d` | `emotionMappings` in store | N/A | N/A |
-| **Favorite/star** | ❌ *(not implemented yet)* | ✅ `favoriteExpression: Ref<string>` | ❌ *(not implemented yet)* | ❌ *(not implemented yet)* |
-| **Reset all** | ✅ | ✅ | ❌ *(single-select model)* | ✅ |
+| **Editable labels** | ✅ `emotionMappings` on DisplayModel | ✅ same | ✅ same | ✅ same |
+| **Label save target** | `localforage` via `DisplayModelFile.emotionMappings` | same | same | same |
+| **Visibility control** | ✅ `hiddenExpressions` on DisplayModel | ✅ same | ✅ same | ✅ same |
+| **ACT emotion mapping** | ✅ 7 slots: `happy, sad, angry, surprised, neutral, think, cool` | ✅ Same 7 slots | ✅ same | ✅ same |
+| **Favorite/star** | ✅ `favoriteExpressions` on DisplayModel | ✅ same | ✅ same | ✅ same |
 
 ---
 
@@ -181,14 +303,12 @@ Raw parameter manipulation (individual sliders, bone values) is deferred — foc
 
 | Feature | Live2D | MMD | Spine |
 |---------|--------|-----|-------|
-| **Key list** | `availableMotions` | `availableMotions: string[]` + `customMotions` | `availableAnimations: {name, duration}[]` |
-| **Key shape** | `{name, fullPath, displayPath, group, index, sound?}` | `string` (filename) | `{name, duration}` |
-| **Editable labels** | ✅ `motionMappings: Record<string, string>` | ❌ *(expressions only)* | ✅ `animationMappings: Record<string, string>` |
-| **Label save target** | Card: `extensions.airi.modules.live2d.motionMappings` | N/A | Component-local `ref` — **volatile** |
-| **Visibility control** | ✅ `hiddenMotions: string[]` | ❌ | ✅ `hiddenAnimations: string[]` |
-| **Visibility save target** | Card: `extensions.airi.modules.live2d.hiddenMotions` | N/A | Component-local `ref` — **volatile** |
-| **Idle cycle toggle** | ✅ `toggleMotionInCycle()` | ✅ `toggleMotion()` | ✅ `toggleAnimationInCycle()` |
-| **Cycle save target** | Card: `extensions.airi.acting.idleAnimations[]` | Same | Same |
+| **Key list source** | `getOrLoadModelCapabilities` → `model.motions` | same | same |
+| **Editable labels** | ✅ `motionMappings` on DisplayModel | ✅ same | ✅ same |
+| **Label save target** | `localforage` via `DisplayModelFile.motionMappings` | same | same |
+| **Visibility control** | ✅ `hiddenMotions` on DisplayModel | ✅ same | ✅ same |
+| **Idle cycle toggle** | ✅ `toggleMotionInCycle()` | ✅ same | ✅ same |
+| **Cycle save target** | Card: `extensions.airi.acting.idleAnimations[]` | same | same |
 | **Click to preview** | `triggerMotion(group)` | `playOneShotAction(name)` | `playOneShotAnimation(name)` |
 
 ---
@@ -217,6 +337,8 @@ To ensure that expression/motion mappings and visibility settings are shared acr
 | Motion labels | `model.motionMappings: Record<string, string>` |
 | Motion visibility | `model.hiddenMotions: string[]` |
 | Favorite expressions | `model.favoriteExpressions: string[]` |
+| Raw expression key cache | `model.expressions: string[]` |
+| Raw motion key cache | `model.motions: string[]` |
 
 When old character cards are loaded, a one-time migration runs to sweep any legacy mappings stored in `card.extensions.airi.modules.{type}` into the display model's entry, cleaning the card namespace.
 
@@ -235,26 +357,26 @@ Use the following catalog to hunt for and register specific models in the local 
   - *Model Filename/ID:* _____________________
 
 ### B. Live2D Models
-- [ ] **Ready-to-Go Expressions:** A model with clean, pre-built named expression files (e.g., `happy.exp3.json`, `sad.exp3.json`).
-  - *Model Filename/ID:* _____________________
+- [x] **Ready-to-Go Expressions:** A model with clean, pre-built named expression files (e.g., `happy.exp3.json`, `sad.exp3.json`).
+  - *Model Filename/ID:* Anya - kitten vtuber.zip (`display-model-ROiozwAemT_lmJoYBWuRK`)
 - [ ] **Raw Filename Keys:** A model with raw technical filenames (e.g., `exp_09_12.exp3.json`) to trigger the rename banner.
   - *Model Filename/ID:* _____________________
-- [ ] **No Expressions:** A model that has zero expression files in its asset folder.
-  - *Model Filename/ID:* _____________________
-- [ ] **With Motions:** A model containing motion clips.
-  - *Model Filename/ID:* _____________________
+- [x] **No Expressions:** A model that has zero expression files in its asset folder.
+  - *Model Filename/ID:* model6.zip (`display-model-9j4Mk60ReAxCj_9JfYX_N`)
+- [x] **With Motions:** A model containing motion clips.
+  - *Model Filename/ID:* v2a6_306204_meilanni_Live2D.zip (`display-model-dDe8yJ_R_SSSKr-ddS-tx`)
 - [ ] **Motions with Sound:** A model containing `.motion3.json` files that reference audio files.
   - *Model Filename/ID:* _____________________
 - [ ] **Motions with Sound & Caption:** A model where motions trigger both audio and built-in text captions.
   - *Model Filename/ID:* _____________________
 - [ ] **No Motions:** A model that has zero motion files.
   - *Model Filename/ID:* _____________________
-- [ ] **Empty Asset Set:** A model that has neither motions nor expressions (completely blank).
-  - *Model Filename/ID:* _____________________
+- [x] **Empty Asset Set:** A model that has neither motions nor expressions (completely blank).
+  - *Model Filename/ID:* 302301_shisihangshi_Live2D.zip (`display-model-g16ESa6Q5E_EvoPTYIfBD`)
 
 ### C. MMD Models
-- [ ] **Unicode/Shift-JIS Keys:** A model with morph targets named in Japanese Shift-JIS (e.g., `まばたき`, `にっこり`).
-  - *Model Filename/ID:* _____________________
+- [x] **Unicode/Shift-JIS Keys:** A model with morph targets named in Japanese Shift-JIS (e.g., `まばたき`, `にっこり`).
+  - *Model Filename/ID:* inav2.0.pmx (`display-model--D2OMxL5fGuQmGApH3eAB`)
 - [ ] **ASCII/English Keys:** A model with morph targets named in standard ASCII/English.
   - *Model Filename/ID:* _____________________
 - [ ] **No Morph Targets:** A static MMD PMX model (e.g., a background prop or accessory) with no morph targets.
@@ -282,3 +404,8 @@ Use the following catalog to hunt for and register specific models in the local 
 | AI generate uses which model? | The user's active chat LLM for the current character. |
 | Save snapshot for regression testing? | Not in v1. The prompt itself is persisted to the card — that's the source of truth. |
 | Raw TTS toggle (disable acting layer)? | Yes — include as a utility toggle for A/B comparison. |
+| Should the selector show all story characters? | No. The Rehearsal Room selector shows only 3D models that are physically bound via `manifestation.modelId`. Narrative-only characters (no model binding) are excluded entirely. |
+| What happens for simple/Gen1 single-model cards? | Fall back to `modules.displayModelId`. Show a single non-interactive thumbnail. ModelCustomizer auto-receives that modelId with nothing to select. |
+| Does expressions list require the model to be on stage? | No. `getOrLoadModelCapabilities(modelId)` resolves from cache → raw file parse → IndexedDB. A model's expression list is fixed at authoring time and never changes at runtime, so the cached list is always complete and correct regardless of stage state. |
+| Are expression/motion lists card-scoped or model-scoped? | **Model-scoped.** Stored on the `DisplayModelFile` entry. The same model used across multiple cards or characters shares one label vocabulary. |
+| What does `modules[key].manifestation.modelId` represent? | The authoritative runtime director value for which 3D model is currently bound to a given actor slot. Takes precedence over the static `visual_assets[key].manifestation.modelId`. The director can swap it per-turn. |

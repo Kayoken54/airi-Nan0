@@ -9,6 +9,7 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 
+import { useChatOrchestratorStore } from '../../../../stores/chat'
 import { DisplayModelFormat, useDisplayModelsStore } from '../../../../stores/display-models'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
 import { useSettingsControlStrip } from '../../../../stores/settings/control-strip'
@@ -28,6 +29,7 @@ const props = withDefaults(defineProps<Props>(), {
 const airiCardStore = useAiriCardStore()
 const controlStripStore = useSettingsControlStrip()
 const displayModelsStore = useDisplayModelsStore()
+const orchestrator = useChatOrchestratorStore()
 
 const live2dStore = useLive2d()
 const mmdStore = useMmd()
@@ -86,17 +88,58 @@ const hiddenExpressions = ref<string[]>([])
 const motionMappings = ref<Record<string, string>>({})
 const hiddenMotions = ref<string[]>([])
 
-// Sync local state when modelId changes
+// Raw capability lists sourced from getOrLoadModelCapabilities
+// These are model-file-level, not renderer-runtime — works even when model is off-stage
+const cachedExpressions = ref<string[]>([])
+const cachedMotions = ref<string[]>([])
+const capabilitiesLoading = ref(false)
+
+// Sync local state + capabilities when modelId changes
 watch(() => props.modelId, async (newId) => {
   if (!newId)
     return
+
   const model = displayModelsStore.displayModels.find(m => m.id === newId)
+  console.log(`[ModelCustomizer] modelId changed → ${newId}`, {
+    found: !!model,
+    format: model?.format,
+    cachedExpressions: model?.expressions?.length ?? 'none',
+    cachedMotions: model?.motions?.length ?? 'none',
+    emotionMappings: model?.emotionMappings,
+    motionMappings: model?.motionMappings,
+  })
+
   if (model) {
     emotionMappings.value = model.emotionMappings || {}
     favoriteExpressions.value = model.favoriteExpressions || []
     hiddenExpressions.value = model.hiddenExpressions || []
     motionMappings.value = model.motionMappings || {}
     hiddenMotions.value = model.hiddenMotions || []
+
+    // Sync to store for stage window cross-process triggers
+    live2dStore.motionMap = { ...motionMappings.value }
+    live2dStore.emotionMappings = { ...emotionMappings.value }
+  }
+
+  // Resolve expression + motion lists via the store resolver.
+  // Returns cache hit immediately, otherwise parses raw file and writes back to IndexedDB.
+  capabilitiesLoading.value = true
+  try {
+    const caps = await displayModelsStore.getOrLoadModelCapabilities(newId)
+    cachedExpressions.value = caps.expressions
+    cachedMotions.value = caps.motions
+    console.log(`[ModelCustomizer] capabilities resolved for ${newId}:`, {
+      expressions: caps.expressions,
+      motions: caps.motions,
+    })
+  }
+  catch (e) {
+    console.error(`[ModelCustomizer] Failed to load capabilities for ${newId}:`, e)
+    cachedExpressions.value = []
+    cachedMotions.value = []
+  }
+  finally {
+    capabilitiesLoading.value = false
   }
 }, { immediate: true })
 
@@ -110,60 +153,68 @@ async function saveMetadata() {
     model.motionMappings = { ...motionMappings.value }
     model.hiddenMotions = [...hiddenMotions.value]
     await localforage.setItem(props.modelId, JSON.parse(JSON.stringify(model)))
+
+    // Sync to store for stage window cross-process triggers
+    live2dStore.motionMap = { ...motionMappings.value }
+    live2dStore.emotionMappings = { ...emotionMappings.value }
+
     displayModelsStore.broadcastModelsSync(Date.now())
     await displayModelsStore.loadDisplayModelsFromIndexedDB(true)
   }
 }
 
-// Expression Lists mapping from active stores
+// Expression/motion lists driven by getOrLoadModelCapabilities (not live renderer stores).
+// isActive still reads from the renderer for on-stage feedback, but the list itself is
+// sourced from the model file — works whether or not the model is currently on stage.
 const rawExpressions = computed<UnifiedExpression[]>(() => {
   const mType = modelType.value
-  if (mType === 'unknown')
+  if (mType === 'unknown' || capabilitiesLoading.value)
     return []
 
   const mappings = emotionMappings.value
   const favorites = favoriteExpressions.value
   const hidden = hiddenExpressions.value
+  const keys = cachedExpressions.value
 
   if (mType === 'live2d') {
-    return live2dStore.availableExpressions.map(e => ({
-      key: e.fileName,
-      displayName: mappings[e.fileName] || e.name || e.fileName.split(/[\\/]/).pop()?.replace(/\.exp3$/, '') || e.fileName,
-      isActive: !!live2dStore.activeExpressions[e.fileName],
-      actMapping: mappings[e.fileName],
-      isFavorite: favorites.includes(e.fileName),
-      isVisible: !hidden.includes(e.fileName),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: !!live2dStore.activeExpressions[key],
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
     }))
   }
   if (mType === 'vrm') {
-    return modelStore.availableExpressions.map((name: string) => ({
-      key: name,
-      displayName: mappings[name] || name,
-      isActive: false, // VRM store uses custom actions
-      actMapping: mappings[name],
-      isFavorite: favorites.includes(name),
-      isVisible: !hidden.includes(name),
-      category: name === name.toUpperCase() ? 'preset' : 'custom',
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: false,
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
+      category: key === key.toUpperCase() ? 'preset' : 'custom',
     }))
   }
   if (mType === 'mmd') {
-    return mmdStore.availableMorphs.map(name => ({
-      key: name,
-      displayName: mappings[name] || name,
-      isActive: mmdStore.previewExpression === name,
-      actMapping: mappings[name],
-      isFavorite: favorites.includes(name),
-      isVisible: !hidden.includes(name),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: mmdStore.previewExpression === key,
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
     }))
   }
   if (mType === 'spine') {
-    return spineStore.availableAnimations.map(anim => ({
-      key: anim.name,
-      displayName: mappings[anim.name] || anim.name,
-      isActive: !!spineStore.activeAnimations[props.modelId]?.[anim.name],
-      actMapping: mappings[anim.name],
-      isFavorite: favorites.includes(anim.name),
-      isVisible: !hidden.includes(anim.name),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: !!spineStore.activeAnimations[props.modelId]?.[key],
+      actMapping: mappings[key],
+      isFavorite: favorites.includes(key),
+      isVisible: !hidden.includes(key),
     }))
   }
   return []
@@ -172,53 +223,48 @@ const rawExpressions = computed<UnifiedExpression[]>(() => {
 const rawMotions = computed<UnifiedMotion[]>(() => {
   const card = activeCard.value
   const mType = modelType.value
-  if (mType === 'unknown')
+  if (mType === 'unknown' || capabilitiesLoading.value)
     return []
 
   const mappings = motionMappings.value
   const hidden = hiddenMotions.value
   const idleCycles = card?.extensions?.airi?.acting?.idleAnimations || []
+  const keys = cachedMotions.value
 
   if (mType === 'live2d') {
-    return live2dStore.availableMotions.map(m => ({
-      key: m.fileName,
-      displayName: mappings[m.fileName] || m.motionName || m.fileName,
-      isActive: live2dStore.currentMotion.group === m.motionName,
-      group: m.motionName || 'Motions',
-      duration: 3.0, // fallback
-      hasSound: !!m.sound,
-      isInIdleCycle: idleCycles.includes(`live2d:${m.motionName}`),
-      isVisible: !hidden.includes(m.fileName),
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
+      isActive: live2dStore.currentMotion?.group === key,
+      group: 'Motions',
+      duration: 3.0,
+      hasSound: false,
+      isInIdleCycle: idleCycles.includes(`live2d:${key}`),
+      isVisible: !hidden.includes(key),
     }))
   }
   if (mType === 'mmd') {
-    const list = [...(mmdStore.availableMotions as any[]), ...(mmdStore.customMotions as any[])]
-    return list.map((item) => {
-      const isStr = typeof item === 'string'
-      const key = isStr ? item : item.id
-      const name = isStr ? item : item.name
-      return {
-        key,
-        displayName: mappings[key] || name.split(/[\\/]/).pop() || name,
-        isActive: mmdStore.currentMotion === name,
-        group: 'Animations',
-        duration: 5.0,
-        hasSound: false,
-        isInIdleCycle: idleCycles.includes(`mmd:${key}`),
-        isVisible: !hidden.includes(key),
-      }
-    })
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key.split(/[\\/]/).pop() || key,
+      isActive: mmdStore.currentMotion === key,
+      group: 'Animations',
+      duration: 5.0,
+      hasSound: false,
+      isInIdleCycle: idleCycles.includes(`mmd:${key}`),
+      isVisible: !hidden.includes(key),
+    }))
   }
   if (mType === 'spine') {
-    return spineStore.availableAnimations.map(anim => ({
-      key: anim.name,
-      displayName: mappings[anim.name] || anim.name,
+    return keys.map(key => ({
+      key,
+      displayName: mappings[key] || key,
       isActive: false,
       group: 'Animations',
-      duration: anim.duration || 1.0,
+      duration: 1.0,
       hasSound: false,
-      isInIdleCycle: idleCycles.includes(`spine:${anim.name}`),
-      isVisible: !hidden.includes(anim.name),
+      isInIdleCycle: idleCycles.includes(`spine:${key}`),
+      isVisible: !hidden.includes(key),
     }))
   }
   return []
@@ -284,13 +330,13 @@ function triggerExpressionEffect(key: string) {
   toast.info(`Triggered expression: ${key}`)
 }
 
-function triggerMotionEffect(key: string, group: string) {
+function triggerMotionEffect(key: string) {
   if (!stageEnabled.value) {
     toast.error('Stage window must be open to preview motions.')
     return
   }
   if (modelType.value === 'live2d') {
-    live2dStore.triggerMotion(group)
+    live2dStore.triggerMotion(key)
   }
   else if (modelType.value === 'mmd') {
     mmdStore.playOneShotAction(key)
@@ -423,40 +469,47 @@ async function playRehearsal() {
 
   try {
     const text = playgroundText.value.trim()
-    const actRegex = /<\|ACT:(emotion|motion)="([^"]+)"\|>/g
-    let match
-    const triggers: Array<{ type: 'emotion' | 'motion', value: string, index: number }> = []
-    while ((match = actRegex.exec(text)) !== null) {
-      triggers.push({
-        type: match[1] as 'emotion' | 'motion',
-        value: match[2],
-        index: match.index,
-      })
+    console.info('[Rehearsal Playback] Streaming via Chat Orchestrator hooks:', text)
+
+    const dummyContext = {
+      assistantMessageId: `rehearsal-${Date.now()}`,
+      assistantMessageCreatedAt: Date.now(),
     }
 
-    const cleanText = text.replace(/<\|ACT:[^|]+\|>/g, '').trim()
+    // Start of response
+    await orchestrator.emitBeforeSendHooks('', dummyContext as any)
 
-    for (const t of triggers) {
-      if (t.type === 'emotion') {
-        triggerExpressionEffect(t.value)
+    // Split content into markers and text segments
+    const parts = text.split(/(<\|(?:ACT|DELAY|ACTOR)[^\r\n]*?(?:\|>|>))/gi)
+    for (const part of parts) {
+      if (!part)
+        continue
+
+      // Delay slightly between streams to simulate standard streaming token rate
+      await new Promise(resolve => setTimeout(resolve, 80))
+
+      if (part.startsWith('<|')) {
+        console.info('[Rehearsal Playback] Emitting Special Tag:', part)
+        await orchestrator.emitTokenSpecialHooks(part, dummyContext as any)
       }
       else {
-        triggerMotionEffect(t.value, t.value)
+        console.info('[Rehearsal Playback] Emitting Literal Text:', part)
+        await orchestrator.emitTokenLiteralHooks(part, dummyContext as any)
       }
     }
 
-    if (window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance(cleanText)
-      utterance.onend = () => { isRehearsing.value = false }
-      utterance.onerror = () => { isRehearsing.value = false }
-      window.speechSynthesis.speak(utterance)
-    }
-    else {
+    // End of stream
+    await orchestrator.emitStreamEndHooks(dummyContext as any)
+
+    const content = text.replace(/<\|ACT:[^|]+\|>/g, '').trim()
+    await orchestrator.emitAssistantResponseEndHooks(content, dummyContext as any)
+
+    setTimeout(() => {
       isRehearsing.value = false
-    }
+    }, 1000)
   }
   catch (err) {
-    console.error('Rehearsal failed:', err)
+    console.error('Rehearsal playback streaming failed:', err)
     isRehearsing.value = false
   }
 }
@@ -481,6 +534,22 @@ async function suggestDialogue() {
     isGeneratingAI.value = false
     toast.error('AI suggestion failed.')
   }
+}
+
+// Append ACT token to Rehearsal playground
+function appendToPlayground(type: 'emotion' | 'motion', key: string) {
+  const token = type === 'emotion'
+    ? `<|ACT:emotion="${key}"|>`
+    : `<|ACT:motion="${key}"|>`
+
+  // Append with a space prefix if playground is not empty
+  if (playgroundText.value.trim().length > 0) {
+    playgroundText.value = `${playgroundText.value.trim()} ${token}`
+  }
+  else {
+    playgroundText.value = token
+  }
+  toast.success(`Appended ${type} token to sandbox!`)
 }
 </script>
 
@@ -556,7 +625,7 @@ async function suggestDialogue() {
         </p>
       </div>
 
-      <!-- Segment Toggle: Expressions / Motions -->
+      <!-- Segment Toggle: Emotions / Motions -->
       <div class="shrink-0 pb-1">
         <div class="flex rounded-lg bg-neutral-100 p-0.5 dark:bg-neutral-800">
           <button
@@ -566,7 +635,7 @@ async function suggestDialogue() {
               : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'"
             @click="activeTab = 'expressions'"
           >
-            Expressions
+            Emotions ({{ rawExpressions.length }})
           </button>
           <button
             class="flex-1 cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-all"
@@ -575,16 +644,21 @@ async function suggestDialogue() {
               : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'"
             @click="activeTab = 'motions'"
           >
-            Motions
+            Motions ({{ rawMotions.length }})
           </button>
         </div>
       </div>
 
+      <!-- Loading indicator while capabilities resolve -->
+      <div v-if="capabilitiesLoading" class="py-4 text-center text-[10px] text-neutral-400">
+        <div class="i-solar:spinner-bold inline-block animate-spin text-base" />
+        <span class="ml-1">Loading model capabilities…</span>
+      </div>
+
       <!-- Filter Controls -->
-      <div class="flex shrink-0 items-center justify-between py-2">
+      <div v-if="!capabilitiesLoading" class="flex shrink-0 items-center justify-between py-2">
         <span class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-          {{ activeTab === 'expressions' ? 'Expressions' : 'Motions' }}
-          <span class="ml-1 font-normal opacity-60">({{ activeTab === 'expressions' ? rawExpressions.length : rawMotions.length }})</span>
+          Filters
         </span>
         <div class="flex gap-1">
           <button
@@ -609,7 +683,7 @@ async function suggestDialogue() {
       </div>
 
       <!-- Scrollable List Area -->
-      <div class="flex-1 overflow-y-auto pb-4">
+      <div v-if="!capabilitiesLoading" class="flex-1 overflow-y-auto pb-4">
         <!-- ====== EXPRESSIONS LIST ====== -->
         <template v-if="activeTab === 'expressions'">
           <div v-if="expressionsToRender.length === 0" class="py-8 text-center text-xs text-neutral-400">
@@ -657,6 +731,15 @@ async function suggestDialogue() {
 
               <!-- Right: Actions -->
               <div class="ml-2 flex shrink-0 items-center gap-0.5">
+                <!-- Append to Sandbox -->
+                <button
+                  v-if="props.showRehearsalSandbox"
+                  class="cursor-pointer rounded p-1 text-neutral-400 hover:bg-primary-500/10 dark:text-neutral-500 hover:text-primary-500"
+                  title="Insert into Sandbox"
+                  @click.stop="appendToPlayground('emotion', exp.displayName)"
+                >
+                  <div class="i-solar:document-add-bold-duotone text-sm" />
+                </button>
                 <!-- ACT Mapping -->
                 <button
                   class="cursor-pointer rounded p-1 transition-colors"
@@ -722,7 +805,7 @@ async function suggestDialogue() {
                 ]"
               >
                 <!-- Left: Active dot + name -->
-                <div class="min-w-0 flex flex-1 cursor-pointer items-center gap-2" @click="triggerMotionEffect(mot.key, mot.group)">
+                <div class="min-w-0 flex flex-1 cursor-pointer items-center gap-2" @click="triggerMotionEffect(mot.key)">
                   <div
                     :class="['h-2 w-2 rounded-full shrink-0 transition-colors', mot.isActive ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600']"
                   />
@@ -748,6 +831,15 @@ async function suggestDialogue() {
 
                 <!-- Right: Actions -->
                 <div class="ml-2 flex shrink-0 items-center gap-0.5">
+                  <!-- Append to Sandbox -->
+                  <button
+                    v-if="props.showRehearsalSandbox"
+                    class="cursor-pointer rounded p-1 text-neutral-400 hover:bg-primary-500/10 dark:text-neutral-500 hover:text-primary-500"
+                    title="Insert into Sandbox"
+                    @click.stop="appendToPlayground('motion', mot.displayName)"
+                  >
+                    <div class="i-solar:document-add-bold-duotone text-sm" />
+                  </button>
                   <!-- Loop / Cycle Toggle -->
                   <button
                     v-if="activeCard"
@@ -783,6 +875,39 @@ async function suggestDialogue() {
             </div>
           </template>
         </template>
+
+        <!-- Rehearsal UI Controls Legend -->
+        <div v-if="props.showRehearsalSandbox" class="mt-4 border border-neutral-100 rounded-xl bg-neutral-50/40 p-3 text-[10px] text-neutral-500 leading-relaxed dark:border-neutral-800/80 dark:bg-neutral-950/10">
+          <div class="mb-1.5 text-[11px] text-neutral-700 font-bold dark:text-neutral-300">
+            Rehearsal Controls Legend
+          </div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:document-add-bold-duotone shrink-0 text-sm text-primary-500" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Append Token:</span> Appends <code class="rounded bg-neutral-100 px-0.5 dark:bg-neutral-800">&lt;|ACT:...|&gt;</code> to the sandbox dialog template.
+              </div>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:infinity-bold-duotone shrink-0 text-sm text-neutral-400" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Idle Cycle:</span> Sets this motion to repeat in the character's automatic background idle cycle.
+              </div>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:pen-bold-duotone shrink-0 text-sm text-neutral-400" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Rename Key:</span> Changes technical asset filenames to clean words (e.g. <code class="rounded bg-neutral-100 px-0.5 dark:bg-neutral-800">happy</code>) so the AI understands them.
+              </div>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="i-solar:eye-bold-duotone shrink-0 text-sm text-neutral-400" />
+              <div>
+                <span class="text-neutral-600 font-bold dark:text-neutral-400">Hide Key:</span> Removes dead or unused asset keys from the main view to keep lists clean.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 
