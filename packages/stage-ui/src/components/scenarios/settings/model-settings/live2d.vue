@@ -7,7 +7,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2DCustomization from './live2d-customization.vue'
+import ModelCustomizer from './ModelCustomizer.vue'
 
 import { useLHackStore } from '../../../../stores'
 import { useAiriCardStore } from '../../../../stores/modules/airi-card'
@@ -31,7 +31,6 @@ const settings = useSettings()
 const {
   live2dDisableFocus,
   live2dFollowSpeed,
-  live2dIdleAnimationEnabled,
   live2dAutoBlinkEnabled,
   live2dForceAutoBlinkEnabled,
   live2dShadowEnabled,
@@ -48,8 +47,6 @@ const mouseTrackingEnabled = computed({
 const live2d = useLive2d()
 const {
   modelParameters,
-  currentMotion,
-
 } = storeToRefs(live2d)
 
 const positioningStore = usePositioningStore()
@@ -100,10 +97,6 @@ const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 
 const motionMappings = ref<Record<string, string>>({})
 const hiddenMotions = ref<string[]>([])
-const showHiddenMotions = ref(false)
-const filterRenamedOnly = ref(false)
-const editingMotionKey = ref<string | null>(null)
-const editingMotionValue = ref('')
 
 const saveLive2dState = useDebounceFn(async () => {
   if (!activeCard.value || !activeCardId.value)
@@ -146,82 +139,6 @@ watch(activeCard, async (card) => {
     hiddenMotions.value = model.hiddenMotions || []
   }
 }, { immediate: true })
-function normalize(s: string) {
-  return s.split(/[\\/]/).pop()?.replace(/_File_\d+/gi, '').replace(/\.(motion3\.)?json$/i, '').replace(/^(motions?|expressions?)[_-]/i, '').toLowerCase() || s.toLowerCase()
-}
-
-function getMappedName(fullPath: string) {
-  const normPath = normalize(fullPath)
-  for (const [key, val] of Object.entries(motionMappings.value)) {
-    if (normalize(key) === normPath) {
-      return val
-    }
-  }
-  return undefined
-}
-
-const filteredMotions = computed(() => {
-  return runtimeMotions.value.filter((motion) => {
-    // Filter hidden
-    if (!showHiddenMotions.value && hiddenMotions.value.includes(motion.fullPath)) {
-      return false
-    }
-    // Filter renamed
-    if (filterRenamedOnly.value && !getMappedName(motion.fullPath)) {
-      return false
-    }
-    return true
-  })
-})
-
-function getDisplayName(motion: any) {
-  const name = getMappedName(motion.fullPath) || motion.name
-  return name.replace(/\.motion3\.json$/, '').replace(/\.json$/, '')
-}
-
-function isHidden(fullPath: string) {
-  return hiddenMotions.value.includes(fullPath)
-}
-
-function toggleVisibility(fullPath: string) {
-  if (hiddenMotions.value.includes(fullPath)) {
-    hiddenMotions.value = hiddenMotions.value.filter(p => p !== fullPath)
-  }
-  else {
-    hiddenMotions.value = [...hiddenMotions.value, fullPath]
-  }
-}
-
-function startEditing(motion: any) {
-  editingMotionKey.value = motion.fullPath
-  editingMotionValue.value = getMappedName(motion.fullPath) || ''
-}
-
-function saveMotionName(fullPath: string) {
-  const normPath = normalize(fullPath)
-  const updated = { ...motionMappings.value }
-
-  let existingKey = fullPath
-  for (const key of Object.keys(updated)) {
-    if (normalize(key) === normPath) {
-      existingKey = key
-      delete updated[key]
-    }
-  }
-
-  if (editingMotionValue.value.trim() !== '') {
-    updated[existingKey] = editingMotionValue.value.trim()
-  }
-
-  motionMappings.value = updated
-  editingMotionKey.value = null
-  editingMotionValue.value = ''
-}
-
-function cancelEditing() {
-  editingMotionKey.value = null
-  editingMotionValue.value = ''
-}
 
 const fpsOptions = computed(() => [
   { value: 0, label: t('settings.live2d.fps.options.unlimited') },
@@ -230,11 +147,10 @@ const fpsOptions = computed(() => [
 ])
 
 const customizationTabs = computed(() => [
-  { value: 'expressions', label: 'Expressions', icon: 'i-solar:face-scan-circle-bold-duotone' },
-  { value: 'animations', label: 'Motions', icon: 'i-solar:play-bold-duotone' },
+  { value: 'customizer', label: 'Customizer', icon: 'i-solar:settings-bold-duotone' },
   { value: 'headFace', label: 'Face', icon: 'i-solar:user-bold-duotone' },
 ])
-const activeCustomizationTab = ref('expressions')
+const activeCustomizationTab = ref('customizer')
 
 const sceneTabs = computed(() => [
   { value: 'placement', label: 'Placement', icon: 'i-solar:minimalistic-magnifer-zoom-in-bold-duotone' },
@@ -313,84 +229,6 @@ async function clearModelCache() {
   }
 }
 
-// Runtime motion selection handlers
-function isMotionInCycle(motion: any) {
-  const cardIdleAnimations = activeCard.value?.extensions?.airi?.acting?.idleAnimations || []
-  const expectedKey = `live2d:${motion.group}:${motion.index}:${motion.fullPath}`
-  return cardIdleAnimations.includes(expectedKey)
-}
-
-function toggleMotionInCycle(motion: any) {
-  if (!activeCardId.value || !activeCard.value)
-    return
-
-  const expectedKey = `live2d:${motion.group}:${motion.index}:${motion.fullPath}`
-  const current = activeCard.value.extensions.airi.acting?.idleAnimations || []
-  const next = current.includes(expectedKey)
-    ? current.filter(k => k !== expectedKey)
-    : [...current, expectedKey]
-
-  airiCardStore.updateCard(activeCardId.value, {
-    extensions: {
-      ...activeCard.value.extensions,
-      airi: {
-        ...activeCard.value.extensions.airi,
-        acting: {
-          ...activeCard.value.extensions.airi.acting,
-          idleAnimations: next,
-        },
-      },
-    },
-  })
-}
-
-function handleMotionSelect(motion: any) {
-  const modelId = props.modelId || 'global'
-
-  // Click currently active motion to toggle it off (Set to "None" state)
-  if (currentMotion.value?.group === motion.group && currentMotion.value?.index === motion.index) {
-    selectedRuntimeMotion.value = ''
-    selectedRuntimeMotionName.value = 'None'
-    localStorage.removeItem(`live2d-${modelId}-selected-motion`)
-    localStorage.removeItem(`live2d-${modelId}-selected-motion-name`)
-    localStorage.removeItem(`live2d-${modelId}-selected-motion-group`)
-    localStorage.removeItem(`live2d-${modelId}-selected-motion-index`)
-
-    currentMotion.value = { group: '', index: -1 }
-    showMotionSelector.value = false
-    return
-  }
-
-  if (motion.displayPath === '') {
-    selectedRuntimeMotion.value = ''
-    selectedRuntimeMotionName.value = 'None'
-    localStorage.removeItem(`live2d-${modelId}-selected-motion`)
-    localStorage.removeItem(`live2d-${modelId}-selected-motion-name`)
-    localStorage.removeItem(`live2d-${modelId}-selected-motion-group`)
-    localStorage.removeItem(`live2d-${modelId}-selected-motion-index`)
-
-    live2dIdleAnimationEnabled.value = false
-    currentMotion.value = { group: 'Idle', index: 0 }
-    showMotionSelector.value = false
-    return
-  }
-
-  selectedRuntimeMotion.value = motion.displayPath // Store full path
-  selectedRuntimeMotionName.value = motion.name // Store just the filename for display
-  localStorage.setItem(`live2d-${modelId}-selected-motion`, motion.displayPath)
-  localStorage.setItem(`live2d-${modelId}-selected-motion-name`, motion.name)
-  localStorage.setItem(`live2d-${modelId}-selected-motion-group`, motion.group)
-  localStorage.setItem(`live2d-${modelId}-selected-motion-index`, motion.index.toString())
-
-  // Enable idle animation
-  live2dIdleAnimationEnabled.value = true
-
-  // Set the current motion to the selected runtime motion
-  currentMotion.value = { group: motion.group, index: motion.index }
-
-  showMotionSelector.value = false
-}
-
 // Close dropdown when clicking outside
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
@@ -459,135 +297,9 @@ onUnmounted(() => {
   >
     <SelectTab v-model="activeCustomizationTab" :options="customizationTabs" size="sm" compact class="mb-4" />
 
-    <!-- Expressions Tab -->
-    <div v-if="activeCustomizationTab === 'expressions'">
-      <Live2DCustomization />
-    </div>
-
-    <!-- Animations Tab -->
-    <div v-else-if="activeCustomizationTab === 'animations'" :class="['w-full', 'min-w-0']">
-      <div :class="['w-full', 'min-w-0']">
-        <div data-motion-selector :class="['relative', 'flex', 'flex-col', 'gap-2', 'w-full', 'min-w-0']">
-          <!-- Controls Bar -->
-          <div :class="['mb-2', 'flex', 'items-center', 'justify-between', 'gap-2', 'w-full', 'min-w-0']">
-            <div class="flex gap-1">
-              <Button
-                size="sm"
-                :variant="showHiddenMotions ? 'primary' : 'secondary'"
-                @click="showHiddenMotions = !showHiddenMotions"
-              >
-                <template #icon>
-                  <div :class="showHiddenMotions ? 'i-solar:eye-bold-duotone' : 'i-solar:eye-closed-bold-duotone'" />
-                </template>
-                {{ showHiddenMotions ? 'Showing Hidden' : 'Hide Hidden' }}
-              </Button>
-              <Button
-                size="sm"
-                :variant="filterRenamedOnly ? 'primary' : 'secondary'"
-                @click="filterRenamedOnly = !filterRenamedOnly"
-              >
-                <template #icon>
-                  <div class="i-solar:pen-bold-duotone" />
-                </template>
-                {{ filterRenamedOnly ? 'Renamed Only' : 'All' }}
-              </Button>
-            </div>
-            <div :class="['text-xs', 'text-neutral-500']">
-              {{ filteredMotions.length }} motions
-            </div>
-          </div>
-
-          <!-- Fixed Height Scrollable List -->
-          <div :class="['max-h-[300px]', 'w-full', 'min-w-0', 'overflow-y-auto', 'border border-neutral-200 rounded-lg bg-white dark:border-neutral-700 dark:bg-neutral-900']">
-            <div v-if="filteredMotions.length === 0" :class="['p-4', 'text-center', 'text-sm', 'text-neutral-500', 'dark:text-neutral-400']">
-              No motions match filters
-            </div>
-            <div
-              v-for="motion in filteredMotions"
-              :key="`${motion.group}-${motion.index}-${motion.fullPath}`"
-              :class="[
-                'flex items-center justify-between px-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 transition-colors',
-                'w-full min-w-0',
-                currentMotion?.group === motion.group && currentMotion?.index === motion.index ? 'bg-primary-50/50 dark:bg-primary-900/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
-              ]"
-            >
-              <!-- Left Side: Name and Path -->
-              <div :class="['min-w-0', 'flex-1', 'cursor-pointer']" @click="handleMotionSelect(motion)">
-                <div :class="['flex', 'items-center', 'gap-2', 'min-w-0', 'w-full']">
-                  <!-- Active Indicator -->
-                  <div v-if="currentMotion?.group === motion.group && currentMotion?.index === motion.index" :class="['h-2', 'w-2', 'rounded-full', 'bg-primary-500', 'shrink-0']" />
-
-                  <!-- Name (Editable) -->
-                  <div v-if="editingMotionKey === motion.fullPath" :class="['flex', 'flex-1', 'items-center', 'gap-1.5', 'min-w-0']" @click.stop>
-                    <span :class="['inline-flex', 'shrink-0', 'items-center', 'rounded-md', 'bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 font-semibold ring-1 ring-primary-700/10 ring-inset dark:bg-primary-900/30 dark:text-primary-400 dark:ring-primary-400/20']">
-                      {{ motion.group }}
-                    </span>
-                    <input
-                      v-model="editingMotionValue"
-                      type="text"
-                      :placeholder="motion.name.replace(/\.motion3\.json$/, '').replace(/\.json$/, '')"
-                      :class="['min-w-0', 'flex-1', 'border-b border-primary-500 bg-transparent text-sm dark:text-neutral-100 focus:outline-none']"
-                      @keydown.enter="saveMotionName(motion.fullPath)"
-                      @keydown.esc="cancelEditing"
-                    >
-                    <button :class="['text-xs', 'text-green-500', 'hover:text-green-600', 'shrink-0']" @click="saveMotionName(motion.fullPath)">
-                      <div class="i-solar:check-circle-bold-duotone text-lg" />
-                    </button>
-                    <button :class="['text-xs', 'text-red-500', 'hover:text-red-600', 'shrink-0']" @click="cancelEditing">
-                      <div class="i-solar:close-circle-bold-duotone text-lg" />
-                    </button>
-                  </div>
-                  <div v-else :class="['flex', 'items-center', 'gap-1.5', 'min-w-0', 'w-full', 'max-w-[230px]', 'text-sm text-neutral-900 font-medium dark:text-neutral-100']">
-                    <span :class="['inline-flex', 'shrink-0', 'items-center', 'rounded-md bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 font-semibold ring-1 ring-primary-700/10 ring-inset dark:bg-primary-900/30 dark:text-primary-400 dark:ring-primary-400/20']">
-                      {{ motion.group }}
-                    </span>
-                    <span :class="['truncate', 'min-w-0', 'flex-1']">{{ getDisplayName(motion) }}</span>
-                  </div>
-                </div>
-                <div :class="['ml-4', 'truncate', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400', 'flex', 'items-center', 'gap-1']">
-                  <div v-if="motion.sound" class="i-lucide:volume-2 shrink-0 text-primary-500" title="Has associated audio" />
-                  <span>{{ motion.displayPath }}</span>
-                </div>
-              </div>
-
-              <!-- Right Side: Actions -->
-              <div :class="['flex', 'items-center', 'gap-1', 'shrink-0']" @click.stop>
-                <!-- Loop / Cycle Toggle -->
-                <button
-                  :class="[
-                    'rounded p-1 transition-colors',
-                    isMotionInCycle(motion)
-                      ? 'text-primary-500 hover:text-primary-600 bg-primary-500/10'
-                      : 'text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800',
-                  ]"
-                  :title="isMotionInCycle(motion) ? 'Remove from Idle Cycle' : 'Add to Idle Cycle'"
-                  @click="toggleMotionInCycle(motion)"
-                >
-                  <div class="i-solar:infinity-bold-duotone text-sm" />
-                </button>
-
-                <!-- Edit Button -->
-                <button
-                  :class="['rounded', 'p-1', 'text-neutral-500', 'hover:bg-neutral-100', 'dark:text-neutral-400', 'hover:text-neutral-700', 'dark:hover:bg-neutral-700', 'dark:hover:text-neutral-200']"
-                  title="Rename"
-                  @click="startEditing(motion)"
-                >
-                  <div class="i-solar:pen-bold-duotone text-sm" />
-                </button>
-
-                <!-- Visibility Toggle -->
-                <button
-                  :class="['rounded', 'p-1', 'text-neutral-500', 'hover:bg-neutral-100', 'dark:text-neutral-400', 'hover:text-neutral-700', 'dark:hover:bg-neutral-700', 'dark:hover:text-neutral-200']"
-                  :title="isHidden(motion.fullPath) ? 'Show' : 'Hide'"
-                  @click="toggleVisibility(motion.fullPath)"
-                >
-                  <div :class="isHidden(motion.fullPath) ? 'i-solar:eye-closed-bold-duotone' : 'i-solar:eye-bold-duotone'" class="text-sm" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <!-- Customizer Tab (Unified Expressions/Motions) -->
+    <div v-if="activeCustomizationTab === 'customizer'">
+      <ModelCustomizer :model-id="props.modelId || settings.stageModelSelected" />
     </div>
 
     <!-- Head & Face Tab -->
