@@ -3,14 +3,16 @@ import { ModelCustomizer } from '@proj-airi/stage-ui/components/scenarios/settin
 import { useAnimaDexWizardStore } from '@proj-airi/stage-ui/stores/animadex-wizard'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useAutonomousArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry-autonomous'
 import { useSettingsControlStrip } from '@proj-airi/stage-ui/stores/settings/control-strip'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 const airiCardStore = useAiriCardStore()
 const displayModelsStore = useDisplayModelsStore()
 const wizardStore = useAnimaDexWizardStore()
 const controlStripStore = useSettingsControlStrip()
+const autonomousArtistryStore = useAutonomousArtistryStore()
 
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { stageEnabled } = storeToRefs(controlStripStore)
@@ -32,12 +34,10 @@ function getModelPreviewUrl(modelId?: string) {
 /**
  * Rehearsal room is only concerned with 3D models that are physically "on set".
  *
- * Rule: collect every visual_asset entry that has a manifestation.modelId bound
- * (modules[key] takes precedence as runtime director value, fallback to assets[key]).
+ * Case A (Multi-Actor): collect every visual_asset entry that has a manifestation.modelId bound.
  *
- * If NO entries have a manifestation.modelId at all (simple/Gen1 card), fall back
- * to modules.displayModelId — the single global runtime model. In that case the
- * selector is non-interactive (nothing to switch between), shown as a single thumbnail.
+ * Case B (Single-Actor / Fallback): If NO entries have a manifestation.modelId,
+ * we synthesize 1 manually constructed item representing the active modules.displayModelId.
  */
 const onSetModels = computed(() => {
   if (!activeCard.value)
@@ -51,13 +51,14 @@ const onSetModels = computed(() => {
     name: string
     modelId: string
     avatarUrl: string
+    isFallback: boolean
   }> = []
 
+  // Check visual assets for per-actor manifestations
   for (const key of Object.keys(assets)) {
     const asset = assets[key] || {}
     const mod = modules[key] || {}
 
-    // modules value is the authoritative runtime director state
     const modelId = mod.manifestation?.modelId || asset.manifestation?.modelId
     if (!modelId)
       continue
@@ -68,7 +69,6 @@ const onSetModels = computed(() => {
     else
       displayName = key.replace(/^(actor_|actress_)/, '').replace(/_/g, ' ')
 
-    // Avatar: model preview first, wizard catalog thumbnail fallback
     let avatarUrl = getModelPreviewUrl(modelId)
     if (!avatarUrl) {
       const rawPrompt = mod.prompt || asset.prompt || ''
@@ -82,41 +82,91 @@ const onSetModels = computed(() => {
       name: displayName.charAt(0).toUpperCase() + displayName.slice(1),
       modelId,
       avatarUrl,
+      isFallback: false,
     })
+  }
+
+  // Fallback Case B: Simple/Gen1 card with no per-actor manifestations.
+  // Synthesize one single-item roster representing modules.displayModelId
+  if (list.length === 0) {
+    const fallbackId = modules.displayModelId
+    if (fallbackId) {
+      const displayName = (activeCard.value as any).nickname || activeCard.value.name || 'Primary Actor'
+      let avatarUrl = getModelPreviewUrl(fallbackId)
+      if (!avatarUrl) {
+        const rawPrompt = activeCard.value.systemPrompt || ''
+        const match = wizardStore.findCatalogCharacter(rawPrompt)
+        const canonicalTrigger = match ? match.trigger : rawPrompt.split(',')[0]?.trim()
+        avatarUrl = wizardStore.getCharacterThumbUrl(canonicalTrigger) || ''
+      }
+
+      list.push({
+        key: 'actor_primary',
+        name: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+        modelId: fallbackId,
+        avatarUrl,
+        isFallback: true,
+      })
+    }
   }
 
   console.log('[RehearsalRoom] onSetModels computed:', {
     cardId: activeCardId.value,
-    bound: list.map(m => ({ key: m.key, modelId: m.modelId })),
+    count: list.length,
+    models: list.map(m => ({ key: m.key, modelId: m.modelId, isFallback: m.isFallback })),
   })
 
   return list
 })
 
-// Fallback model for cards with no per-actor manifestation bindings (Gen1 / simple cards)
-const fallbackModelId = computed<string | null>(() => {
-  if (!activeCard.value || onSetModels.value.length > 0)
-    return null
-  const modules = (activeCard.value.extensions?.airi?.modules || {}) as Record<string, any>
-  return modules.displayModelId || null
-})
-
-const isMultiModel = computed(() => onSetModels.value.length > 0)
-
-// Active selection — first model auto-selected when list populates
+// Active selection — resolves to selectedKey, or falls back to active concept on stage, or first element
 const selectedModel = computed(() => {
-  if (isMultiModel.value) {
-    const key = selectedKey.value || onSetModels.value[0]?.key
-    return onSetModels.value.find(m => m.key === key) || onSetModels.value[0] || null
-  }
-  return null
+  if (onSetModels.value.length === 0)
+    return null
+
+  const activeConcepts = activeCard.value?.extensions?.airi?.active_concepts || []
+  // Priority: 1. explicit selection, 2. last active concept that matches a model on set, 3. first model on set
+  const key = selectedKey.value
+    || [...activeConcepts].reverse().find(id => onSetModels.value.some(m => m.key === id))
+    || onSetModels.value[0]?.key
+
+  return onSetModels.value.find(m => m.key === key) || onSetModels.value[0] || null
 })
+
+// Update selectedKey to keep UI selector highlighted
+watch(selectedModel, (newVal) => {
+  if (newVal && selectedKey.value !== newVal.key) {
+    selectedKey.value = newVal.key
+  }
+}, { immediate: true })
 
 const activeModelId = computed<string | null>(() => {
-  if (isMultiModel.value)
-    return selectedModel.value?.modelId || null
-  return fallbackModelId.value
+  return selectedModel.value?.modelId || null
 })
+
+// Click handler
+function selectModel(m: typeof onSetModels.value[0]) {
+  selectedKey.value = m.key
+  if (!m.isFallback) {
+    // Case A (Multi-Actor Concepts): Activate the concept on stage via concept stack
+    void autonomousArtistryStore.activateConcept(m.key)
+  }
+  else if (activeCard.value && activeCardId.value) {
+    // Case B (Single-Actor Fallback): Manually sync card's top-level displayModelId
+    const extension = JSON.parse(JSON.stringify(activeCard.value.extensions || {}))
+    if (!extension.airi)
+      extension.airi = {}
+    if (!extension.airi.modules)
+      extension.airi.modules = {}
+
+    extension.airi.modules.displayModelId = m.modelId
+
+    void airiCardStore.updateCard(activeCardId.value, {
+      ...activeCard.value,
+      extensions: extension,
+    })
+  }
+}
 </script>
 
 <template>
@@ -157,12 +207,12 @@ const activeModelId = computed<string | null>(() => {
     </div>
 
     <template v-else>
-      <!--
-        Multi-model: card has actors with manifestation.modelId bindings.
-        Show 5-col selector — clicking switches which model the customizer operates on.
-      -->
-      <div v-if="isMultiModel" class="shrink-0 px-4 pb-2">
-        <div class="grid grid-cols-5 gap-1.5">
+      <!-- Unified Model Selector Grid (5 columns) -->
+      <div class="shrink-0 px-4 pb-2">
+        <div v-if="onSetModels.length === 0" class="py-2 text-center text-[10px] text-neutral-400 italic">
+          No models bound to this card.
+        </div>
+        <div v-else class="grid grid-cols-5 gap-1.5">
           <button
             v-for="m in onSetModels"
             :key="m.key"
@@ -170,7 +220,7 @@ const activeModelId = computed<string | null>(() => {
             :class="selectedModel?.key === m.key
               ? 'border-primary-500 ring-2 ring-primary-500/20 shadow-md shadow-primary-500/10'
               : 'border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-90 hover:border-neutral-300 dark:hover:border-neutral-700'"
-            @click="selectedKey = m.key"
+            @click="selectModel(m)"
           >
             <!-- Avatar -->
             <div class="absolute inset-0 bg-neutral-100 dark:bg-neutral-900">
@@ -193,44 +243,17 @@ const activeModelId = computed<string | null>(() => {
         </div>
       </div>
 
-      <!--
-        Single-model fallback (Gen1 / simple card): no per-actor bindings.
-        Show a non-interactive thumbnail of the single runtime model.
-      -->
-      <div v-else-if="fallbackModelId" class="shrink-0 px-4 pb-2">
-        <div class="flex items-center gap-2 border border-neutral-200 rounded-xl bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-neutral-200 dark:bg-neutral-800">
-            <img
-              v-if="getModelPreviewUrl(fallbackModelId)"
-              :src="getModelPreviewUrl(fallbackModelId)"
-              class="h-full w-full object-cover object-top"
-            >
-            <div v-else class="h-full w-full flex items-center justify-center text-neutral-400">
-              <div class="i-solar:box-minimalistic-bold-duotone text-lg" />
-            </div>
-          </div>
-          <div>
-            <p class="text-xs text-neutral-700 font-semibold dark:text-neutral-200">
-              {{ displayModelsStore.displayModels.find(m => m.id === fallbackModelId)?.name || 'Active Model' }}
-            </p>
-            <p class="text-[10px] text-neutral-400">
-              Single-model card
-            </p>
-          </div>
-        </div>
-      </div>
-
       <!-- Divider -->
-      <div v-if="isMultiModel || fallbackModelId" class="mx-4 mb-2 border-t border-neutral-100 dark:border-neutral-800/60" />
+      <div v-if="onSetModels.length > 0" class="mx-4 mb-2 border-t border-neutral-100 dark:border-neutral-800/60" />
 
-      <!-- No model bindings at all -->
+      <!-- No model active -->
       <div v-if="!activeModelId" class="flex flex-1 flex-col items-center justify-center p-6 text-center">
         <div class="i-solar:link-broken-bold-duotone mb-2 text-4xl text-neutral-300 dark:text-neutral-700" />
         <h4 class="text-sm text-neutral-700 font-semibold dark:text-neutral-300">
-          No Models Bound
+          No Model Active
         </h4>
         <p class="mt-1 max-w-xs text-xs text-neutral-500">
-          This card has no display model assigned. Bind one in Settings → Card → Studio.
+          Bind a model in Settings → Card → Studio.
         </p>
       </div>
 

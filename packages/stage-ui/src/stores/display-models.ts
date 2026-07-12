@@ -844,7 +844,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       return { expressions: [], motions: [] }
     }
 
-    if (model.expressions && model.motions) {
+    if (model.expressions && model.expressions.length > 0 && model.motions && model.motions.length > 0) {
       return { expressions: model.expressions, motions: model.motions }
     }
 
@@ -878,9 +878,28 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
 
       if (format.includes('live2d')) {
         const zipInstance = await JSZip.loadAsync(arrayBuffer)
+        console.log('[DisplayModels] getOrLoadModelCapabilities: ZIP loaded. Total files:', Object.keys(zipInstance.files).length)
+
+        // Parse expressions directly by scanning zip files (Case 1 in resolveMetadata)
+        const filePaths = Object.keys(zipInstance.files)
+        const jsonPaths = filePaths.filter((f: string) => f.toLowerCase().endsWith('.json') && !zipInstance.files[f].dir)
+
+        for (const jsonPath of jsonPaths) {
+          try {
+            const text = await zipInstance.file(jsonPath)!.async('text')
+            const parsed = JSON.parse(text)
+            if (parsed && (parsed.Type === 'Live2D Expression' || parsed.type === 'Live2D Expression')) {
+              // Store the relative path inside the zip as the unique key (this matches mapped labels)
+              expressions.push(jsonPath)
+            }
+          }
+          catch {}
+        }
+
+        // Parse motions and fallbacks via model3.json FileReferences
         let modelJsonPath = ''
-        for (const filename of Object.keys(zipInstance.files)) {
-          if (filename.toLowerCase().endsWith('.model3.json')) {
+        for (const filename of filePaths) {
+          if (filename.toLowerCase().endsWith('.model3.json') && !zipInstance.files[filename].dir) {
             modelJsonPath = filename
             break
           }
@@ -889,12 +908,18 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
         if (modelJsonPath) {
           const content = await zipInstance.files[modelJsonPath].async('text')
           const data = JSON.parse(content)
+          const manifestDir = modelJsonPath.substring(0, modelJsonPath.lastIndexOf('/') + 1)
+
           if (data && data.FileReferences) {
-            if (Array.isArray(data.FileReferences.Expressions)) {
+            // Sourcing expressions from manifest as fallback if direct scan found nothing
+            if (expressions.length === 0 && Array.isArray(data.FileReferences.Expressions)) {
               data.FileReferences.Expressions.forEach((exp: any) => {
-                const name = exp.Name || exp.File?.split('/').pop()?.replace('.exp3.json', '')
-                if (name)
-                  expressions.push(name)
+                const relativeFile = exp.File || exp.file
+                if (relativeFile) {
+                  // Resolve path relative to the manifest directory
+                  const fullPath = manifestDir ? `${manifestDir}${relativeFile}` : relativeFile
+                  expressions.push(fullPath.replace(/\\/g, '/'))
+                }
               })
             }
             if (data.FileReferences.Motions) {
@@ -902,15 +927,21 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
                 const group = data.FileReferences.Motions[groupName]
                 if (Array.isArray(group)) {
                   group.forEach((m: any) => {
-                    const name = m.File?.split('/').pop()?.replace('.motion3.json', '')
-                    if (name)
-                      motions.push(name)
+                    const relativeFile = m.File || m.file
+                    if (relativeFile) {
+                      const fullPath = manifestDir ? `${manifestDir}${relativeFile}` : relativeFile
+                      motions.push(fullPath.replace(/\\/g, '/'))
+                    }
                   })
                 }
               })
             }
           }
         }
+        console.log('[DisplayModels] getOrLoadModelCapabilities parsed counts:', {
+          expressions: expressions.length,
+          motions: motions.length,
+        })
       }
       else if (format === 'vrm') {
         const dataView = new DataView(arrayBuffer)

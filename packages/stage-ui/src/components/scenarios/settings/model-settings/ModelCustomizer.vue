@@ -601,7 +601,7 @@ async function suggestDialogue() {
               : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'"
             @click="activeTab = 'expressions'"
           >
-            Emotions
+            Emotions ({{ rawExpressions.length }})
           </button>
           <button
             class="flex-1 cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-all"
@@ -610,7 +610,7 @@ async function suggestDialogue() {
               : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'"
             @click="activeTab = 'motions'"
           >
-            Motions
+            Motions ({{ rawMotions.length }})
           </button>
         </div>
       </div>
@@ -624,8 +624,7 @@ async function suggestDialogue() {
       <!-- Filter Controls -->
       <div v-if="!capabilitiesLoading" class="flex shrink-0 items-center justify-between py-2">
         <span class="text-[10px] text-neutral-400 font-bold tracking-wider uppercase">
-          {{ activeTab === 'expressions' ? 'Emotions' : 'Motions' }}
-          <span class="ml-1 font-normal opacity-60">({{ activeTab === 'expressions' ? rawExpressions.length : rawMotions.length }})</span>
+          Filters
         </span>
         <div class="flex gap-1">
           <button
