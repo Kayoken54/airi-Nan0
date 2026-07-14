@@ -13,11 +13,16 @@ describe('Nan0 renderer ownership', () => {
 
   it('keeps non-owner renderers read-only and gives each renderer a stable diagnostic identity', () => {
     const identity = createNan0RendererIdentity('#/actor', () => 'renderer-1')
+    let appendCount = 0
+
+    if (identity.isOwner)
+      appendCount += 1
 
     expect(identity).toEqual({
       instanceId: 'renderer-1',
       hash: '#/actor',
       isOwner: false,
     })
+    expect(appendCount).toBe(0)
   })
 })

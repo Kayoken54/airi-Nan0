@@ -351,6 +351,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
     const sendingCreatedAt = Date.now()
     const streamingMessageContext: ChatStreamEventContext = {
+      sessionId,
       message: { role: 'user', content: sendingMessage, createdAt: sendingCreatedAt, id: nanoid(), ...options.metadata },
       contexts: chatContext.getContextsSnapshot(),
       composedMessage: [],
@@ -1435,6 +1436,7 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
         if (isForegroundSession()) {
           streamingMessage.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
         }
+        await hooks.emitAssistantSilenceHooks('NO_REPLY', streamingMessageContext)
         await hooks.emitStreamEndHooks(streamingMessageContext)
         return
       }
@@ -1531,6 +1533,7 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
       // Emit turn complete with error so downstream consumers (e.g. Discord outbound)
       // can detect and relay failures instead of silently swallowing them.
       try {
+        await hooks.emitChatErrorHooks({ message: errorMessage, detail: technicalDetail }, streamingMessageContext)
         await hooks.emitChatTurnCompleteHooks({
           output: { ...buildingMessage, error: { message: errorMessage, detail: technicalDetail } } as any,
           outputText: String(buildingMessage.content || ''),
@@ -1712,6 +1715,8 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
     emitTokenSpecialHooks: hooks.emitTokenSpecialHooks,
     emitStreamEndHooks: hooks.emitStreamEndHooks,
     emitAssistantResponseEndHooks: hooks.emitAssistantResponseEndHooks,
+    emitAssistantSilenceHooks: hooks.emitAssistantSilenceHooks,
+    emitChatErrorHooks: hooks.emitChatErrorHooks,
     emitAssistantMessageHooks: hooks.emitAssistantMessageHooks,
     emitChatTurnCompleteHooks: hooks.emitChatTurnCompleteHooks,
 
@@ -1723,6 +1728,8 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
     onTokenSpecial: hooks.onTokenSpecial,
     onStreamEnd: hooks.onStreamEnd,
     onAssistantResponseEnd: hooks.onAssistantResponseEnd,
+    onAssistantSilence: hooks.onAssistantSilence,
+    onChatError: hooks.onChatError,
     onAssistantMessage: hooks.onAssistantMessage,
     onChatTurnComplete: hooks.onChatTurnComplete,
     onWidget: hooks.onWidget,

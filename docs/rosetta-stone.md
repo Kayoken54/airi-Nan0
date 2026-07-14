@@ -408,6 +408,8 @@ Cross-window communication relies on named `BroadcastChannel` instances. These a
 
 Nan0 renderer ownership is intentionally not broadcast: only the dedicated `#/chat` renderer boots the Nan0 kernel, registers chat lifecycle hooks, and writes authoritative state. Other renderer hashes skip Nan0 installation. The runtime persistence store still merges memories by stable record ID with a monotonic revision so a stale snapshot cannot delete a newer observation or assistant output.
 
+Nan0's durable state also contains versioned `ConversationTurn` and session-timeline records. `prepareTurn()` atomically creates the Kyo input memory, input timeline event, and prepared turn; the proven `onAssistantResponseEnd` boundary completes that same turn with Nan0's output. Explicit assistant-silence and chat-error lifecycle notifications terminate prepared turns without inventing speech. Nan0 does not depend on `onChatTurnComplete`, which is not reached reliably by every desktop chat path. Timeline and turn merges use stable IDs and deterministic sequences so a stale renderer snapshot cannot remove a terminal turn or its events.
+
 ---
 
 ## 14. Key Directories

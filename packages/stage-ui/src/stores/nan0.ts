@@ -132,6 +132,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       const prepared = await kernel.prepareTurn({
         id: String(context.message.id ?? nanoid()),
         source: source === 'text' ? 'chat' : source as any,
+        sessionId: context.sessionId,
         actorId,
         displayName,
         content: message,
@@ -150,6 +151,8 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       preparedTurns.set(turnKey(context), prepared)
       diagnostic('hook.prepareTurn.complete', {
         thoughtId: prepared.thoughtId,
+        turnId: prepared.turnId,
+        sessionId: prepared.sessionId,
         observationId: prepared.observation.id,
         actorId: prepared.observation.actorId,
       })
@@ -207,6 +210,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       }
 
       await kernel.recordAssistantTurn({
+        turnId: prepared.turnId,
         thoughtId: prepared.thoughtId,
         content: message,
         timestamp: Number(context.assistantMessageCreatedAt ?? Date.now()),
@@ -218,47 +222,66 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       })
       diagnostic('hook.onAssistantResponseEnd.persisted', {
         thoughtId: prepared.thoughtId,
+        turnId: prepared.turnId,
         memoryCount: kernel.getStateSnapshot().memories.length,
         revision: kernel.getStateSnapshot().revision ?? 0,
       })
       preparedTurns.delete(key)
     })
 
-    chat.onChatTurnComplete(async (turn, context) => {
+    chat.onAssistantSilence(async (reason, context) => {
       const key = turnKey(context)
       const prepared = preparedTurns.get(key)
-      diagnostic('hook.onChatTurnComplete.fired', {
+      diagnostic('hook.onAssistantSilence.fired', {
         thoughtId: prepared?.thoughtId,
-        hasError: Boolean(turn.output.error),
-        outputLength: turn.outputText.length,
+        turnId: prepared?.turnId,
+        reason,
       })
 
-      if (turn.output.error)
-        return
-
-      const thoughtId = prepared?.thoughtId
-      if (!thoughtId) {
-        diagnostic('hook.onChatTurnComplete.already-persisted-or-missing')
+      if (!prepared) {
+        diagnostic('hook.onAssistantSilence.missing-prepared-turn')
         return
       }
 
-      await kernel.recordAssistantTurn({
-        thoughtId,
-        content: turn.outputText || contentToText(turn.output.content),
-        rawContent: (turn.output as any).rawContent,
-        timestamp: Number(turn.output.createdAt ?? Date.now()),
+      await kernel.recordSilenceDecision({
+        turnId: prepared.turnId,
+        thoughtId: prepared.thoughtId,
+        reason,
+        timestamp: Number(context.assistantMessageCreatedAt ?? Date.now()),
         metadata: {
           assistantMessageId: context.assistantMessageId,
           inputType: context.input?.type,
-          toolCallCount: turn.toolCalls.length,
+          completionHook: 'onAssistantSilence',
         },
       })
-      diagnostic('hook.onChatTurnComplete.persisted', {
-        thoughtId,
-        memoryCount: kernel.getStateSnapshot().memories.length,
-        revision: kernel.getStateSnapshot().revision ?? 0,
+      preparedTurns.delete(key)
+    })
+
+    chat.onChatError(async (error, context) => {
+      const key = turnKey(context)
+      const prepared = preparedTurns.get(key)
+      diagnostic('hook.onChatError.fired', {
+        thoughtId: prepared?.thoughtId,
+        turnId: prepared?.turnId,
+        error: error.message,
       })
 
+      if (!prepared) {
+        diagnostic('hook.onChatError.missing-prepared-turn')
+        return
+      }
+
+      await kernel.failTurn({
+        turnId: prepared.turnId,
+        thoughtId: prepared.thoughtId,
+        error: error.message,
+        timestamp: Date.now(),
+        metadata: {
+          technicalDetail: error.detail,
+          inputType: context.input?.type,
+          completionHook: 'onChatError',
+        },
+      })
       preparedTurns.delete(key)
     })
 

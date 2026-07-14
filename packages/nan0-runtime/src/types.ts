@@ -9,6 +9,7 @@ export type Nan0ObservationSource =
 export interface Nan0Observation {
   id: string
   source: Nan0ObservationSource
+  sessionId?: string
   actorId?: string
   displayName?: string
   content: unknown
@@ -51,6 +52,79 @@ export interface Nan0ActorOwnership {
 }
 
 export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
+
+export type Nan0ConversationDecision = Nan0Decision | 'UNKNOWN'
+
+export type Nan0ConversationTurnStatus
+  = | 'prepared'
+    | 'completed'
+    | 'silent'
+    | 'failed'
+    | 'cancelled'
+
+export interface Nan0ConversationTurn {
+  schemaVersion: 1
+  turnId: string
+  thoughtId: string
+  sessionId: string
+  sequence: number
+  source: Nan0ObservationSource
+  startedAt: number
+  completedAt: number | null
+  elapsedMs: number | null
+  inputEventId: string
+  outputEventId: string | null
+  inputActorId: string
+  outputActorId: string | null
+  inputContentReference: string
+  outputContentReference: string | null
+  decision: Nan0ConversationDecision
+  status: Nan0ConversationTurnStatus
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TimelineSession {
+  schemaVersion: 1
+  sessionId: string
+  source: Nan0ObservationSource
+  startedAt: number
+  resumedAt: number
+  endedAt: number | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TimelineEvent {
+  schemaVersion: 1
+  eventId: string
+  eventType: string
+  actorId: string
+  source: Nan0ObservationSource
+  sessionId: string
+  turnId: string | null
+  thoughtId: string | null
+  observedAt: number
+  recordedAt: number
+  sequence: number
+  memoryReference: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TimelineState {
+  schemaVersion: 1
+  nextSequence: number
+  nextTurnSequence: number
+  activeSessionId: string | null
+  sessions: Record<string, Nan0TimelineSession>
+  events: Nan0TimelineEvent[]
+}
+
+export interface Nan0SubjectiveTime {
+  at: number
+  sessionId: string | null
+  sinceSessionStartMs: number | null
+  sinceLastKyoInteractionMs: number | null
+  sinceLastNan0ExpressionMs: number | null
+}
 
 interface Nan0ExpressionBase {
   thoughtId: string
@@ -102,6 +176,8 @@ export interface Nan0KernelState {
   runtimeMetadata: Record<string, unknown>
   identity: Nan0IdentityState
   memories: Nan0MemoryRecord[]
+  turns: Nan0ConversationTurn[]
+  timeline: Nan0TimelineState
 }
 
 export interface Nan0StateStore {

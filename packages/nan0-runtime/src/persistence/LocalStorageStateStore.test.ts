@@ -2,6 +2,7 @@ import type { Nan0KernelState, Nan0MemoryRecord } from '../types'
 import { describe, expect, it } from 'vitest'
 
 import { createDefaultIdentityState, nan0Ownership } from '../identity/ActorIdentity'
+import { createEmptyTimelineState } from '../timeline/SessionTimeline'
 import { LocalStorageStateStore } from './LocalStorageStateStore'
 
 class TestStorage {
@@ -59,6 +60,8 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     runtimeMetadata: {},
     identity: createDefaultIdentityState(),
     memories,
+    turns: [],
+    timeline: createEmptyTimelineState(),
     ...overrides,
   }
 }
@@ -108,5 +111,88 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     expect(reloaded?.revision).toBe(firstSave.revision)
     expect(reloaded?.memories.map(item => item.id)).toEqual(['input-1', 'output-1'])
     expect(new Set(reloaded?.memories.map(item => item.id)).size).toBe(2)
+  })
+
+  it('prevents a stale renderer from removing a completed turn or its timeline output', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const input = memory('input-1', 'kyo', 'thought-1')
+    const output = memory('output-1', 'nan0', 'thought-1')
+    const timeline = createEmptyTimelineState()
+    const inputEvent = {
+      schemaVersion: 1 as const,
+      eventId: 'event-input',
+      eventType: 'input',
+      actorId: 'kyo',
+      source: 'chat' as const,
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      thoughtId: 'thought-1',
+      observedAt: 10,
+      recordedAt: 10,
+      sequence: 1,
+      memoryReference: 'input-1',
+      metadata: {},
+    }
+    const preparedTurn = {
+      schemaVersion: 1 as const,
+      turnId: 'turn-1',
+      thoughtId: 'thought-1',
+      sessionId: 'session-1',
+      sequence: 1,
+      source: 'chat' as const,
+      startedAt: 10,
+      completedAt: null,
+      elapsedMs: null,
+      inputEventId: 'event-input',
+      outputEventId: null,
+      inputActorId: 'kyo',
+      outputActorId: null,
+      inputContentReference: 'input-1',
+      outputContentReference: null,
+      decision: 'UNKNOWN' as const,
+      status: 'prepared' as const,
+      metadata: {},
+    }
+    const staleSnapshot = await currentWriter.save(state([input], {
+      turns: [preparedTurn],
+      timeline: { ...timeline, nextSequence: 2, nextTurnSequence: 2, events: [inputEvent] },
+    }))
+    await currentWriter.save(state([input, output], {
+      turns: [{
+        ...preparedTurn,
+        completedAt: 20,
+        elapsedMs: 10,
+        outputEventId: 'event-output',
+        outputActorId: 'nan0',
+        outputContentReference: 'output-1',
+        decision: 'SPEAK',
+        status: 'completed',
+      }],
+      timeline: {
+        ...timeline,
+        nextSequence: 3,
+        nextTurnSequence: 2,
+        events: [inputEvent, {
+          ...inputEvent,
+          eventId: 'event-output',
+          eventType: 'output',
+          actorId: 'nan0',
+          observedAt: 20,
+          recordedAt: 20,
+          sequence: 2,
+          memoryReference: 'output-1',
+        }],
+      },
+    }))
+    await staleWriter.save(staleSnapshot)
+
+    const persisted = await currentWriter.load()
+    expect(persisted?.memories.map(item => item.id)).toEqual(['input-1', 'output-1'])
+    expect(persisted?.turns).toHaveLength(1)
+    expect(persisted?.turns[0]).toMatchObject({ status: 'completed', outputActorId: 'nan0' })
+    expect(persisted?.timeline.events.map(event => event.eventId)).toEqual(['event-input', 'event-output'])
+    expect(persisted?.turns[0].thoughtId).toBe('thought-1')
   })
 })

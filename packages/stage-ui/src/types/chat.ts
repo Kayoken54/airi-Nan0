@@ -73,6 +73,7 @@ export interface ContextMessage extends ContextUpdate<Record<string, unknown>, s
 export type ChatHistoryItem = (ChatMessage | ErrorMessage | DirectorMessage) & { context?: ContextMessage } & { createdAt?: number, id?: string }
 
 export interface ChatStreamEventContext {
+  sessionId: string
   message: ChatHistoryItem
   contexts: Record<string, ContextMessage[]>
   composedMessage: Array<Message>

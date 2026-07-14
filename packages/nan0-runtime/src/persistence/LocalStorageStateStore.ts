@@ -1,4 +1,11 @@
 import type { Nan0KernelState, Nan0StateStore } from '../types'
+import {
+  createEmptyTimelineState,
+  mergeConversationTurns,
+  mergeTimelineStates,
+  normalizeConversationTurns,
+  normalizeTimelineState,
+} from '../timeline/SessionTimeline'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -18,6 +25,8 @@ export function mergeNan0States(
     return {
       ...candidate,
       revision: (candidate.revision ?? 0) + 1,
+      turns: normalizeConversationTurns(candidate.turns),
+      timeline: normalizeTimelineState(candidate.timeline),
     }
   }
 
@@ -46,6 +55,8 @@ export function mergeNan0States(
       },
     },
     memories,
+    turns: mergeConversationTurns(persisted.turns, candidate.turns),
+    timeline: mergeTimelineStates(persisted.timeline, candidate.timeline),
   }
 }
 
@@ -71,10 +82,16 @@ export class LocalStorageStateStore implements Nan0StateStore {
     const state = {
       ...parsed,
       revision: parsed.revision ?? 0,
+      turns: normalizeConversationTurns(parsed.turns),
+      timeline: parsed.timeline
+        ? normalizeTimelineState(parsed.timeline)
+        : createEmptyTimelineState(),
     }
     this.options.diagnostic?.('state.load', {
       revision: state.revision,
       memoryCount: state.memories.length,
+      turnCount: state.turns.length,
+      timelineEventCount: state.timeline.events.length,
       bootCount: state.bootCount,
     })
     return state
@@ -93,6 +110,8 @@ export class LocalStorageStateStore implements Nan0StateStore {
       candidateMemoryCount: state.memories.length,
       previousMemoryCount: before?.memories.length ?? 0,
       memoryCount: merged.memories.length,
+      turnCount: merged.turns.length,
+      timelineEventCount: merged.timeline.events.length,
       thoughtId: merged.lastThoughtId,
     })
     return structuredClone(merged)

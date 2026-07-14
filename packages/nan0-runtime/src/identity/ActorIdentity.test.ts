@@ -52,8 +52,11 @@ describe('actor identity ownership', () => {
     const kernel = createKernel()
     await kernel.boot()
 
+    const prepared = await kernel.prepareTurn(observation())
+
     await kernel.recordAssistantTurn({
-      thoughtId: 'thought-1',
+      turnId: prepared.turnId,
+      thoughtId: prepared.thoughtId,
       content: 'Mine.',
       metadata: {
         ownership: { actorId: 'kyo' },
@@ -62,23 +65,27 @@ describe('actor identity ownership', () => {
     })
 
     const memory = kernel.getStateSnapshot().memories[0]
-    expect(memory.actorId).toBe('nan0')
-    expect(memory.metadata.thoughtId).toBe('thought-1')
-    expect(memory.metadata.ownership).toMatchObject({ actorId: 'nan0', displayName: 'Nan0' })
+    const output = kernel.getStateSnapshot().memories[1]
+    expect(memory.actorId).toBe('kyo')
+    expect(output.actorId).toBe('nan0')
+    expect(output.metadata.thoughtId).toBe(prepared.thoughtId)
+    expect(output.metadata.ownership).toMatchObject({ actorId: 'nan0', displayName: 'Nan0' })
   })
 
   it('records assistant output only once when completion hooks repeat the same thought', async () => {
     const kernel = createKernel()
     await kernel.boot()
 
-    await kernel.recordAssistantTurn({ thoughtId: 'thought-1', content: 'Mine.' })
-    await kernel.recordAssistantTurn({ thoughtId: 'thought-1', content: 'Mine again.' })
+    const prepared = await kernel.prepareTurn(observation())
 
-    expect(kernel.getStateSnapshot().memories).toHaveLength(1)
-    expect(kernel.getStateSnapshot().memories[0]).toMatchObject({
+    await kernel.recordAssistantTurn({ turnId: prepared.turnId, thoughtId: prepared.thoughtId, content: 'Mine.' })
+    await kernel.recordAssistantTurn({ turnId: prepared.turnId, thoughtId: prepared.thoughtId, content: 'Mine again.' })
+
+    expect(kernel.getStateSnapshot().memories).toHaveLength(2)
+    expect(kernel.getStateSnapshot().memories[1]).toMatchObject({
       actorId: 'nan0',
       content: 'Mine.',
-      metadata: { thoughtId: 'thought-1' },
+      metadata: { thoughtId: prepared.thoughtId },
     })
   })
 
@@ -169,6 +176,15 @@ describe('actor identity ownership', () => {
       emotionalState: {},
       runtimeMetadata: {},
       identity: createDefaultIdentityState(),
+      turns: [],
+      timeline: {
+        schemaVersion: 1,
+        nextSequence: 1,
+        nextTurnSequence: 1,
+        activeSessionId: null,
+        sessions: {},
+        events: [],
+      },
       memories: [
         {
           id: 'legacy-user',

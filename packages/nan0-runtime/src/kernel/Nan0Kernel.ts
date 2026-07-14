@@ -1,5 +1,6 @@
 import type {
   LegacyNan0Export,
+  Nan0ConversationTurn,
   Nan0Expression,
   Nan0KernelDependencies,
   Nan0KernelState,
@@ -7,12 +8,24 @@ import type {
   Nan0Observation,
 } from '../types'
 import { createDefaultIdentityState, hydrateIdentityState, nan0Ownership, normalizeMemoryOwnership, resolveObservationOwnership } from '../identity/ActorIdentity'
+import {
+  appendTimelineEvent,
+  createEmptyTimelineState,
+  elapsedBetweenEvents,
+  ensureTimelineSession,
+  migrateLegacyTimeline,
+  subjectiveTime,
+  timelineEvents,
+} from '../timeline/SessionTimeline'
 
 type ExpressionHandler = (expression: Nan0Expression) => void
 
 export interface Nan0PreparedTurn {
   observation: Nan0Observation
   thoughtId: string
+  turnId: string
+  sessionId: string
+  inputEventId: string
   systemContext: string
   recalledMemories: Nan0MemoryRecord[]
 }
@@ -33,6 +46,8 @@ function defaultInitialState(now: number): Nan0KernelState {
     runtimeMetadata: {},
     identity: createDefaultIdentityState(),
     memories: [],
+    turns: [],
+    timeline: createEmptyTimelineState(),
   }
 }
 
@@ -83,13 +98,15 @@ export class Nan0Kernel {
       return normalized.memory
     })
 
-    this.state = {
+    this.state = migrateLegacyTimeline({
       ...this.state,
       identity,
       memories,
       bootCount: this.state.bootCount + 1,
       updatedAt: this.now(),
-    }
+      turns: this.state.turns ?? [],
+      timeline: this.state.timeline ?? createEmptyTimelineState(),
+    })
 
     this.diagnostic('kernel.boot.before-save', {
       revision: this.state.revision ?? 0,
@@ -129,12 +146,12 @@ export class Nan0Kernel {
         return normalized.memory
       })
 
-    this.state = {
+    this.state = migrateLegacyTimeline({
       ...this.state,
       identity,
       memories: [...this.state.memories, ...imported],
       updatedAt: this.now(),
-    }
+    })
 
     this.state = await this.dependencies.stateStore.save(this.state)
     return imported.length
@@ -158,6 +175,13 @@ export class Nan0Kernel {
     }
     const text = observationText(canonicalObservation).trim()
     const thoughtId = this.createId()
+    const turnId = this.createId()
+    const sessionId = canonicalObservation.sessionId
+      ?? (typeof canonicalObservation.metadata.sessionId === 'string'
+        ? canonicalObservation.metadata.sessionId
+        : undefined)
+      ?? this.state.timeline.activeSessionId
+      ?? this.createId()
     this.diagnostic('prepareTurn.start', {
       thoughtId,
       observationId: observation.id,
@@ -174,6 +198,7 @@ export class Nan0Kernel {
       id: this.createId(),
       kind: 'event',
       actorId: ownership.actorId,
+      sessionId,
       content: text,
       tags: [observation.source, 'user-input'],
       createdAt: canonicalObservation.timestamp,
@@ -181,6 +206,60 @@ export class Nan0Kernel {
         ...canonicalObservation.metadata,
         observationId: canonicalObservation.id,
         thoughtId,
+        turnId,
+        sessionId,
+        ownership,
+      },
+    }
+
+    let timeline = ensureTimelineSession(this.state.timeline, {
+      sessionId,
+      source: canonicalObservation.source,
+      observedAt: canonicalObservation.timestamp,
+      metadata: {
+        inputType: canonicalObservation.metadata.sessionInputType,
+      },
+    })
+    const inputTimelineEvent = appendTimelineEvent(timeline, {
+      eventId: this.createId(),
+      eventType: 'input',
+      actorId: ownership.actorId,
+      source: canonicalObservation.source,
+      sessionId,
+      turnId,
+      thoughtId,
+      observedAt: canonicalObservation.timestamp,
+      recordedAt: this.now(),
+      memoryReference: userEvent.id,
+      metadata: {
+        observationId: canonicalObservation.id,
+        ownership,
+      },
+    })
+    timeline = {
+      ...inputTimelineEvent.timeline,
+      nextTurnSequence: this.state.timeline.nextTurnSequence + 1,
+    }
+    const turn: Nan0ConversationTurn = {
+      schemaVersion: 1,
+      turnId,
+      thoughtId,
+      sessionId,
+      sequence: this.state.timeline.nextTurnSequence,
+      source: canonicalObservation.source,
+      startedAt: canonicalObservation.timestamp,
+      completedAt: null,
+      elapsedMs: null,
+      inputEventId: inputTimelineEvent.event.eventId,
+      outputEventId: null,
+      inputActorId: ownership.actorId,
+      outputActorId: null,
+      inputContentReference: userEvent.id,
+      outputContentReference: null,
+      decision: 'UNKNOWN',
+      status: 'prepared',
+      metadata: {
+        observationId: canonicalObservation.id,
         ownership,
       },
     }
@@ -191,6 +270,8 @@ export class Nan0Kernel {
       lastThoughtId: thoughtId,
       identity,
       memories: text ? [...this.state.memories, userEvent] : this.state.memories,
+      turns: [...this.state.turns, turn],
+      timeline,
       updatedAt: this.now(),
     }
 
@@ -205,6 +286,9 @@ export class Nan0Kernel {
     return {
       observation: canonicalObservation,
       thoughtId,
+      turnId,
+      sessionId,
+      inputEventId: inputTimelineEvent.event.eventId,
       recalledMemories,
       systemContext: this.composeNan0Context(thoughtId, ownership, recalledMemories),
     }
@@ -215,17 +299,36 @@ export class Nan0Kernel {
    * This closes the loop so future turns can remember both sides.
    */
   async recordAssistantTurn(input: {
+    turnId: string
     thoughtId: string
     content: string
     rawContent?: string
     timestamp?: number
     metadata?: Record<string, unknown>
-  }): Promise<void> {
+  }): Promise<Nan0ConversationTurn | null> {
     this.assertBooted()
 
     const content = input.content.trim()
     if (!content)
-      return
+      return null
+
+    const turnIndex = this.state.turns.findIndex(turn => turn.turnId === input.turnId)
+    if (turnIndex < 0)
+      throw new Error(`Cannot record Nan0 output for unknown turn ${input.turnId}.`)
+
+    const turn = this.state.turns[turnIndex]
+    if (turn.thoughtId !== input.thoughtId)
+      throw new Error(`Thought provenance mismatch for turn ${input.turnId}.`)
+
+    if (turn.status !== 'prepared') {
+      this.diagnostic('recordAssistantTurn.skipped-terminal-turn', {
+        thoughtId: input.thoughtId,
+        turnId: input.turnId,
+        status: turn.status,
+        memoryCount: this.state.memories.length,
+      })
+      return structuredClone(turn)
+    }
 
     const existingOutput = this.state.memories.find(memory =>
       memory.actorId === 'nan0'
@@ -235,10 +338,11 @@ export class Nan0Kernel {
     if (existingOutput) {
       this.diagnostic('recordAssistantTurn.skipped-existing', {
         thoughtId: input.thoughtId,
+        turnId: input.turnId,
         memoryId: existingOutput.id,
         memoryCount: this.state.memories.length,
       })
-      return
+      return structuredClone(turn)
     }
 
     const ownership = nan0Ownership(String(input.metadata?.source ?? 'assistant'))
@@ -246,6 +350,7 @@ export class Nan0Kernel {
       id: this.createId(),
       kind: 'event',
       actorId: 'nan0',
+      sessionId: turn.sessionId,
       content,
       emotionalWeight: this.estimateEmotionalWeight(content),
       tags: ['assistant-output', 'nan0-expression'],
@@ -253,20 +358,59 @@ export class Nan0Kernel {
       metadata: {
         ...input.metadata,
         thoughtId: input.thoughtId,
+        turnId: input.turnId,
+        sessionId: turn.sessionId,
         rawContent: input.rawContent,
         ownership,
       },
     }
 
+    const completedAt = input.timestamp ?? this.now()
+    const outputTimelineEvent = appendTimelineEvent(this.state.timeline, {
+      eventId: this.createId(),
+      eventType: 'output',
+      actorId: 'nan0',
+      source: turn.source,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      thoughtId: turn.thoughtId,
+      observedAt: completedAt,
+      recordedAt: this.now(),
+      memoryReference: memory.id,
+      metadata: {
+        assistantMessageId: input.metadata?.assistantMessageId,
+        ownership,
+      },
+    })
+    const completedTurn: Nan0ConversationTurn = {
+      ...turn,
+      completedAt,
+      elapsedMs: Math.max(0, completedAt - turn.startedAt),
+      outputEventId: outputTimelineEvent.event.eventId,
+      outputActorId: 'nan0',
+      outputContentReference: memory.id,
+      decision: 'SPEAK',
+      status: 'completed',
+      metadata: {
+        ...turn.metadata,
+        ...input.metadata,
+      },
+    }
+    const turns = [...this.state.turns]
+    turns[turnIndex] = completedTurn
+
     this.state = {
       ...this.state,
       lastThoughtId: input.thoughtId,
       memories: [...this.state.memories, memory],
+      turns,
+      timeline: outputTimelineEvent.timeline,
       updatedAt: this.now(),
     }
 
     this.diagnostic('recordAssistantTurn.before-save', {
       thoughtId: input.thoughtId,
+      turnId: input.turnId,
       memoryId: memory.id,
       memoryCount: this.state.memories.length,
     })
@@ -274,11 +418,94 @@ export class Nan0Kernel {
     const persisted = await this.dependencies.stateStore.load()
     this.diagnostic('recordAssistantTurn.persisted', {
       thoughtId: input.thoughtId,
+      turnId: input.turnId,
       memoryId: memory.id,
       revision: persisted?.revision ?? 0,
       memoryCount: persisted?.memories.length ?? 0,
       outputExists: persisted?.memories.some(item => item.id === memory.id) ?? false,
     })
+    return structuredClone(completedTurn)
+  }
+
+  async failTurn(input: {
+    turnId: string
+    thoughtId: string
+    error: string
+    timestamp?: number
+    metadata?: Record<string, unknown>
+  }): Promise<Nan0ConversationTurn> {
+    return this.finishWithoutSpeech({
+      ...input,
+      status: 'failed',
+      decision: 'UNKNOWN',
+      eventType: 'turn-failed',
+      actorId: 'unknown',
+    })
+  }
+
+  async recordSilenceDecision(input: {
+    turnId: string
+    thoughtId: string
+    reason?: string
+    timestamp?: number
+    metadata?: Record<string, unknown>
+  }): Promise<Nan0ConversationTurn> {
+    return this.finishWithoutSpeech({
+      turnId: input.turnId,
+      thoughtId: input.thoughtId,
+      error: input.reason ?? 'Nan0 chose silence.',
+      timestamp: input.timestamp,
+      metadata: input.metadata,
+      status: 'silent',
+      decision: 'SILENCE',
+      eventType: 'silence',
+      actorId: 'nan0',
+    })
+  }
+
+  async openSession(input: {
+    sessionId?: string
+    source: Nan0Observation['source']
+    observedAt?: number
+    metadata?: Record<string, unknown>
+  }): Promise<string> {
+    this.assertBooted()
+    const sessionId = input.sessionId ?? this.createId()
+    this.state = {
+      ...this.state,
+      timeline: ensureTimelineSession(this.state.timeline, {
+        sessionId,
+        source: input.source,
+        observedAt: input.observedAt ?? this.now(),
+        metadata: input.metadata,
+      }),
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    return sessionId
+  }
+
+  getConversationTurns(sessionId?: string): Nan0ConversationTurn[] {
+    return this.state.turns
+      .filter(turn => !sessionId || turn.sessionId === sessionId)
+      .sort((a, b) => a.sequence - b.sequence || a.turnId.localeCompare(b.turnId))
+      .map(turn => structuredClone(turn))
+  }
+
+  getTimelineEvents(filter: { sessionId?: string, actorId?: string } = {}) {
+    return timelineEvents(this.state.timeline, filter)
+  }
+
+  getSubjectiveTime(at = this.now(), sessionId: string | null = this.state.timeline.activeSessionId) {
+    return subjectiveTime(this.state.timeline, at, sessionId)
+  }
+
+  elapsedBetweenTimelineEvents(firstEventId: string, secondEventId: string): number {
+    const first = this.state.timeline.events.find(event => event.eventId === firstEventId)
+    const second = this.state.timeline.events.find(event => event.eventId === secondEventId)
+    if (!first || !second)
+      throw new Error('Both timeline events must exist to calculate elapsed time.')
+    return elapsedBetweenEvents(first, second)
   }
 
   /**
@@ -314,11 +541,22 @@ export class Nan0Kernel {
           reason: 'reasoning-client-returned-empty-output',
         }
 
-    await this.recordAssistantTurn({
-      thoughtId: prepared.thoughtId,
-      content: speech,
-      metadata: { source: observation.source },
-    })
+    if (speech) {
+      await this.recordAssistantTurn({
+        turnId: prepared.turnId,
+        thoughtId: prepared.thoughtId,
+        content: speech,
+        metadata: { source: observation.source },
+      })
+    }
+    else {
+      await this.recordSilenceDecision({
+        turnId: prepared.turnId,
+        thoughtId: prepared.thoughtId,
+        reason: 'reasoning-client-returned-empty-output',
+        metadata: { source: observation.source },
+      })
+    }
 
     this.emitExpression(expression)
   }
@@ -326,6 +564,78 @@ export class Nan0Kernel {
   onExpression(handler: ExpressionHandler): () => void {
     this.expressionHandlers.add(handler)
     return () => this.expressionHandlers.delete(handler)
+  }
+
+  private async finishWithoutSpeech(input: {
+    turnId: string
+    thoughtId: string
+    error: string
+    timestamp?: number
+    metadata?: Record<string, unknown>
+    status: 'failed' | 'silent'
+    decision: 'UNKNOWN' | 'SILENCE'
+    eventType: 'turn-failed' | 'silence'
+    actorId: 'unknown' | 'nan0'
+  }): Promise<Nan0ConversationTurn> {
+    this.assertBooted()
+    const turnIndex = this.state.turns.findIndex(turn => turn.turnId === input.turnId)
+    if (turnIndex < 0)
+      throw new Error(`Cannot finish unknown turn ${input.turnId}.`)
+
+    const turn = this.state.turns[turnIndex]
+    if (turn.thoughtId !== input.thoughtId)
+      throw new Error(`Thought provenance mismatch for turn ${input.turnId}.`)
+    if (turn.status !== 'prepared')
+      return structuredClone(turn)
+
+    const completedAt = input.timestamp ?? this.now()
+    const appended = appendTimelineEvent(this.state.timeline, {
+      eventId: this.createId(),
+      eventType: input.eventType,
+      actorId: input.actorId,
+      source: turn.source,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      thoughtId: turn.thoughtId,
+      observedAt: completedAt,
+      recordedAt: this.now(),
+      memoryReference: null,
+      metadata: {
+        ...input.metadata,
+        reason: input.error,
+      },
+    })
+    const finished: Nan0ConversationTurn = {
+      ...turn,
+      completedAt,
+      elapsedMs: Math.max(0, completedAt - turn.startedAt),
+      outputEventId: appended.event.eventId,
+      outputActorId: input.actorId === 'nan0' ? 'nan0' : null,
+      outputContentReference: null,
+      decision: input.decision,
+      status: input.status,
+      metadata: {
+        ...turn.metadata,
+        ...input.metadata,
+        terminalReason: input.error,
+      },
+    }
+    const turns = [...this.state.turns]
+    turns[turnIndex] = finished
+    this.state = {
+      ...this.state,
+      turns,
+      timeline: appended.timeline,
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    this.diagnostic(`turn.${input.status}.persisted`, {
+      turnId: turn.turnId,
+      thoughtId: turn.thoughtId,
+      eventId: appended.event.eventId,
+      revision: this.state.revision ?? 0,
+    })
+    return structuredClone(finished)
   }
 
   private composeNan0Context(
