@@ -20,11 +20,11 @@ export const CONTINUITY_MAX_CARRYOVER_RECORDS = 6
 
 const STOP_WORDS = new Set([
   'about', 'after', 'again', 'also', 'and', 'are', 'because', 'been', 'before', 'being', 'but',
-  'can', 'could', 'did', 'does', 'doing', 'for', 'from', 'had', 'has', 'have', 'her', 'here',
+  'answer', 'can', 'change', 'changes', 'could', 'did', 'does', 'doing', 'for', 'from', 'had', 'has', 'have', 'her', 'here',
   'him', 'his', 'how', 'into', 'its', 'just', 'kyo', 'like', 'more', 'nan0', 'not', 'now',
-  'our', 'out', 'please', 'really', 'should', 'that', 'the', 'their', 'them', 'then', 'there',
+  'our', 'out', 'please', 'question', 'really', 'remember', 'return', 'should', 'something', 'that', 'the', 'their', 'them', 'then', 'there',
   'these', 'they', 'this', 'those', 'was', 'what', 'when', 'where', 'which', 'who', 'why',
-  'will', 'with', 'would', 'you', 'your',
+  'will', 'with', 'would', 'you', 'your', 'topic', 'unrelated',
 ])
 
 const TERMINAL_STATUSES = new Set<Nan0ContinuityThreadStatus>([
@@ -224,6 +224,10 @@ function isExplicitShift(text: string): boolean {
   return /\b(new topic|switch(?:ing)? topics?|unrelated|different question|instead)\b/i.test(text)
 }
 
+function isExplicitResume(text: string): boolean {
+  return /\b(return(?:ing)? to|back to|resume)\b/i.test(text)
+}
+
 function overlapScore(labels: string[], queryTerms: string[]): number {
   if (!labels.length || !queryTerms.length)
     return 0
@@ -245,6 +249,8 @@ function selectThread(
 ): Nan0ConversationThread | undefined {
   const candidates = eligibleThreads(state, actorId)
   const terms = continuityTopicLabels(text)
+  if (isExplicitShift(text) && !isExplicitResume(text))
+    return undefined
   const scored = candidates
     .map(thread => ({ thread, score: overlapScore(thread.topicLabels, terms) }))
     .filter(item => item.score > 0)

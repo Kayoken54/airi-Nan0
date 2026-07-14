@@ -98,6 +98,16 @@ describe('Conversation continuity', () => {
     expect(kernel.getContinuityThreads().map(thread => thread.status).sort()).toEqual(['active', 'dormant'])
   })
 
+  it('honors an explicit topic shift even when generic labels overlap', async () => {
+    const { kernel, clock } = createKernel()
+    await kernel.boot()
+    const first = await completeTurn(kernel, clock, 'Coolant test topic and later changes.', 100)
+    const shifted = await completeTurn(kernel, clock, 'Unrelated topic: glaze changes later.', 200)
+
+    expect(shifted.threadId).not.toBe(first.threadId)
+    expect(kernel.getContinuityThreads()).toHaveLength(2)
+  })
+
   it('resumes a dormant thread using topic overlap after subjective elapsed time', async () => {
     const { kernel, clock } = createKernel()
     await kernel.boot()
