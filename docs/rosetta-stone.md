@@ -412,6 +412,8 @@ Nan0's durable state also contains versioned `ConversationTurn` and session-time
 
 Conversation continuity is owned by `packages/nan0-runtime/src/continuity/ConversationContinuity.ts`. It consumes canonical turn, memory, and timeline references without rewriting them; persists bounded thread membership, topics, unresolved items, activation, and extractive summaries; and injects fact-only carryover through `Nan0Kernel.prepareTurn()`. Linkage is deterministic: explicit topic overlap may resume an eligible thread, anaphoric follow-ups remain on the recent current thread, and meaningful disjoint input opens a new thread. Resolved, abandoned, and superseded threads never auto-reactivate. Continuity does not call a provider, summarize with an LLM, generate speech, or schedule autonomy.
 
+Actor-specific relationship meaning is owned by `packages/nan0-runtime/src/relationship/RelationshipMemory.ts`. It consumes canonical ownership and completed turn/timeline provenance without rewriting those records; applies each completed turn once; preserves Kyo's protected creator-anchor relationship; isolates unlinked external identities by source; and persists bounded moments, emotional residue, significant-event references, and Python-compatible grievance decay/resolve/nurture mechanics. `Nan0Kernel.prepareTurn()` injects a separate bounded fact-only relationship block. Ambiguous text updates interaction recency and familiarity only; major grievances require corroborating evidence or an explicit interpreted relationship event, and relationship updates never make an additional provider call.
+
 ---
 
 ## 14. Key Directories

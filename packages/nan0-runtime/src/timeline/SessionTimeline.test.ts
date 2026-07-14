@@ -5,6 +5,7 @@ import { createDefaultIdentityState } from '../identity/ActorIdentity'
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
 import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
+import { createEmptyRelationshipState } from '../relationship/RelationshipMemory'
 import { createEmptyTimelineState } from './SessionTimeline'
 
 const reasoningClient: Nan0ReasoningClient = {
@@ -66,6 +67,7 @@ function legacyState(memories: Nan0KernelState['memories']): Nan0KernelState {
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
+    relationships: createEmptyRelationshipState(1),
   }
 }
 

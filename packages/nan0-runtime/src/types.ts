@@ -192,6 +192,137 @@ export interface Nan0ContinuityContext {
   threads: Nan0ContinuityContextThread[]
 }
 
+export type Nan0RelationshipStatus
+  = | 'strangers'
+    | 'developing'
+    | 'established'
+    | 'complicated'
+    | 'hostile'
+    | 'bonded'
+
+export type Nan0RelationshipMomentType
+  = | 'positive'
+    | 'negative'
+    | 'neutral'
+    | 'grudge_formed'
+    | 'grudge_resolved'
+
+export type Nan0GrievanceStatus = 'active' | 'fading' | 'resolved' | 'nurtured'
+
+export interface Nan0RelationshipProvenance {
+  provenanceId: string
+  eventId: string
+  turnId: string
+  thoughtId: string
+  timestamp: number
+  actorId: string
+  rule: string
+}
+
+export interface Nan0RelationshipMoment extends Nan0RelationshipProvenance {
+  eventType: Nan0RelationshipMomentType
+  description: string
+  intensity: number
+  context?: string
+}
+
+export interface Nan0RelationshipGrievance extends Nan0RelationshipProvenance {
+  grievanceId: string
+  description: string
+  severity: number
+  status: Nan0GrievanceStatus
+  lastReinforcedAt: number
+  reinforcementCount: number
+  decayRatePerDay: number
+  resolvedAt: number | null
+  triggerPhrases: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0RelationshipAnchor extends Nan0RelationshipProvenance {
+  anchorId: string
+  description: string
+  strength: number
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0RelationshipExpectation extends Nan0RelationshipProvenance {
+  expectationId: string
+  description: string
+  status: 'active' | 'met' | 'violated' | 'retired'
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0RelationshipRecord {
+  schemaVersion: 1
+  actorId: string
+  relationshipId: string
+  source: Nan0ObservationSource
+  createdAt: number
+  updatedAt: number
+  firstInteractionAt: number | null
+  lastInteractionAt: number | null
+  interactionCount: number
+  status: Nan0RelationshipStatus
+  emotionalBalance: number
+  familiarity: number
+  trust: number
+  attachment: number
+  irritation: number
+  suspicion: number
+  respect: number
+  importance: number
+  significantEventIds: string[]
+  turnIds: string[]
+  moments: Nan0RelationshipMoment[]
+  activeGrievances: Nan0RelationshipGrievance[]
+  positiveAnchors: Nan0RelationshipAnchor[]
+  expectations: Nan0RelationshipExpectation[]
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0RelationshipState {
+  schemaVersion: 1
+  records: Record<string, Nan0RelationshipRecord>
+}
+
+export interface Nan0RelationshipContext {
+  provider: 'relationship_memory'
+  factsOnly: true
+  actorId: string
+  relationshipId: string | null
+  status: Nan0RelationshipStatus | null
+  interactionCount: number
+  emotionalBalance: number
+  dimensions: {
+    familiarity: number
+    trust: number
+    attachment: number
+    irritation: number
+    suspicion: number
+    respect: number
+    importance: number
+  }
+  activeGrievances: Array<{
+    grievanceId: string
+    description: string
+    severity: number
+    status: Nan0GrievanceStatus
+    provenance: Nan0RelationshipProvenance
+  }>
+  recentMoments: Array<{
+    eventType: Nan0RelationshipMomentType
+    description: string
+    intensity: number
+    provenance: Nan0RelationshipProvenance
+  }>
+  positiveAnchors: Array<{
+    description: string
+    strength: number
+    provenance: Nan0RelationshipProvenance
+  }>
+}
+
 interface Nan0ExpressionBase {
   thoughtId: string
   mood?: string
@@ -245,6 +376,7 @@ export interface Nan0KernelState {
   turns: Nan0ConversationTurn[]
   timeline: Nan0TimelineState
   continuity: Nan0ContinuityState
+  relationships: Nan0RelationshipState
 }
 
 export interface Nan0StateStore {

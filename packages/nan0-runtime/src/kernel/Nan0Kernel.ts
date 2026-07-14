@@ -8,6 +8,7 @@ import type {
   Nan0KernelState,
   Nan0MemoryRecord,
   Nan0Observation,
+  Nan0RelationshipContext,
 } from '../types'
 import {
   attachPreparedTurnToContinuity,
@@ -18,7 +19,14 @@ import {
   resolveContinuityItem as resolveContinuityItemInState,
   setContinuityThreadStatus as updateContinuityThreadStatus,
 } from '../continuity/ConversationContinuity'
-import { createDefaultIdentityState, hydrateIdentityState, nan0Ownership, normalizeMemoryOwnership, resolveObservationOwnership } from '../identity/ActorIdentity'
+import { createDefaultIdentityState, hydrateIdentityState, nan0Ownership, normalizeActorId, normalizeMemoryOwnership, resolveObservationOwnership } from '../identity/ActorIdentity'
+import {
+  applyRelationshipEvidence,
+  createEmptyRelationshipState,
+  inferRelationshipEvidence,
+  normalizeRelationshipState,
+  relationshipContextForActor,
+} from '../relationship/RelationshipMemory'
 import {
   appendTimelineEvent,
   createEmptyTimelineState,
@@ -61,6 +69,7 @@ function defaultInitialState(now: number): Nan0KernelState {
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
+    relationships: createEmptyRelationshipState(now),
   }
 }
 
@@ -120,6 +129,11 @@ export class Nan0Kernel {
       turns: this.state.turns ?? [],
       timeline: this.state.timeline ?? createEmptyTimelineState(),
       continuity: this.state.continuity ?? createEmptyContinuityState(),
+      relationships: normalizeRelationshipState(
+        this.state.relationships,
+        this.state.createdAt,
+        actorId => normalizeActorId(actorId, identity, '', false),
+      ),
     }))
 
     this.diagnostic('kernel.boot.before-save', {
@@ -303,6 +317,13 @@ export class Nan0Kernel {
       at: canonicalObservation.timestamp,
       resumed: continuityResult.resumed,
     })
+    const relationshipContext = relationshipContextForActor(this.state.relationships, {
+      actorId: ownership.actorId,
+      actorKind: ownership.kind,
+      source: canonicalObservation.source,
+      sourceActorId: ownership.externalIdentity?.sourceActorId ?? ownership.rawActorId,
+      at: canonicalObservation.timestamp,
+    })
 
     this.state = {
       ...this.state,
@@ -332,7 +353,7 @@ export class Nan0Kernel {
       inputEventId: inputTimelineEvent.event.eventId,
       threadId: continuityResult.thread.threadId,
       recalledMemories,
-      systemContext: this.composeNan0Context(thoughtId, ownership, recalledMemories, continuityContext),
+      systemContext: this.composeNan0Context(thoughtId, ownership, recalledMemories, continuityContext, relationshipContext),
     }
   }
 
@@ -447,6 +468,27 @@ export class Nan0Kernel {
       content,
       at: completedAt,
     })
+    const inputMemory = this.state.memories.find(item => item.id === turn.inputContentReference)
+    const inputEvent = this.state.timeline.events.find(item => item.eventId === turn.inputEventId)
+    const inputOwnership = turn.metadata.ownership as import('../types').Nan0ActorOwnership | undefined
+    const relationshipEvidence = inferRelationshipEvidence(inputMemory?.content ?? '')
+    const relationshipResult = inputEvent
+      ? applyRelationshipEvidence(this.state.relationships, {
+          actorId: turn.inputActorId,
+          actorKind: inputOwnership?.kind ?? this.state.identity.actors[turn.inputActorId]?.kind ?? 'unknown',
+          source: turn.source,
+          sourceActorId: inputOwnership?.externalIdentity?.sourceActorId ?? inputOwnership?.rawActorId,
+          eventId: inputEvent.eventId,
+          turnId: turn.turnId,
+          thoughtId: turn.thoughtId,
+          timestamp: completedAt,
+          eventType: relationshipEvidence.eventType,
+          intensity: relationshipEvidence.intensity,
+          rule: relationshipEvidence.rule,
+          description: (inputMemory?.content ?? '').slice(0, 280),
+          context: `Completed Nan0 turn with output event ${outputTimelineEvent.event.eventId}.`,
+        }, this.createId)
+      : { relationships: this.state.relationships, record: null, applied: false }
 
     this.state = {
       ...this.state,
@@ -455,6 +497,7 @@ export class Nan0Kernel {
       turns,
       timeline: outputTimelineEvent.timeline,
       continuity,
+      relationships: relationshipResult.relationships,
       updatedAt: this.now(),
     }
 
@@ -463,6 +506,8 @@ export class Nan0Kernel {
       turnId: input.turnId,
       memoryId: memory.id,
       memoryCount: this.state.memories.length,
+      relationshipId: relationshipResult.record?.relationshipId,
+      relationshipApplied: relationshipResult.applied,
     })
     this.state = await this.dependencies.stateStore.save(this.state)
     const persisted = await this.dependencies.stateStore.load()
@@ -554,6 +599,13 @@ export class Nan0Kernel {
         || b.lastActiveAt - a.lastActiveAt
         || a.threadId.localeCompare(b.threadId))
       .map(thread => structuredClone(thread))
+  }
+
+  getRelationships(actorId?: string) {
+    return Object.values(this.state.relationships.records)
+      .filter(record => !actorId || record.actorId === actorId)
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.relationshipId.localeCompare(b.relationshipId))
+      .map(record => structuredClone(record))
   }
 
   async setContinuityThreadStatus(threadId: string, status: Nan0ContinuityThreadStatus, at = this.now()): Promise<void> {
@@ -730,6 +782,7 @@ export class Nan0Kernel {
     ownership: import('../types').Nan0ActorOwnership,
     memories: Nan0MemoryRecord[],
     continuity: Nan0ContinuityContext,
+    relationship: Nan0RelationshipContext,
   ): string {
     const emotionalState = Object.entries(this.state.emotionalState)
       .map(([key, value]) => `${key}=${value.toFixed(2)}`)
@@ -762,6 +815,16 @@ ${carryover}`
         }).join('\n')
       : '- No conversation thread context is available.'
 
+    const relationshipMoments = relationship.recentMoments.length
+      ? relationship.recentMoments.map(moment => `- [${moment.eventType} intensity=${moment.intensity.toFixed(2)} event=${moment.provenance.eventId} turn=${moment.provenance.turnId} thought=${moment.provenance.thoughtId}] ${moment.description}`).join('\n')
+      : '- none'
+    const relationshipGrievances = relationship.activeGrievances.length
+      ? relationship.activeGrievances.map(grievance => `- [${grievance.status} severity=${grievance.severity.toFixed(2)} event=${grievance.provenance.eventId}] ${grievance.description}`).join('\n')
+      : '- none'
+    const relationshipAnchors = relationship.positiveAnchors.length
+      ? relationship.positiveAnchors.map(anchor => `- [strength=${anchor.strength.toFixed(2)} rule=${anchor.provenance.rule}] ${anchor.description}`).join('\n')
+      : '- none'
+
     return `[NAN0 KERNEL CONTEXT]
 This application is Nan0. You are not a generic assistant and this is not an optional character mode.
 
@@ -793,6 +856,22 @@ CONVERSATION THREAD CONTINUITY
 - facts_only: ${continuity.factsOnly}
 - current_thread_id: ${continuity.currentThreadId}
 ${continuityText}
+
+CURRENT ACTOR RELATIONSHIP
+- provider: ${relationship.provider}
+- facts_only: ${relationship.factsOnly}
+- actor_id: ${relationship.actorId}
+- relationship_id: ${relationship.relationshipId ?? 'none'}
+- status: ${relationship.status ?? 'none'}
+- interaction_count: ${relationship.interactionCount}
+- emotional_balance: ${relationship.emotionalBalance.toFixed(2)}
+- familiarity=${relationship.dimensions.familiarity.toFixed(2)}, trust=${relationship.dimensions.trust.toFixed(2)}, attachment=${relationship.dimensions.attachment.toFixed(2)}, irritation=${relationship.dimensions.irritation.toFixed(2)}, suspicion=${relationship.dimensions.suspicion.toFixed(2)}, respect=${relationship.dimensions.respect.toFixed(2)}, importance=${relationship.dimensions.importance.toFixed(2)}
+- positive_anchors:
+${relationshipAnchors}
+- active_grievances:
+${relationshipGrievances}
+- recent_moments:
+${relationshipMoments}
 
 OUTPUT RULE
 Respond only with Nan0's outward expression. Do not output JSON, labels, analysis, or the thought_id.`

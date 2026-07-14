@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createDefaultIdentityState, nan0Ownership } from '../identity/ActorIdentity'
 import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
+import { createEmptyRelationshipState } from '../relationship/RelationshipMemory'
 import { createEmptyTimelineState } from '../timeline/SessionTimeline'
 import { LocalStorageStateStore } from './LocalStorageStateStore'
 
@@ -65,6 +66,7 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
     ...overrides,
+    relationships: overrides.relationships ?? createEmptyRelationshipState(1),
   }
 }
 

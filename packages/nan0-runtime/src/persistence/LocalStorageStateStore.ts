@@ -11,6 +11,11 @@ import {
   normalizeConversationTurns,
   normalizeTimelineState,
 } from '../timeline/SessionTimeline'
+import {
+  createEmptyRelationshipState,
+  mergeRelationshipStates,
+  normalizeRelationshipState,
+} from '../relationship/RelationshipMemory'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -33,6 +38,7 @@ export function mergeNan0States(
       turns: normalizeConversationTurns(candidate.turns),
       timeline: normalizeTimelineState(candidate.timeline),
       continuity: normalizeContinuityState(candidate.continuity),
+      relationships: normalizeRelationshipState(candidate.relationships, candidate.createdAt),
     }
   }
 
@@ -64,6 +70,10 @@ export function mergeNan0States(
     turns: mergeConversationTurns(persisted.turns, candidate.turns),
     timeline: mergeTimelineStates(persisted.timeline, candidate.timeline),
     continuity: mergeContinuityStates(persisted.continuity, candidate.continuity),
+    relationships: mergeRelationshipStates(
+      normalizeRelationshipState(persisted.relationships, persisted.createdAt),
+      normalizeRelationshipState(candidate.relationships, candidate.createdAt),
+    ),
   }
 }
 
@@ -96,6 +106,9 @@ export class LocalStorageStateStore implements Nan0StateStore {
       continuity: parsed.continuity
         ? normalizeContinuityState(parsed.continuity)
         : createEmptyContinuityState(),
+      relationships: parsed.relationships
+        ? normalizeRelationshipState(parsed.relationships, parsed.createdAt)
+        : createEmptyRelationshipState(parsed.createdAt),
     }
     this.options.diagnostic?.('state.load', {
       revision: state.revision,
@@ -103,6 +116,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       turnCount: state.turns.length,
       timelineEventCount: state.timeline.events.length,
       continuityThreadCount: state.continuity.threads.length,
+      relationshipCount: Object.keys(state.relationships.records).length,
       bootCount: state.bootCount,
     })
     return state
@@ -124,6 +138,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       turnCount: merged.turns.length,
       timelineEventCount: merged.timeline.events.length,
       continuityThreadCount: merged.continuity.threads.length,
+      relationshipCount: Object.keys(merged.relationships.records).length,
       thoughtId: merged.lastThoughtId,
     })
     return structuredClone(merged)
