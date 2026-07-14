@@ -1,12 +1,23 @@
 import type {
   LegacyNan0Export,
   Nan0ConversationTurn,
+  Nan0ContinuityContext,
+  Nan0ContinuityThreadStatus,
   Nan0Expression,
   Nan0KernelDependencies,
   Nan0KernelState,
   Nan0MemoryRecord,
   Nan0Observation,
 } from '../types'
+import {
+  attachPreparedTurnToContinuity,
+  attachTerminalEventToContinuity,
+  continuityContextForTurn,
+  createEmptyContinuityState,
+  migrateLegacyContinuity,
+  resolveContinuityItem as resolveContinuityItemInState,
+  setContinuityThreadStatus as updateContinuityThreadStatus,
+} from '../continuity/ConversationContinuity'
 import { createDefaultIdentityState, hydrateIdentityState, nan0Ownership, normalizeMemoryOwnership, resolveObservationOwnership } from '../identity/ActorIdentity'
 import {
   appendTimelineEvent,
@@ -26,6 +37,7 @@ export interface Nan0PreparedTurn {
   turnId: string
   sessionId: string
   inputEventId: string
+  threadId: string
   systemContext: string
   recalledMemories: Nan0MemoryRecord[]
 }
@@ -48,6 +60,7 @@ function defaultInitialState(now: number): Nan0KernelState {
     memories: [],
     turns: [],
     timeline: createEmptyTimelineState(),
+    continuity: createEmptyContinuityState(),
   }
 }
 
@@ -98,7 +111,7 @@ export class Nan0Kernel {
       return normalized.memory
     })
 
-    this.state = migrateLegacyTimeline({
+    this.state = migrateLegacyContinuity(migrateLegacyTimeline({
       ...this.state,
       identity,
       memories,
@@ -106,7 +119,8 @@ export class Nan0Kernel {
       updatedAt: this.now(),
       turns: this.state.turns ?? [],
       timeline: this.state.timeline ?? createEmptyTimelineState(),
-    })
+      continuity: this.state.continuity ?? createEmptyContinuityState(),
+    }))
 
     this.diagnostic('kernel.boot.before-save', {
       revision: this.state.revision ?? 0,
@@ -146,12 +160,12 @@ export class Nan0Kernel {
         return normalized.memory
       })
 
-    this.state = migrateLegacyTimeline({
+    this.state = migrateLegacyContinuity(migrateLegacyTimeline({
       ...this.state,
       identity,
       memories: [...this.state.memories, ...imported],
       updatedAt: this.now(),
-    })
+    }))
 
     this.state = await this.dependencies.stateStore.save(this.state)
     return imported.length
@@ -240,7 +254,7 @@ export class Nan0Kernel {
       ...inputTimelineEvent.timeline,
       nextTurnSequence: this.state.timeline.nextTurnSequence + 1,
     }
-    const turn: Nan0ConversationTurn = {
+    const preparedTurn: Nan0ConversationTurn = {
       schemaVersion: 1,
       turnId,
       thoughtId,
@@ -264,14 +278,41 @@ export class Nan0Kernel {
       },
     }
 
+    const continuityResult = attachPreparedTurnToContinuity(this.state.continuity, {
+      createThreadId: this.createId,
+      turn: preparedTurn,
+      inputEvent: inputTimelineEvent.event,
+      text,
+      at: canonicalObservation.timestamp,
+    })
+    const turn: Nan0ConversationTurn = {
+      ...preparedTurn,
+      metadata: {
+        ...preparedTurn.metadata,
+        continuityThreadId: continuityResult.thread.threadId,
+      },
+    }
+    const nextMemories = text ? [...this.state.memories, userEvent] : this.state.memories
+    const nextTurns = [...this.state.turns, turn]
+    const continuityContext = continuityContextForTurn({
+      continuity: continuityResult.continuity,
+      currentThreadId: continuityResult.thread.threadId,
+      query: text,
+      turns: nextTurns,
+      memories: nextMemories,
+      at: canonicalObservation.timestamp,
+      resumed: continuityResult.resumed,
+    })
+
     this.state = {
       ...this.state,
       lastObservationAt: canonicalObservation.timestamp,
       lastThoughtId: thoughtId,
       identity,
-      memories: text ? [...this.state.memories, userEvent] : this.state.memories,
-      turns: [...this.state.turns, turn],
+      memories: nextMemories,
+      turns: nextTurns,
       timeline,
+      continuity: continuityResult.continuity,
       updatedAt: this.now(),
     }
 
@@ -289,8 +330,9 @@ export class Nan0Kernel {
       turnId,
       sessionId,
       inputEventId: inputTimelineEvent.event.eventId,
+      threadId: continuityResult.thread.threadId,
       recalledMemories,
-      systemContext: this.composeNan0Context(thoughtId, ownership, recalledMemories),
+      systemContext: this.composeNan0Context(thoughtId, ownership, recalledMemories, continuityContext),
     }
   }
 
@@ -398,6 +440,13 @@ export class Nan0Kernel {
     }
     const turns = [...this.state.turns]
     turns[turnIndex] = completedTurn
+    const continuity = attachTerminalEventToContinuity(this.state.continuity, {
+      turn: completedTurn,
+      event: outputTimelineEvent.event,
+      actorId: 'nan0',
+      content,
+      at: completedAt,
+    })
 
     this.state = {
       ...this.state,
@@ -405,6 +454,7 @@ export class Nan0Kernel {
       memories: [...this.state.memories, memory],
       turns,
       timeline: outputTimelineEvent.timeline,
+      continuity,
       updatedAt: this.now(),
     }
 
@@ -494,6 +544,36 @@ export class Nan0Kernel {
 
   getTimelineEvents(filter: { sessionId?: string, actorId?: string } = {}) {
     return timelineEvents(this.state.timeline, filter)
+  }
+
+  getContinuityThreads(filter: { status?: Nan0ContinuityThreadStatus, actorId?: string } = {}) {
+    return this.state.continuity.threads
+      .filter(thread => !filter.status || thread.status === filter.status)
+      .filter(thread => !filter.actorId || thread.participantActorIds.includes(filter.actorId))
+      .sort((a, b) => b.activation - a.activation
+        || b.lastActiveAt - a.lastActiveAt
+        || a.threadId.localeCompare(b.threadId))
+      .map(thread => structuredClone(thread))
+  }
+
+  async setContinuityThreadStatus(threadId: string, status: Nan0ContinuityThreadStatus, at = this.now()): Promise<void> {
+    this.assertBooted()
+    this.state = {
+      ...this.state,
+      continuity: updateContinuityThreadStatus(this.state.continuity, threadId, status, at),
+      updatedAt: at,
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+  }
+
+  async resolveContinuityItem(threadId: string, itemId: string, at = this.now()): Promise<void> {
+    this.assertBooted()
+    this.state = {
+      ...this.state,
+      continuity: resolveContinuityItemInState(this.state.continuity, threadId, itemId, at),
+      updatedAt: at,
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
   }
 
   getSubjectiveTime(at = this.now(), sessionId: string | null = this.state.timeline.activeSessionId) {
@@ -622,10 +702,17 @@ export class Nan0Kernel {
     }
     const turns = [...this.state.turns]
     turns[turnIndex] = finished
+    const continuity = attachTerminalEventToContinuity(this.state.continuity, {
+      turn: finished,
+      event: appended.event,
+      actorId: input.actorId,
+      at: completedAt,
+    })
     this.state = {
       ...this.state,
       turns,
       timeline: appended.timeline,
+      continuity,
       updatedAt: this.now(),
     }
     this.state = await this.dependencies.stateStore.save(this.state)
@@ -642,6 +729,7 @@ export class Nan0Kernel {
     thoughtId: string,
     ownership: import('../types').Nan0ActorOwnership,
     memories: Nan0MemoryRecord[],
+    continuity: Nan0ContinuityContext,
   ): string {
     const emotionalState = Object.entries(this.state.emotionalState)
       .map(([key, value]) => `${key}=${value.toFixed(2)}`)
@@ -653,6 +741,26 @@ export class Nan0Kernel {
           return `- [${memory.kind}${actor}] ${memory.content}`
         }).join('\n')
       : '- No directly relevant persisted memories were retrieved.'
+
+    const continuityText = continuity.threads.length > 0
+      ? continuity.threads.map((thread) => {
+          const topics = thread.topicLabels.length ? thread.topicLabels.join(', ') : 'unknown'
+          const unresolved = thread.unresolvedItems.length
+            ? thread.unresolvedItems.map(item => `  - ${item}`).join('\n')
+            : '  - none'
+          const carryover = thread.recentCarryover.length
+            ? thread.recentCarryover.map(item => `  - [actor=${item.actorId} turn=${item.turnId} thought=${item.thoughtId}] ${item.content}`).join('\n')
+            : '  - none'
+          return `THREAD ${thread.threadId}${thread.threadId === continuity.currentThreadId ? ' (current)' : ''}
+- status=${thread.status} activation=${thread.activation.toFixed(3)} inactive_for_ms=${thread.inactiveForMs} resumed=${thread.resumed}
+- topics=${topics}
+- factual_summary=${thread.summary || 'none'}
+- unresolved:
+${unresolved}
+- recent_carryover:
+${carryover}`
+        }).join('\n')
+      : '- No conversation thread context is available.'
 
     return `[NAN0 KERNEL CONTEXT]
 This application is Nan0. You are not a generic assistant and this is not an optional character mode.
@@ -679,6 +787,12 @@ ${emotionalState || 'neutral'}
 
 RELEVANT CONTINUITY
 ${memoryText}
+
+CONVERSATION THREAD CONTINUITY
+- provider: ${continuity.provider}
+- facts_only: ${continuity.factsOnly}
+- current_thread_id: ${continuity.currentThreadId}
+${continuityText}
 
 OUTPUT RULE
 Respond only with Nan0's outward expression. Do not output JSON, labels, analysis, or the thought_id.`

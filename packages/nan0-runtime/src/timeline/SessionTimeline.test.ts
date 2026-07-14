@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createDefaultIdentityState } from '../identity/ActorIdentity'
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
+import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
 import { createEmptyTimelineState } from './SessionTimeline'
 
 const reasoningClient: Nan0ReasoningClient = {
@@ -64,6 +65,7 @@ function legacyState(memories: Nan0KernelState['memories']): Nan0KernelState {
     memories,
     turns: [],
     timeline: createEmptyTimelineState(),
+    continuity: createEmptyContinuityState(),
   }
 }
 

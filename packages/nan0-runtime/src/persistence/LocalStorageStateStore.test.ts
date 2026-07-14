@@ -2,6 +2,7 @@ import type { Nan0KernelState, Nan0MemoryRecord } from '../types'
 import { describe, expect, it } from 'vitest'
 
 import { createDefaultIdentityState, nan0Ownership } from '../identity/ActorIdentity'
+import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
 import { createEmptyTimelineState } from '../timeline/SessionTimeline'
 import { LocalStorageStateStore } from './LocalStorageStateStore'
 
@@ -62,6 +63,7 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     memories,
     turns: [],
     timeline: createEmptyTimelineState(),
+    continuity: createEmptyContinuityState(),
     ...overrides,
   }
 }
@@ -194,5 +196,66 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     expect(persisted?.turns[0]).toMatchObject({ status: 'completed', outputActorId: 'nan0' })
     expect(persisted?.timeline.events.map(event => event.eventId)).toEqual(['event-input', 'event-output'])
     expect(persisted?.turns[0].thoughtId).toBe('thought-1')
+  })
+
+  it('prevents a stale snapshot from removing newer continuity membership or unresolved state', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const baseThread = {
+      schemaVersion: 1 as const,
+      threadId: 'thread-1',
+      status: 'active' as const,
+      createdAt: 10,
+      updatedAt: 10,
+      lastActiveAt: 10,
+      participantActorIds: ['kyo', 'nan0'],
+      topicLabels: ['garden'],
+      turnIds: ['turn-1'],
+      timelineEventIds: ['event-1'],
+      summary: 'Garden question.',
+      unresolvedItems: [],
+      importance: 0.5,
+      activation: 1,
+      metadata: {},
+    }
+    const staleSnapshot = await currentWriter.save(state([], {
+      continuity: {
+        schemaVersion: 1,
+        activeThreadByActorId: { kyo: 'thread-1' },
+        threads: [baseThread],
+      },
+    }))
+    await currentWriter.save({
+      ...staleSnapshot,
+      continuity: {
+        schemaVersion: 1,
+        activeThreadByActorId: { kyo: 'thread-1' },
+        threads: [{
+          ...baseThread,
+          updatedAt: 20,
+          lastActiveAt: 20,
+          turnIds: ['turn-1', 'turn-2'],
+          timelineEventIds: ['event-1', 'event-2'],
+          unresolvedItems: [{
+            itemId: 'unresolved:turn-2',
+            kind: 'question',
+            text: 'Will it survive?',
+            actorId: 'kyo',
+            createdAt: 20,
+            sourceTurnId: 'turn-2',
+            resolvedAt: null,
+            metadata: {},
+          }],
+        }],
+      },
+    })
+    await staleWriter.save(staleSnapshot)
+
+    const persisted = await currentWriter.load()
+    expect(persisted?.continuity.threads).toHaveLength(1)
+    expect(persisted?.continuity.threads[0].turnIds).toEqual(['turn-1', 'turn-2'])
+    expect(persisted?.continuity.threads[0].timelineEventIds).toEqual(['event-1', 'event-2'])
+    expect(persisted?.continuity.threads[0].unresolvedItems).toHaveLength(1)
   })
 })

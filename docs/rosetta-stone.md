@@ -410,6 +410,8 @@ Nan0 renderer ownership is intentionally not broadcast: only the dedicated `#/ch
 
 Nan0's durable state also contains versioned `ConversationTurn` and session-timeline records. `prepareTurn()` atomically creates the Kyo input memory, input timeline event, and prepared turn; the proven `onAssistantResponseEnd` boundary completes that same turn with Nan0's output. Explicit assistant-silence and chat-error lifecycle notifications terminate prepared turns without inventing speech. Nan0 does not depend on `onChatTurnComplete`, which is not reached reliably by every desktop chat path. Timeline and turn merges use stable IDs and deterministic sequences so a stale renderer snapshot cannot remove a terminal turn or its events.
 
+Conversation continuity is owned by `packages/nan0-runtime/src/continuity/ConversationContinuity.ts`. It consumes canonical turn, memory, and timeline references without rewriting them; persists bounded thread membership, topics, unresolved items, activation, and extractive summaries; and injects fact-only carryover through `Nan0Kernel.prepareTurn()`. Linkage is deterministic: explicit topic overlap may resume an eligible thread, anaphoric follow-ups remain on the recent current thread, and meaningful disjoint input opens a new thread. Resolved, abandoned, and superseded threads never auto-reactivate. Continuity does not call a provider, summarize with an LLM, generate speech, or schedule autonomy.
+
 ---
 
 ## 14. Key Directories

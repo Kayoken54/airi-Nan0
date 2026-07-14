@@ -126,6 +126,72 @@ export interface Nan0SubjectiveTime {
   sinceLastNan0ExpressionMs: number | null
 }
 
+export type Nan0ContinuityThreadStatus
+  = | 'active'
+    | 'dormant'
+    | 'resolved'
+    | 'abandoned'
+    | 'superseded'
+
+export interface Nan0ContinuityUnresolvedItem {
+  itemId: string
+  kind: 'question' | 'intention' | 'promise' | 'reference'
+  text: string
+  actorId: string
+  createdAt: number
+  sourceTurnId: string
+  resolvedAt: number | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0ConversationThread {
+  schemaVersion: 1
+  threadId: string
+  status: Nan0ContinuityThreadStatus
+  createdAt: number
+  updatedAt: number
+  lastActiveAt: number
+  participantActorIds: string[]
+  topicLabels: string[]
+  turnIds: string[]
+  timelineEventIds: string[]
+  summary: string
+  unresolvedItems: Nan0ContinuityUnresolvedItem[]
+  importance: number
+  activation: number
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0ContinuityState {
+  schemaVersion: 1
+  activeThreadByActorId: Record<string, string>
+  threads: Nan0ConversationThread[]
+}
+
+export interface Nan0ContinuityContextThread {
+  threadId: string
+  status: Nan0ContinuityThreadStatus
+  activation: number
+  topicLabels: string[]
+  summary: string
+  unresolvedItems: string[]
+  recentCarryover: Array<{
+    actorId: string
+    content: string
+    turnId: string
+    thoughtId: string
+  }>
+  inactiveForMs: number
+  resumed: boolean
+}
+
+export interface Nan0ContinuityContext {
+  provider: 'conversation_continuity'
+  factsOnly: true
+  currentThreadId: string
+  threads: Nan0ContinuityContextThread[]
+}
+
 interface Nan0ExpressionBase {
   thoughtId: string
   mood?: string
@@ -178,6 +244,7 @@ export interface Nan0KernelState {
   memories: Nan0MemoryRecord[]
   turns: Nan0ConversationTurn[]
   timeline: Nan0TimelineState
+  continuity: Nan0ContinuityState
 }
 
 export interface Nan0StateStore {

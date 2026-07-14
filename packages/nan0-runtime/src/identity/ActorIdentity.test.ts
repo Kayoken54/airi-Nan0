@@ -1,6 +1,8 @@
 import type { Nan0Observation, Nan0ReasoningClient } from '../types'
 import { describe, expect, it } from 'vitest'
 
+import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
+
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
 import { createDefaultIdentityState, hydrateIdentityState, normalizeActorId, resolveObservationOwnership } from './ActorIdentity'
@@ -177,6 +179,7 @@ describe('actor identity ownership', () => {
       runtimeMetadata: {},
       identity: createDefaultIdentityState(),
       turns: [],
+      continuity: createEmptyContinuityState(),
       timeline: {
         schemaVersion: 1,
         nextSequence: 1,
