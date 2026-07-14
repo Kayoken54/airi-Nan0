@@ -26,6 +26,7 @@ import { useCompactionStore } from './chat/compaction'
 import { createDatetimeContext, createEternalRecordContext, createExpressionsContext, createScenesContext, createStickersContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { createChatHooks } from './chat/hooks'
+import { responseDispositionFor } from './chat/response-disposition'
 import { clearArtistryStaging, clearJournalStaging, pendingIntrusionStaging, stageArtistryIntrusion, stageJournalIntrusion } from './chat/intrusion-staging'
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
@@ -1190,6 +1191,23 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
 
         await hooks.emitAfterMessageComposedHooks(sendingMessage, streamingMessageContext)
         await hooks.emitBeforeSendHooks(sendingMessage, streamingMessageContext)
+
+        const disposition = responseDispositionFor(streamingMessageContext)
+        if (disposition) {
+          chatLog('Assistant inference suppressed by pre-send disposition.', {
+            decision: disposition.decision,
+            thoughtId: disposition.thoughtId,
+          })
+          if (isForegroundSession()) {
+            streamingMessage.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
+          }
+          await hooks.emitAssistantSilenceHooks(
+            `NAN0_${disposition.decision}:${disposition.reason}`,
+            streamingMessageContext,
+          )
+          await hooks.emitStreamEndHooks(streamingMessageContext)
+          return
+        }
 
         const headers = (effectiveConfig?.headers || {}) as Record<string, string>
         const generationConfig = activeCard.value?.extensions?.airi?.generation

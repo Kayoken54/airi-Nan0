@@ -26,7 +26,7 @@ import {
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: 'unused' }
+    return { text: '{"interpretation":"This interaction matters.","privateText":"I have my own reaction to this.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 
@@ -120,6 +120,7 @@ function state(relationships = createEmptyRelationshipState(1)): Nan0KernelState
     runtimeMetadata: {},
     identity: createDefaultIdentityState(),
     memories: [],
+    thoughts: [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),

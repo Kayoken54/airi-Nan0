@@ -12,7 +12,7 @@ import {
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: 'unused' }
+    return { text: '{"interpretation":"The conversation continues.","privateText":"I remember where this was going.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 

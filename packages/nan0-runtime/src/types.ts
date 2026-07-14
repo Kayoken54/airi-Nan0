@@ -53,6 +53,37 @@ export interface Nan0ActorOwnership {
 
 export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
 
+export type Nan0ThoughtStatus = 'generated' | 'failed'
+
+export interface Nan0Thought {
+  schemaVersion: 1
+  thoughtId: string
+  turnId: string
+  sessionId: string
+  observationEventId: string
+  actorId: string
+  createdAt: number
+  source: Nan0ObservationSource
+  status: Nan0ThoughtStatus
+  attentionScore: number
+  noveltyScore: number
+  emotionalPressure: number
+  relationshipPressure: number
+  continuityPressure: number
+  goalPressure: number
+  interpretation: string
+  privateText: string
+  decision: Nan0Decision
+  speakability: number
+  confidence: number
+  mood: string
+  memoryReferences: string[]
+  relationshipReferences: string[]
+  continuityThreadReferences: string[]
+  reasonCodes: string[]
+  metadata: Record<string, unknown>
+}
+
 export type Nan0ConversationDecision = Nan0Decision | 'UNKNOWN'
 
 export type Nan0ConversationTurnStatus
@@ -373,6 +404,7 @@ export interface Nan0KernelState {
   runtimeMetadata: Record<string, unknown>
   identity: Nan0IdentityState
   memories: Nan0MemoryRecord[]
+  thoughts: Nan0Thought[]
   turns: Nan0ConversationTurn[]
   timeline: Nan0TimelineState
   continuity: Nan0ContinuityState

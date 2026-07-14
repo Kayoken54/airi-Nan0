@@ -10,7 +10,7 @@ import { createEmptyTimelineState } from './SessionTimeline'
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: 'unused' }
+    return { text: '{"interpretation":"An event occurred.","privateText":"I noticed it.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 
@@ -64,6 +64,7 @@ function legacyState(memories: Nan0KernelState['memories']): Nan0KernelState {
     runtimeMetadata: {},
     identity: createDefaultIdentityState(),
     memories,
+    thoughts: [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),

@@ -62,6 +62,7 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     runtimeMetadata: {},
     identity: createDefaultIdentityState(),
     memories,
+    thoughts: overrides.thoughts ?? [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),

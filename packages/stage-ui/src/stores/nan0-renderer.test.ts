@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createNan0RendererIdentity, isNan0OwnerRenderer } from './nan0-renderer'
+import { createNan0RendererIdentity, isNan0ExecutorRenderer, isNan0OwnerRenderer } from './nan0-renderer'
 
 describe('Nan0 renderer ownership', () => {
   it('selects only the dedicated chat renderer as the owner', () => {
@@ -9,6 +9,14 @@ describe('Nan0 renderer ownership', () => {
     expect(isNan0OwnerRenderer('#/')).toBe(false)
     expect(isNan0OwnerRenderer('#/actor')).toBe(false)
     expect(isNan0OwnerRenderer('#/settings')).toBe(false)
+  })
+
+  it('selects only the root renderer as the AIRI chat lifecycle executor', () => {
+    expect(isNan0ExecutorRenderer('')).toBe(true)
+    expect(isNan0ExecutorRenderer('#')).toBe(true)
+    expect(isNan0ExecutorRenderer('#/')).toBe(true)
+    expect(isNan0ExecutorRenderer('#/chat')).toBe(false)
+    expect(isNan0ExecutorRenderer('#/settings')).toBe(false)
   })
 
   it('keeps non-owner renderers read-only and gives each renderer a stable diagnostic identity', () => {
@@ -22,6 +30,7 @@ describe('Nan0 renderer ownership', () => {
       instanceId: 'renderer-1',
       hash: '#/actor',
       isOwner: false,
+      isExecutor: false,
     })
     expect(appendCount).toBe(0)
   })

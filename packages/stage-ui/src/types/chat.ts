@@ -80,6 +80,11 @@ export interface ChatStreamEventContext {
   input?: WebSocketEventInputs
   assistantMessageId?: string
   assistantMessageCreatedAt?: number
+  responseDisposition?: {
+    decision: 'SILENCE' | 'ACT' | 'WAIT'
+    reason: string
+    thoughtId: string
+  }
 }
 
 export type ChatStreamEvent

@@ -10,7 +10,7 @@ import { createDefaultIdentityState, hydrateIdentityState, normalizeActorId, res
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: 'unused' }
+    return { text: '{"interpretation":"Kyo spoke.","privateText":"I heard Kyo.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 
@@ -179,6 +179,7 @@ describe('actor identity ownership', () => {
       emotionalState: {},
       runtimeMetadata: {},
       identity: createDefaultIdentityState(),
+      thoughts: [],
       turns: [],
       continuity: createEmptyContinuityState(),
       relationships: createEmptyRelationshipState(1),

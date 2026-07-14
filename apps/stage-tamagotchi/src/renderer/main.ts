@@ -68,11 +68,12 @@ async function installNan0AfterMount(pinia: Pinia): Promise<void> {
     rendererInstanceId: renderer.instanceId,
     rendererHash: renderer.hash,
     isOwner: renderer.isOwner,
+    isExecutor: renderer.isExecutor,
   }))
 
-  if (!renderer.isOwner) {
+  if (!renderer.isOwner && !renderer.isExecutor) {
     console.info('[Nan0]', JSON.stringify({
-      event: 'renderer.install.skipped-non-owner',
+      event: 'renderer.install.skipped-non-participant',
       rendererInstanceId: renderer.instanceId,
       rendererHash: renderer.hash,
     }))
