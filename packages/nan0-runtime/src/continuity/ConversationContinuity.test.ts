@@ -108,6 +108,20 @@ describe('Conversation continuity', () => {
     expect(kernel.getContinuityThreads()).toHaveLength(2)
   })
 
+  it('retains new topic keys and resumes them after leaving a saturated thread', async () => {
+    const { kernel, clock } = createKernel()
+    await kernel.boot()
+    const first = await completeTurn(kernel, clock, 'One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen.', 100)
+    const enriched = await completeTurn(kernel, clock, 'Why does that azurite condenser manifold matter?', 200)
+    await completeTurn(kernel, clock, 'Unrelated topic: celadon kiln atmosphere.', 300)
+    const resumed = await completeTurn(kernel, clock, 'Return to the azurite condenser manifold.', 400)
+
+    expect(enriched.threadId).toBe(first.threadId)
+    expect(resumed.threadId).toBe(first.threadId)
+    expect(kernel.getContinuityThreads().find(thread => thread.threadId === first.threadId)?.topicLabels)
+      .toEqual(expect.arrayContaining(['azurite', 'condenser', 'manifold']))
+  })
+
   it('resumes a dormant thread using topic overlap after subjective elapsed time', async () => {
     const { kernel, clock } = createKernel()
     await kernel.boot()

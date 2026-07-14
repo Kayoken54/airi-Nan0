@@ -20,11 +20,11 @@ export const CONTINUITY_MAX_CARRYOVER_RECORDS = 6
 
 const STOP_WORDS = new Set([
   'about', 'after', 'again', 'also', 'and', 'are', 'because', 'been', 'before', 'being', 'but',
-  'answer', 'can', 'change', 'changes', 'could', 'did', 'does', 'doing', 'for', 'from', 'had', 'has', 'have', 'her', 'here',
+  'answer', 'can', 'change', 'changes', 'continuity', 'could', 'did', 'does', 'doing', 'for', 'from', 'had', 'has', 'have', 'her', 'here',
   'him', 'his', 'how', 'into', 'its', 'just', 'kyo', 'like', 'more', 'nan0', 'not', 'now',
   'our', 'out', 'please', 'question', 'really', 'remember', 'return', 'should', 'something', 'that', 'the', 'their', 'them', 'then', 'there',
   'these', 'they', 'this', 'those', 'was', 'what', 'when', 'where', 'which', 'who', 'why',
-  'will', 'with', 'would', 'you', 'your', 'topic', 'unrelated',
+  'will', 'with', 'would', 'you', 'your', 'topic', 'unrelated', 'validation', 'retest', 'test',
 ])
 
 const TERMINAL_STATUSES = new Set<Nan0ContinuityThreadStatus>([
@@ -364,7 +364,8 @@ export function attachPreparedTurnToContinuity(
     updatedAt: input.at,
     lastActiveAt: input.at,
     participantActorIds: [...matched.participantActorIds, input.turn.inputActorId, 'nan0'],
-    topicLabels: [...matched.topicLabels, ...continuityTopicLabels(input.text)],
+    // New observations are retrieval evidence; retain them ahead of older saturated labels.
+    topicLabels: [...continuityTopicLabels(input.text), ...matched.topicLabels],
     turnIds: [...matched.turnIds, input.turn.turnId],
     timelineEventIds: [...matched.timelineEventIds, input.inputEvent.eventId],
     unresolvedItems: [...matched.unresolvedItems, ...unresolvedItems],
@@ -416,7 +417,7 @@ export function attachTerminalEventToContinuity(
       : thread.participantActorIds,
     timelineEventIds: [...thread.timelineEventIds, input.event.eventId],
     topicLabels: input.content
-      ? [...thread.topicLabels, ...continuityTopicLabels(input.content)]
+      ? [...continuityTopicLabels(input.content), ...thread.topicLabels]
       : thread.topicLabels,
     unresolvedItems: [...thread.unresolvedItems, ...promise],
     activation: 1,
