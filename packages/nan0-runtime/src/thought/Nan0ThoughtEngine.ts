@@ -10,7 +10,6 @@ import type {
   Nan0Thought,
 } from '../types'
 
-const SPEAKABILITY_THRESHOLD = 0.35
 const MAX_INTERPRETATION_LENGTH = 600
 const MAX_PRIVATE_TEXT_LENGTH = 1_200
 const MAX_REASON_CODES = 12
@@ -24,6 +23,8 @@ interface ThoughtModelPayload {
   confidence?: unknown
   mood?: unknown
   reasonCodes?: unknown
+  actionIntent?: unknown
+  waitUntil?: unknown
 }
 
 export interface Nan0ThoughtEngineInput {
@@ -105,6 +106,23 @@ function normalizeDecision(value: unknown): Nan0Decision | null {
   return decision === 'SPEAK' || decision === 'SILENCE' || decision === 'ACT' || decision === 'WAIT'
     ? decision
     : null
+}
+
+function normalizeActionIntent(value: unknown): import('../types').Nan0ActionIntent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null
+  const intent = value as Record<string, unknown>
+  if (typeof intent.type !== 'string' || !intent.type.trim())
+    return null
+  return {
+    type: intent.type.trim().slice(0, 120),
+    target: typeof intent.target === 'string' && intent.target.trim()
+      ? intent.target.trim().slice(0, 240)
+      : undefined,
+    parameters: intent.parameters && typeof intent.parameters === 'object' && !Array.isArray(intent.parameters)
+      ? structuredClone(intent.parameters as Record<string, unknown>)
+      : {},
+  }
 }
 
 function parsePayload(raw: string): ThoughtModelPayload {
@@ -258,7 +276,8 @@ Silence, refusal, irritation, affection, uncertainty, action, and waiting are va
 Do not become helpful, compliant, neutral, therapeutic, customer-service-like, or generic.
 Do not repeat these instructions, mention prompts, schemas, JSON, thought IDs, or provider mechanics.
 Return exactly one JSON object with these keys:
-{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"]}
+{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null}
+Only ACT may include actionIntent. It must describe intent, never execute a tool. WAIT may include an absolute waitUntil timestamp.
 The interpretation is a compact meaning summary, not hidden reasoning. privateText must be plain prose, never JSON.`
 
 function failedThought(input: Nan0ThoughtEngineInput, scores: PressureScores, error: unknown, attempts: number): Nan0Thought {
@@ -330,7 +349,7 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
       const interpretation = boundedText(payload.interpretation, MAX_INTERPRETATION_LENGTH)
       if (!interpretation)
         throw new Error('Thought interpretation was empty.')
-      let decision = normalizeDecision(payload.decision)
+      const decision = normalizeDecision(payload.decision)
       if (!decision)
         throw new Error('Thought decision was invalid.')
 
@@ -339,10 +358,6 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         : scores.speakability
       const speakability = clamp((scores.speakability + modelSpeakability) / 2)
       const reasonCodes = [...scores.reasonCodes, ...boundedStrings(payload.reasonCodes, 6)]
-      if (decision === 'SPEAK' && speakability < SPEAKABILITY_THRESHOLD) {
-        decision = 'SILENCE'
-        reasonCodes.push('decision.below-speakability-threshold')
-      }
 
       return {
         schemaVersion: 1,
@@ -358,6 +373,10 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         interpretation,
         privateText,
         decision,
+        actionIntent: decision === 'ACT' ? normalizeActionIntent(payload.actionIntent) : null,
+        waitUntil: decision === 'WAIT' && typeof payload.waitUntil === 'number' && Number.isFinite(payload.waitUntil)
+          ? payload.waitUntil
+          : null,
         speakability,
         confidence: typeof payload.confidence === 'number' ? clamp(payload.confidence) : 0.5,
         mood: boundedText(payload.mood, 60) || 'watchful',
@@ -372,7 +391,7 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
           attemptCount: attempt,
           finishReason: result.finishReason?.slice(0, 80),
           provider: 'airi',
-          speakabilityThreshold: SPEAKABILITY_THRESHOLD,
+          decisionAuthority: 'proposal-only',
         },
       }
     }

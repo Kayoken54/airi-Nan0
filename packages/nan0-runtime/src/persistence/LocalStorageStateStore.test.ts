@@ -1,4 +1,4 @@
-import type { Nan0KernelState, Nan0MemoryRecord } from '../types'
+import type { Nan0DecisionRecord, Nan0KernelState, Nan0MemoryRecord } from '../types'
 import { describe, expect, it } from 'vitest'
 
 import { createDefaultIdentityState, nan0Ownership } from '../identity/ActorIdentity'
@@ -63,11 +63,36 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     identity: createDefaultIdentityState(),
     memories,
     thoughts: overrides.thoughts ?? [],
+    decisions: overrides.decisions ?? [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
     ...overrides,
     relationships: overrides.relationships ?? createEmptyRelationshipState(1),
+  }
+}
+
+function decision(): Nan0DecisionRecord {
+  return {
+    schemaVersion: 1,
+    decisionId: 'decision-1',
+    thoughtId: 'thought-1',
+    turnId: 'turn-1',
+    sessionId: 'session-1',
+    createdAt: 15,
+    proposedDecision: 'SPEAK',
+    finalDecision: 'SPEAK',
+    allowed: true,
+    confidence: 0.8,
+    speakability: 0.9,
+    attentionScore: 0.8,
+    pressureScore: 0.7,
+    reasonCodes: ['actor.kyo-attachment'],
+    constraintResults: [],
+    suppressionReason: null,
+    actionIntent: null,
+    waitUntil: null,
+    metadata: { policy: 'nan0-decision-v1' },
   }
 }
 
@@ -116,6 +141,19 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     expect(reloaded?.revision).toBe(firstSave.revision)
     expect(reloaded?.memories.map(item => item.id)).toEqual(['input-1', 'output-1'])
     expect(new Set(reloaded?.memories.map(item => item.id)).size).toBe(2)
+  })
+
+  it('reloads a decision exactly once and prevents a stale writer from removing it', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleSnapshot = await currentWriter.save(state([]))
+
+    await currentWriter.save(state([], { decisions: [decision()] }))
+    await staleWriter.save(staleSnapshot)
+
+    const reloaded = await currentWriter.load()
+    expect(reloaded?.decisions).toEqual([decision()])
   })
 
   it('prevents a stale renderer from removing a completed turn or its timeline output', async () => {

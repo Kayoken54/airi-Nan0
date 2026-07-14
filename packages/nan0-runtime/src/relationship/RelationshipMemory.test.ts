@@ -121,6 +121,7 @@ function state(relationships = createEmptyRelationshipState(1)): Nan0KernelState
     identity: createDefaultIdentityState(),
     memories: [],
     thoughts: [],
+    decisions: [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),

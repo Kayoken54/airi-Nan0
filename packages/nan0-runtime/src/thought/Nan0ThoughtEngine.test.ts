@@ -1,4 +1,4 @@
-import type { Nan0Decision, Nan0Observation, Nan0ReasoningClient, Nan0Thought } from '../types'
+import type { Nan0Observation, Nan0ReasoningClient, Nan0Thought } from '../types'
 import { describe, expect, it } from 'vitest'
 
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
@@ -34,6 +34,7 @@ function createKernel(
   reasoningClient: Nan0ReasoningClient = clientWith(thoughtEnvelope()),
   store = new InMemoryStateStore(),
   prefix = 'id',
+  availableActionIntents: readonly string[] = [],
 ) {
   let id = 0
   let now = 1_000
@@ -43,6 +44,7 @@ function createKernel(
       stateStore: store,
       createId: () => `${prefix}-${++id}`,
       now: () => ++now,
+      decisionCapabilities: { canSpeak: true, availableActionIntents },
     }),
     store,
   }
@@ -76,6 +78,11 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
   it('persists a private thought before an outward response can be recorded', async () => {
     const { kernel, prepared } = await preparedKernel()
     expect(kernel.getThoughts().map(thought => thought.thoughtId)).toEqual([prepared.thoughtId])
+    expect(kernel.getDecisions()).toMatchObject([{
+      decisionId: prepared.decision.decisionId,
+      thoughtId: prepared.thoughtId,
+      finalDecision: 'SPEAK',
+    }])
     await kernel.recordAssistantTurn({ turnId: prepared.turnId, thoughtId: prepared.thoughtId, content: 'Still here.' })
     expect(kernel.getStateSnapshot().memories.at(-1)?.metadata.thoughtId).toBe(prepared.thoughtId)
   })
@@ -200,15 +207,35 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
     expect(kernel.getConversationTurns()[0]).toMatchObject({ status: 'failed', decision: 'UNKNOWN' })
   })
 
-  it.each(['ACT', 'WAIT'] as Nan0Decision[])('persists %s without producing output memory', async (decision) => {
-    const result = thoughtEnvelope({ decision, speakability: 0.2 })
-    const { kernel, prepared } = await preparedKernel(clientWith(result))
+  it('persists an allowed ACT without producing output memory or executing it', async () => {
+    const result = thoughtEnvelope({
+      decision: 'ACT',
+      speakability: 0.2,
+      actionIntent: { type: 'test.noop', parameters: { safe: true } },
+    })
+    const setup = createKernel(clientWith(result), new InMemoryStateStore(), 'id', ['test.noop'])
+    await setup.kernel.boot()
+    const prepared = await setup.kernel.prepareTurn(observation())
+    const { kernel } = setup
     await kernel.recordNonSpeechDecision({
       turnId: prepared.turnId,
       thoughtId: prepared.thoughtId,
-      decision: decision as 'ACT' | 'WAIT',
+      decisionId: prepared.decision.decisionId,
+      decision: 'ACT',
     })
-    expect(kernel.getConversationTurns()[0].decision).toBe(decision)
+    expect(kernel.getConversationTurns()[0].decision).toBe('ACT')
+    expect(kernel.getStateSnapshot().memories.filter(memory => memory.actorId === 'nan0')).toHaveLength(0)
+  })
+
+  it('persists WAIT without producing output memory', async () => {
+    const { kernel, prepared } = await preparedKernel(clientWith(thoughtEnvelope({ decision: 'WAIT' })))
+    await kernel.recordNonSpeechDecision({
+      turnId: prepared.turnId,
+      thoughtId: prepared.thoughtId,
+      decisionId: prepared.decision.decisionId,
+      decision: 'WAIT',
+    })
+    expect(kernel.getConversationTurns()[0].decision).toBe('WAIT')
     expect(kernel.getStateSnapshot().memories.filter(memory => memory.actorId === 'nan0')).toHaveLength(0)
   })
 
@@ -246,7 +273,7 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
       turnId: prepared.turnId,
       thoughtId: prepared.thoughtId,
       content: 'This must not exist.',
-    })).rejects.toThrow('Cannot record Nan0 output for SILENCE thought')
+    })).rejects.toThrow('Cannot record Nan0 output without an allowed persisted SPEAK decision')
   })
 
   it('keeps the private thought immutable when a turn completes', async () => {

@@ -17,6 +17,7 @@ import {
   normalizeRelationshipState,
 } from '../relationship/RelationshipMemory'
 import { mergeNan0Thoughts } from '../thought/Nan0ThoughtEngine'
+import { mergeNan0Decisions } from '../decision/Nan0DecisionEngine'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -37,6 +38,7 @@ export function mergeNan0States(
       ...candidate,
       revision: (candidate.revision ?? 0) + 1,
       thoughts: mergeNan0Thoughts([], candidate.thoughts),
+      decisions: mergeNan0Decisions([], candidate.decisions),
       turns: normalizeConversationTurns(candidate.turns),
       timeline: normalizeTimelineState(candidate.timeline),
       continuity: normalizeContinuityState(candidate.continuity),
@@ -70,6 +72,7 @@ export function mergeNan0States(
     },
     memories,
     thoughts: mergeNan0Thoughts(persisted.thoughts, candidate.thoughts),
+    decisions: mergeNan0Decisions(persisted.decisions, candidate.decisions),
     turns: mergeConversationTurns(persisted.turns, candidate.turns),
     timeline: mergeTimelineStates(persisted.timeline, candidate.timeline),
     continuity: mergeContinuityStates(persisted.continuity, candidate.continuity),
@@ -103,6 +106,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       ...parsed,
       revision: parsed.revision ?? 0,
       thoughts: mergeNan0Thoughts([], parsed.thoughts),
+      decisions: mergeNan0Decisions([], parsed.decisions),
       turns: normalizeConversationTurns(parsed.turns),
       timeline: parsed.timeline
         ? normalizeTimelineState(parsed.timeline)
@@ -118,6 +122,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       revision: state.revision,
       memoryCount: state.memories.length,
       thoughtCount: state.thoughts.length,
+      decisionCount: state.decisions.length,
       turnCount: state.turns.length,
       timelineEventCount: state.timeline.events.length,
       continuityThreadCount: state.continuity.threads.length,
@@ -141,6 +146,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       previousMemoryCount: before?.memories.length ?? 0,
       memoryCount: merged.memories.length,
       thoughtCount: merged.thoughts.length,
+      decisionCount: merged.decisions.length,
       turnCount: merged.turns.length,
       timelineEventCount: merged.timeline.events.length,
       continuityThreadCount: merged.continuity.threads.length,

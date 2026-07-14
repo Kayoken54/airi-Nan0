@@ -84,6 +84,7 @@ export interface ChatStreamEventContext {
     decision: 'SILENCE' | 'ACT' | 'WAIT'
     reason: string
     thoughtId: string
+    decisionId: string
   }
 }
 

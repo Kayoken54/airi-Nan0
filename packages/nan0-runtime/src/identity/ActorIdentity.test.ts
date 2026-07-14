@@ -180,6 +180,7 @@ describe('actor identity ownership', () => {
       runtimeMetadata: {},
       identity: createDefaultIdentityState(),
       thoughts: [],
+      decisions: [],
       turns: [],
       continuity: createEmptyContinuityState(),
       relationships: createEmptyRelationshipState(1),

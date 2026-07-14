@@ -281,12 +281,13 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         preparedTurns.set(turnKey(context), prepared)
         diagnostic('bridge.delegate.prepare.complete', {
           thoughtId: prepared.thoughtId,
+          decisionId: prepared.decision.decisionId,
           turnId: prepared.turnId,
           sessionId: prepared.sessionId,
           inputEventId: prepared.inputEventId,
-          thoughtStatus: prepared.thought.status,
-          decision: prepared.thought.decision,
-          speakability: prepared.thought.speakability,
+          decision: prepared.decision.finalDecision,
+          allowed: prepared.decision.allowed,
+          speakability: prepared.decision.speakability,
         })
       }),
 
@@ -296,7 +297,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           diagnostic('bridge.delegate.after-compose.missing-prepared-turn')
           return
         }
-        if (prepared.thought.status !== 'generated' || prepared.thought.decision !== 'SPEAK')
+        if (!prepared.decision.allowed || prepared.decision.finalDecision !== 'SPEAK')
           return
 
         const alreadyInjected = context.composedMessage.some((message: Message) =>
@@ -314,10 +315,11 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           : firstNonSystemIndex
         context.composedMessage.splice(insertAt, 0, {
           role: 'system',
-          content: prepared.systemContext,
+          content: prepared.outwardDirective,
         } as Message)
         diagnostic('bridge.delegate.after-compose.injected', {
           thoughtId: prepared.thoughtId,
+          decisionId: prepared.decision.decisionId,
           insertAt,
         })
       }),
@@ -327,22 +329,18 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         if (!prepared)
           return
 
-        let decision: 'SILENCE' | 'ACT' | 'WAIT'
-        if (prepared.thought.status === 'failed') {
-          decision = 'WAIT'
-        }
-        else {
-          if (prepared.thought.decision === 'SPEAK')
-            return
-          decision = prepared.thought.decision
-        }
+        if (prepared.decision.finalDecision === 'SPEAK' && prepared.decision.allowed)
+          return
+        const decision = prepared.decision.finalDecision === 'SPEAK'
+          ? 'WAIT'
+          : prepared.decision.finalDecision
 
         context.responseDisposition = {
           decision,
-          reason: prepared.thought.status === 'failed'
-            ? 'thought-generation-failed'
-            : prepared.thought.reasonCodes.join(',') || `thought-${prepared.thought.decision.toLowerCase()}`,
+          reason: prepared.decision.suppressionReason
+            ?? (prepared.decision.reasonCodes.join(',') || `decision-${decision.toLowerCase()}`),
           thoughtId: prepared.thoughtId,
+          decisionId: prepared.decision.decisionId,
         }
       }),
 
@@ -359,6 +357,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         await requestNan0Owner(renderer.instanceId, 'complete', {
           turnId: prepared.turnId,
           thoughtId: prepared.thoughtId,
+          decisionId: prepared.decision.decisionId,
           content: message,
           timestamp: Number(context.assistantMessageCreatedAt ?? Date.now()),
           metadata: {
@@ -379,21 +378,20 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         const prepared = preparedTurns.get(key)
         if (!prepared)
           return
-        if (prepared.thought.status === 'failed') {
-          preparedTurns.delete(key)
-          return
-        }
-
         await requestNan0Owner(renderer.instanceId, 'terminal', {
           turnId: prepared.turnId,
           thoughtId: prepared.thoughtId,
-          decision: prepared.thought.decision === 'SPEAK' ? 'SILENCE' : prepared.thought.decision,
+          decisionId: prepared.decision.decisionId,
+          decision: prepared.decision.finalDecision === 'SPEAK' ? 'SILENCE' : prepared.decision.finalDecision,
           reason,
           timestamp: Number(context.assistantMessageCreatedAt ?? Date.now()),
           metadata: {
             assistantMessageId: context.assistantMessageId,
             inputType: context.input?.type,
             completionHook: 'onAssistantSilence',
+            expressionOutcome: prepared.decision.finalDecision === 'SPEAK'
+              ? 'provider-silence'
+              : 'decision-terminal',
           },
         })
         preparedTurns.delete(key)

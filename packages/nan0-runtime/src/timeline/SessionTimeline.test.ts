@@ -26,13 +26,14 @@ function createKernel(
   stateStore = new InMemoryStateStore(),
   clock = createClock(),
   prefix = 'id',
+  client = reasoningClient,
 ) {
   let nextId = 0
   return {
     clock,
     kernel: new Nan0Kernel({
       stateStore,
-      reasoningClient,
+      reasoningClient: client,
       now: clock.now,
       createId: () => `${prefix}-${++nextId}`,
     }),
@@ -65,6 +66,7 @@ function legacyState(memories: Nan0KernelState['memories']): Nan0KernelState {
     identity: createDefaultIdentityState(),
     memories,
     thoughts: [],
+    decisions: [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
@@ -142,12 +144,18 @@ describe('ConversationTurn and session timeline', () => {
   })
 
   it('records deliberate silence without fabricating Nan0 speech content', async () => {
-    const { kernel } = createKernel()
+    const silenceClient: Nan0ReasoningClient = {
+      async generate() {
+        return { text: '{"interpretation":"Quiet is deliberate.","privateText":"I would rather remain quiet.","decision":"SILENCE","speakability":0.1,"confidence":0.8,"mood":"quiet","reasonCodes":["decision.quiet"]}' }
+      },
+    }
+    const { kernel } = createKernel(new InMemoryStateStore(), createClock(), 'id', silenceClient)
     await kernel.boot()
     const prepared = await kernel.prepareTurn(observation())
     await kernel.recordSilenceDecision({
       turnId: prepared.turnId,
       thoughtId: prepared.thoughtId,
+      decisionId: prepared.decision.decisionId,
       reason: 'NO_REPLY',
       timestamp: 130,
     })
@@ -160,6 +168,30 @@ describe('ConversationTurn and session timeline', () => {
       outputContentReference: null,
     })
     expect(kernel.getTimelineEvents()[1]).toMatchObject({ eventType: 'silence', actorId: 'nan0' })
+  })
+
+  it('records an empty provider expression as silence without rewriting its SPEAK decision', async () => {
+    const { kernel } = createKernel()
+    await kernel.boot()
+    const prepared = await kernel.prepareTurn(observation())
+    await kernel.recordSilenceDecision({
+      turnId: prepared.turnId,
+      thoughtId: prepared.thoughtId,
+      decisionId: prepared.decision.decisionId,
+      reason: 'NO_REPLY',
+      metadata: { expressionOutcome: 'provider-silence' },
+    })
+
+    expect(kernel.getDecisions()).toMatchObject([{
+      decisionId: prepared.decision.decisionId,
+      finalDecision: 'SPEAK',
+    }])
+    expect(kernel.getConversationTurns()).toMatchObject([{
+      status: 'silent',
+      decision: 'SILENCE',
+      outputContentReference: null,
+    }])
+    expect(kernel.getStateSnapshot().memories.filter(memory => memory.actorId === 'nan0')).toHaveLength(0)
   })
 
   it('uses sequence order deterministically when timestamps collide', async () => {

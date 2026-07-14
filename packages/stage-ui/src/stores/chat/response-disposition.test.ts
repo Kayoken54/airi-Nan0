@@ -23,12 +23,14 @@ describe('pre-send response disposition', () => {
       decision,
       reason: `thought-${decision.toLowerCase()}`,
       thoughtId: 'thought-1',
+      decisionId: 'decision-1',
     }
 
     expect(responseDispositionFor(current)).toEqual({
       decision,
       reason: `thought-${decision.toLowerCase()}`,
       thoughtId: 'thought-1',
+      decisionId: 'decision-1',
     })
   })
 })

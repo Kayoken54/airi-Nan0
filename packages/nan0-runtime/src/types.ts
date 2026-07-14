@@ -53,6 +53,40 @@ export interface Nan0ActorOwnership {
 
 export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
 
+export interface Nan0ActionIntent {
+  type: string
+  target?: string
+  parameters: Record<string, unknown>
+}
+
+export interface Nan0DecisionConstraintResult {
+  code: string
+  passed: boolean
+  hard: boolean
+}
+
+export interface Nan0DecisionRecord {
+  schemaVersion: 1
+  decisionId: string
+  thoughtId: string
+  turnId: string
+  sessionId: string
+  createdAt: number
+  proposedDecision: Nan0Decision
+  finalDecision: Nan0Decision
+  allowed: boolean
+  confidence: number
+  speakability: number
+  attentionScore: number
+  pressureScore: number
+  reasonCodes: string[]
+  constraintResults: Nan0DecisionConstraintResult[]
+  suppressionReason: string | null
+  actionIntent: Nan0ActionIntent | null
+  waitUntil: number | null
+  metadata: Record<string, unknown>
+}
+
 export type Nan0ThoughtStatus = 'generated' | 'failed'
 
 export interface Nan0Thought {
@@ -74,6 +108,8 @@ export interface Nan0Thought {
   interpretation: string
   privateText: string
   decision: Nan0Decision
+  actionIntent?: Nan0ActionIntent | null
+  waitUntil?: number | null
   speakability: number
   confidence: number
   mood: string
@@ -405,6 +441,7 @@ export interface Nan0KernelState {
   identity: Nan0IdentityState
   memories: Nan0MemoryRecord[]
   thoughts: Nan0Thought[]
+  decisions: Nan0DecisionRecord[]
   turns: Nan0ConversationTurn[]
   timeline: Nan0TimelineState
   continuity: Nan0ContinuityState
@@ -447,6 +484,10 @@ export interface Nan0KernelDependencies {
   createInitialState?: () => Nan0KernelState
   now?: () => number
   createId?: () => string
+  decisionCapabilities?: {
+    canSpeak: boolean
+    availableActionIntents: readonly string[]
+  }
   diagnostic?: (event: Nan0DiagnosticEvent) => void
 }
 

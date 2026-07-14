@@ -1,17 +1,17 @@
-import type { Nan0Observation, Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
+import type { Nan0Decision, Nan0Observation, Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
 
-export type Nan0GeneratedThoughtDecision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
-
-export type Nan0PreparedThoughtProxy = {
-  status: 'generated'
-  decision: Nan0GeneratedThoughtDecision
+export interface Nan0PreparedDecisionProxy {
+  decisionId: string
+  finalDecision: Nan0Decision
+  allowed: boolean
+  confidence: number
   speakability: number
+  attentionScore: number
+  pressureScore: number
   reasonCodes: string[]
-} | {
-  status: 'failed'
-  decision: 'UNKNOWN'
-  speakability: number
-  reasonCodes: string[]
+  suppressionReason: string | null
+  actionIntent: { type: string, target?: string } | null
+  waitUntil: number | null
 }
 
 export interface Nan0PreparedTurnProxy {
@@ -20,8 +20,8 @@ export interface Nan0PreparedTurnProxy {
   sessionId: string
   inputEventId: string
   threadId: string
-  systemContext: string
-  thought: Nan0PreparedThoughtProxy
+  outwardDirective: string
+  decision: Nan0PreparedDecisionProxy
 }
 
 export interface Nan0BridgeRequestMap {
@@ -29,6 +29,7 @@ export interface Nan0BridgeRequestMap {
   complete: {
     turnId: string
     thoughtId: string
+    decisionId: string
     content: string
     timestamp: number
     metadata: Record<string, unknown>
@@ -36,6 +37,7 @@ export interface Nan0BridgeRequestMap {
   terminal: {
     turnId: string
     thoughtId: string
+    decisionId: string
     decision: 'SILENCE' | 'ACT' | 'WAIT'
     reason: string
     timestamp: number
@@ -98,28 +100,28 @@ const pendingRequests = new Map<string, {
 }>()
 
 export function toPreparedTurnProxy(prepared: Nan0PreparedTurn): Nan0PreparedTurnProxy {
-  const thought: Nan0PreparedThoughtProxy = prepared.thought.status === 'failed'
-    ? {
-        status: 'failed',
-        decision: 'UNKNOWN',
-        speakability: prepared.thought.speakability,
-        reasonCodes: [...prepared.thought.reasonCodes],
-      }
-    : {
-        status: 'generated',
-        decision: prepared.thought.decision,
-        speakability: prepared.thought.speakability,
-        reasonCodes: [...prepared.thought.reasonCodes],
-      }
-
   return {
     thoughtId: prepared.thoughtId,
     turnId: prepared.turnId,
     sessionId: prepared.sessionId,
     inputEventId: prepared.inputEventId,
     threadId: prepared.threadId,
-    systemContext: prepared.systemContext,
-    thought,
+    outwardDirective: prepared.systemContext,
+    decision: {
+      decisionId: prepared.decision.decisionId,
+      finalDecision: prepared.decision.finalDecision,
+      allowed: prepared.decision.allowed,
+      confidence: prepared.decision.confidence,
+      speakability: prepared.decision.speakability,
+      attentionScore: prepared.decision.attentionScore,
+      pressureScore: prepared.decision.pressureScore,
+      reasonCodes: [...prepared.decision.reasonCodes],
+      suppressionReason: prepared.decision.suppressionReason,
+      actionIntent: prepared.decision.actionIntent
+        ? { type: prepared.decision.actionIntent.type, target: prepared.decision.actionIntent.target }
+        : null,
+      waitUntil: prepared.decision.waitUntil,
+    },
   }
 }
 
