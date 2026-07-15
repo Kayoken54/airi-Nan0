@@ -5,6 +5,7 @@ import type {
   Nan0TemporalPhase,
   Nan0TemporalState,
 } from '../types'
+import { createEmptyTemporalEngineState, mergeTemporalEngineStates, normalizeTemporalEngineState } from './Nan0TemporalEngine'
 
 export const DEFAULT_CLOCK_DISCONTINUITY_THRESHOLD_MS = 5_000
 
@@ -59,6 +60,7 @@ export function createEmptyTemporalState(clock: Nan0Clock, at = clock.utcNow()):
     currentPhase: 'unknown',
     nextEvaluationAt: null,
     conditions: [],
+    engine: createEmptyTemporalEngineState(),
     metadata: {},
   }
 }
@@ -81,6 +83,8 @@ export function normalizeTemporalState(
   }
   const conditions = [...conditionById.values()]
     .sort((a, b) => a.dueAt - b.dueAt || a.conditionId.localeCompare(b.conditionId))
+  const engine = normalizeTemporalEngineState(value?.engine)
+  const conditionNextEvaluationAt = nextEvaluationAt(conditions)
   return {
     ...base,
     ...value,
@@ -91,7 +95,10 @@ export function normalizeTemporalState(
     detectedClockAdjustments: [...adjustmentById.values()]
       .sort((a, b) => a.detectedAt - b.detectedAt || a.adjustmentId.localeCompare(b.adjustmentId)),
     conditions,
-    nextEvaluationAt: nextEvaluationAt(conditions),
+    engine,
+    nextEvaluationAt: [conditionNextEvaluationAt, engine.nextEvaluationAt]
+      .filter((candidate): candidate is number => candidate != null)
+      .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null),
     metadata: { ...(value?.metadata ?? {}) },
   }
 }
@@ -126,6 +133,8 @@ export function mergeTemporalStates(
   }
   const conditions = [...conditionById.values()]
     .sort((a, b) => a.dueAt - b.dueAt || a.conditionId.localeCompare(b.conditionId))
+  const engine = mergeTemporalEngineStates(left.engine, right.engine)
+  const conditionNextEvaluationAt = nextEvaluationAt(conditions)
 
   return {
     ...primary,
@@ -142,7 +151,10 @@ export function mergeTemporalStates(
     detectedClockAdjustments: [...adjustmentById.values()]
       .sort((a, b) => a.detectedAt - b.detectedAt || a.adjustmentId.localeCompare(b.adjustmentId)),
     conditions,
-    nextEvaluationAt: nextEvaluationAt(conditions),
+    engine,
+    nextEvaluationAt: [conditionNextEvaluationAt, engine.nextEvaluationAt]
+      .filter((candidate): candidate is number => candidate != null)
+      .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null),
     metadata: { ...secondary.metadata, ...primary.metadata },
   }
 }
@@ -299,7 +311,9 @@ export function registerTemporalCondition(
     ...state,
     revision: state.revision + 1,
     conditions,
-    nextEvaluationAt: nextEvaluationAt(conditions),
+    nextEvaluationAt: [nextEvaluationAt(conditions), state.engine.nextEvaluationAt]
+      .filter((candidate): candidate is number => candidate != null)
+      .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null),
   }
 }
 
@@ -310,13 +324,14 @@ export function evaluateTemporalConditions(
     processId: string
     createAdjustmentId: () => string
     limit?: number
+    allowEligibility?: boolean
   },
 ): { temporal: Nan0TemporalState, eligible: Nan0TemporalCondition[] } {
   const observed = observeTemporalClock(state, { ...input, kind: 'observe' })
   const now = observed.lastObservedWallTime
-  const limit = Math.max(1, input.limit ?? 100)
+  const limit = Math.max(1, Math.min(20, input.limit ?? 5))
   const dueIds = new Set(observed.conditions
-    .filter(condition => condition.status === 'pending' && condition.dueAt <= now)
+    .filter(condition => input.allowEligibility !== false && condition.status === 'pending' && condition.dueAt <= now)
     .sort((a, b) => a.dueAt - b.dueAt || a.conditionId.localeCompare(b.conditionId))
     .slice(0, limit)
     .map(condition => condition.conditionId))
@@ -337,7 +352,9 @@ export function evaluateTemporalConditions(
     ...observed,
     revision: observed.revision + 1,
     conditions,
-    nextEvaluationAt: nextEvaluationAt(conditions),
+    nextEvaluationAt: [nextEvaluationAt(conditions), observed.engine.nextEvaluationAt]
+      .filter((candidate): candidate is number => candidate != null)
+      .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null),
   }
   return {
     temporal,

@@ -1,4 +1,4 @@
-import type { Nan0ActionAuthority, Nan0AutonomyEvaluationBatch, Nan0Decision, Nan0Observation, Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
+import type { Nan0ActionAuthority, Nan0AutonomyEvaluationBatch, Nan0Decision, Nan0Observation, Nan0PreparedTurn, Nan0TemporalAutonomyEvaluationBatch } from '@proj-airi/nan0-runtime'
 
 export interface Nan0PreparedDecisionProxy {
   decisionId: string
@@ -28,6 +28,14 @@ export interface Nan0PreparedTurnProxy {
 export interface Nan0AutonomyEvaluationProxy {
   intentionId: string
   evaluationId: string
+  observationId: string
+  prepared: Nan0PreparedTurnProxy | null
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  nextEvaluationAt: number | null
+}
+
+export interface Nan0TemporalAutonomyEvaluationProxy {
+  temporalEventId: string
   observationId: string
   prepared: Nan0PreparedTurnProxy | null
   outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
@@ -66,12 +74,23 @@ export interface Nan0BridgeRequestMap {
     sessionId?: string
     limit?: number
   }
+  evaluateTemporalAutonomy: {
+    reason: 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual'
+    hostReady: boolean
+    sessionId?: string
+  }
   deferAutonomy: {
     intentionId: string
     turnId: string
     thoughtId: string
     reason: string
     waitUntil?: number
+  }
+  deferTemporalAutonomy: {
+    temporalEventId: string
+    turnId: string
+    thoughtId: string
+    reason: string
   }
 }
 
@@ -81,7 +100,9 @@ export interface Nan0BridgeResponseMap {
   terminal: { persisted: boolean }
   fail: { persisted: boolean }
   evaluateAutonomy: { evaluations: Nan0AutonomyEvaluationProxy[], nextEvaluationAt: number | null }
+  evaluateTemporalAutonomy: { evaluations: Nan0TemporalAutonomyEvaluationProxy[], nextEvaluationAt: number | null }
   deferAutonomy: { persisted: boolean }
+  deferTemporalAutonomy: { persisted: boolean }
 }
 
 export type Nan0BridgeAction = keyof Nan0BridgeRequestMap
@@ -159,6 +180,19 @@ export function toAutonomyEvaluationProxy(batch: Nan0AutonomyEvaluationBatch): N
     evaluations: batch.evaluations.map(evaluation => ({
       intentionId: evaluation.intentionId,
       evaluationId: evaluation.evaluationId,
+      observationId: evaluation.observationId,
+      prepared: evaluation.prepared ? toPreparedTurnProxy(evaluation.prepared) : null,
+      outcome: evaluation.outcome,
+      nextEvaluationAt: evaluation.nextEvaluationAt,
+    })),
+  }
+}
+
+export function toTemporalAutonomyEvaluationProxy(batch: Nan0TemporalAutonomyEvaluationBatch): Nan0BridgeResponseMap['evaluateTemporalAutonomy'] {
+  return {
+    nextEvaluationAt: batch.nextEvaluationAt,
+    evaluations: batch.evaluations.map(evaluation => ({
+      temporalEventId: evaluation.temporalEventId,
       observationId: evaluation.observationId,
       prepared: evaluation.prepared ? toPreparedTurnProxy(evaluation.prepared) : null,
       outcome: evaluation.outcome,

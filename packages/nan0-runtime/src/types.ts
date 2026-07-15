@@ -29,9 +29,10 @@ export type Nan0InternalObservationSource = Extract<
 export interface Nan0InternalObservation extends Nan0Observation {
   source: Nan0InternalObservationSource
   actorId: 'nan0'
-  intentionId: string
+  intentionId: string | null
+  temporalEventId: string | null
   relatedGoalId: string | null
-  triggerType: Nan0IntentionTrigger['type']
+  triggerType: Nan0IntentionTrigger['type'] | 'temporal-event'
   wakeReason: string
   references: string[]
 }
@@ -595,6 +596,116 @@ export interface Nan0TemporalCondition {
   metadata: Record<string, unknown>
 }
 
+export type Nan0LocalPhase = 'late-night' | 'morning' | 'daytime' | 'evening' | 'night'
+
+export type Nan0TemporalEventType
+  = | 'phase-changed'
+    | 'absence-threshold'
+    | 'intention-due'
+    | 'intention-overdue'
+    | 'cooldown-ended'
+    | 'session-resumed'
+    | 'shutdown-gap'
+    | 'relationship-inactive'
+    | 'continuity-lingering'
+    | 'goal-stalled'
+    | 'sleep-window-opened'
+    | 'sleep-window-ended'
+    | 'clock-adjusted'
+    | 'job-deadline'
+    | 'state-duration'
+    | 'anniversary'
+    | 'maintenance-due'
+
+export type Nan0TemporalEventSeverity = 'informational' | 'notable' | 'significant' | 'critical'
+export type Nan0TemporalEventStatus = 'recorded' | 'eligible' | 'evaluating' | 'handled' | 'suppressed'
+
+export interface Nan0TemporalEvent {
+  schemaVersion: 1
+  temporalEventId: string
+  createdAt: number
+  eventType: Nan0TemporalEventType
+  source: 'temporal-engine' | 'clock' | 'session' | 'condition'
+  severity: Nan0TemporalEventSeverity
+  subjectActorId: string | null
+  relatedEventIds: string[]
+  relatedTurnIds: string[]
+  relatedThoughtIds: string[]
+  relatedGoalIds: string[]
+  relatedIntentionIds: string[]
+  relatedRelationshipIds: string[]
+  conditionId: string | null
+  observedDurationMs: number | null
+  thresholdMs: number | null
+  phase: Nan0LocalPhase | null
+  confidence: number
+  significance: number
+  status: Nan0TemporalEventStatus
+  reasonCodes: string[]
+  evidenceKey: string
+  evaluationCount: number
+  handledAt: number | null
+  observationId: string | null
+  thoughtId: string | null
+  decisionId: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TemporalAbsenceState {
+  intervalId: string | null
+  startedAt: number | null
+  crossedThresholdIds: string[]
+}
+
+export interface Nan0TemporalSleepCompatibilityState {
+  status: 'awake' | 'sleeping'
+  sleepId: string | null
+  startedAt: number | null
+  expectedWakeAt: number | null
+  maximumWakeAt: number | null
+  wakeConditionId: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TemporalEngineState {
+  schemaVersion: 1
+  revision: number
+  initializedAt: number | null
+  localPhase: Nan0LocalPhase | null
+  lastPhaseEvidenceKey: string | null
+  lastEvaluationAt: number | null
+  nextEvaluationAt: number | null
+  absence: Nan0TemporalAbsenceState
+  sleep: Nan0TemporalSleepCompatibilityState
+  events: Nan0TemporalEvent[]
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TemporalPhaseDefinition {
+  phase: Nan0LocalPhase
+  startHour: number
+}
+
+export interface Nan0TemporalAbsenceThreshold {
+  thresholdId: string
+  durationMs: number
+  severity: Nan0TemporalEventSeverity
+  minimumSignificance: number
+}
+
+export interface Nan0TemporalEngineConfiguration {
+  phases?: readonly Nan0TemporalPhaseDefinition[]
+  absenceThresholds?: readonly Nan0TemporalAbsenceThreshold[]
+  meaningfulShutdownGapMs?: number
+  continuityLingeringMs?: number
+  goalStalledMs?: number
+  intentionOverdueMs?: number
+  minimumObservationSignificance?: number
+  minimumTrustedClockConfidence?: number
+  maxConditionsPerEvaluation?: number
+  maxObservationsPerEvaluation?: number
+}
+
 export interface Nan0TemporalState {
   schemaVersion: 1
   revision: number
@@ -617,6 +728,7 @@ export interface Nan0TemporalState {
   currentPhase: Nan0TemporalPhase
   nextEvaluationAt: number | null
   conditions: Nan0TemporalCondition[]
+  engine: Nan0TemporalEngineState
   metadata: Record<string, unknown>
 }
 
@@ -933,6 +1045,7 @@ export interface Nan0KernelDependencies {
   privateThoughtTimeoutMs?: number
   privateThoughtProviderMetadata?: Record<string, unknown>
   trustedGoalObligations?: readonly Nan0TrustedGoalObligation[]
+  temporalEngineConfiguration?: Nan0TemporalEngineConfiguration
   diagnostic?: (event: Nan0DiagnosticEvent) => void
 }
 

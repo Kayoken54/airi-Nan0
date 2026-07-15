@@ -16,6 +16,8 @@ import type {
   Nan0PendingIntention,
   Nan0PendingIntentionState,
   Nan0RelationshipContext,
+  Nan0TemporalState,
+  Nan0TemporalEvent,
   Nan0Thought,
 } from '../types'
 import { Nan0CapabilityRegistry } from '../capabilities/Nan0CapabilityRegistry'
@@ -70,6 +72,13 @@ import {
   recordTemporalActivity,
   registerTemporalCondition,
 } from '../temporal/Nan0Temporal'
+import {
+  beginTemporalEventEvaluation,
+  evaluateTemporalEvidence,
+  resetTemporalAbsenceInterval,
+  resolveTemporalEngineConfiguration,
+  settleTemporalEventEvaluation,
+} from '../temporal/Nan0TemporalEngine'
 
 type ExpressionHandler = (expression: Nan0Expression) => void
 
@@ -101,8 +110,22 @@ export interface Nan0AutonomyEvaluationBatch {
   nextEvaluationAt: number | null
 }
 
+export interface Nan0TemporalAutonomyEvaluationResult {
+  temporalEventId: string
+  observationId: string
+  prepared: Nan0PreparedTurn | null
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  nextEvaluationAt: number | null
+}
+
+export interface Nan0TemporalAutonomyEvaluationBatch {
+  evaluations: Nan0TemporalAutonomyEvaluationResult[]
+  nextEvaluationAt: number | null
+}
+
 interface Nan0PrepareTurnOptions {
   intention?: Nan0PendingIntention
+  temporalEvent?: Nan0TemporalEvent
   autonomous?: boolean
   hostReady?: boolean
 }
@@ -147,6 +170,10 @@ function clamp(value: number, min = 0, max = 1): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))]
+}
+
 function safeProviderMetadata(value: Record<string, unknown> | undefined): Record<string, string> {
   const result: Record<string, string> = {}
   for (const key of ['provider', 'providerId', 'model']) {
@@ -166,6 +193,10 @@ function autonomousReasonCode(intention: Readonly<Nan0PendingIntention>): string
   if (intention.origin === 'goal-derived')
     return 'goal.reconsideration'
   return 'intention.follow-up-due'
+}
+
+function temporalAutonomousReasonCode(event: Readonly<Nan0TemporalEvent>): string {
+  return `temporal.${event.eventType}`
 }
 
 export class Nan0Kernel {
@@ -233,14 +264,7 @@ export class Nan0Kernel {
         createAdjustmentId: () => `clock_${this.createId()}`,
       },
     )
-    const temporalEvaluation = evaluateTemporalConditions(temporalAtBoot, {
-      clock: this.clock,
-      processId: this.processId,
-      createAdjustmentId: () => `clock_${this.createId()}`,
-      limit: 100,
-    })
-
-    this.state = migrateLegacyContinuity(migrateLegacyTimeline({
+    const migratedBase = migrateLegacyContinuity(migrateLegacyTimeline({
       ...this.state,
       identity,
       memories,
@@ -257,7 +281,7 @@ export class Nan0Kernel {
       updatedAt: this.now(),
       turns: this.state.turns ?? [],
       timeline: this.state.timeline ?? createEmptyTimelineState(),
-      temporal: temporalEvaluation.temporal,
+      temporal: temporalAtBoot,
       continuity: this.state.continuity ?? createEmptyContinuityState(),
       relationships: normalizeRelationshipState(
         this.state.relationships,
@@ -265,6 +289,32 @@ export class Nan0Kernel {
         actorId => normalizeActorId(actorId, identity, '', false),
       ),
     }))
+    const temporalConfiguration = resolveTemporalEngineConfiguration(this.dependencies.temporalEngineConfiguration)
+    const temporalEvidence = evaluateTemporalEvidence({
+      temporal: migratedBase.temporal,
+      clock: this.clock,
+      context: {
+        goals: migratedBase.goals,
+        intentions: migratedBase.pendingIntentions.intentions,
+        continuityThreads: migratedBase.continuity.threads,
+        relationships: Object.values(migratedBase.relationships.records),
+      },
+      reason: 'session-resume',
+      createId: this.createId,
+      configuration: this.dependencies.temporalEngineConfiguration,
+    })
+    const temporalEvaluation = evaluateTemporalConditions(temporalEvidence.temporal, {
+      clock: this.clock,
+      processId: this.processId,
+      createAdjustmentId: () => `clock_${this.createId()}`,
+      limit: temporalConfiguration.maxConditionsPerEvaluation,
+      allowEligibility: temporalEvidence.clockTrusted,
+    })
+
+    this.state = {
+      ...migratedBase,
+      temporal: temporalEvaluation.temporal,
+    }
     this.state = {
       ...this.state,
       temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
@@ -275,6 +325,9 @@ export class Nan0Kernel {
       memoryCount: this.state.memories.length,
       bootCount: this.state.bootCount,
       eligibleTemporalConditionIds: temporalEvaluation.eligible.map(condition => condition.conditionId),
+      createdTemporalEventIds: temporalEvidence.created.map(event => event.temporalEventId),
+      eligibleTemporalEventIds: temporalEvidence.eligible.map(event => event.temporalEventId),
+      temporalClockTrusted: temporalEvidence.clockTrusted,
     })
     this.state = await this.dependencies.stateStore.save(this.state)
     this.booted = true
@@ -448,6 +501,7 @@ export class Nan0Kernel {
         observationId: canonicalObservation.id,
         ownership,
         intentionId: canonicalObservation.metadata.intentionId,
+        temporalEventId: canonicalObservation.metadata.temporalEventId,
         evaluationId: canonicalObservation.metadata.evaluationId,
         autonomous: isInternalObservation,
       },
@@ -478,6 +532,7 @@ export class Nan0Kernel {
         observationId: canonicalObservation.id,
         ownership,
         intentionId: canonicalObservation.metadata.intentionId,
+        temporalEventId: canonicalObservation.metadata.temporalEventId,
         evaluationId: canonicalObservation.metadata.evaluationId,
         autonomous: isInternalObservation,
       },
@@ -499,7 +554,10 @@ export class Nan0Kernel {
     }
     const nextMemories = text ? [...this.state.memories, userEvent] : this.state.memories
     const nextTurns = [...this.state.turns, turn]
-    const preferredContinuityThreadId = options.intention?.continuityThreadIds.find(threadId =>
+    const temporalThreadId = typeof options.temporalEvent?.metadata.threadId === 'string'
+      ? options.temporalEvent.metadata.threadId
+      : undefined
+    const preferredContinuityThreadId = [...(options.intention?.continuityThreadIds ?? []), ...(temporalThreadId ? [temporalThreadId] : [])].find(threadId =>
       this.state.continuity.threads.some(thread => thread.threadId === threadId),
     )
     const continuityContext = continuityContextForTurn({
@@ -511,7 +569,8 @@ export class Nan0Kernel {
       at: canonicalObservation.timestamp,
       resumed: continuityResult.resumed,
     })
-    const intentionRelationship = options.intention?.relationshipIds
+    const autonomyRelationshipIds = options.intention?.relationshipIds ?? options.temporalEvent?.relatedRelationshipIds ?? []
+    const intentionRelationship = autonomyRelationshipIds
       .map(relationshipId => Object.values(this.state.relationships.records).find(record => record.relationshipId === relationshipId))
       .find(Boolean)
     const relationshipActorId = intentionRelationship?.actorId
@@ -530,13 +589,19 @@ export class Nan0Kernel {
       lastObservationAt: canonicalObservation.timestamp,
       lastThoughtId: thoughtId,
       temporal: ownership.actorId === 'kyo'
-        ? recordTemporalActivity(this.state.temporal, {
-            clock: this.clock,
-            activity: 'kyo-interaction',
-            processId: this.processId,
-            createAdjustmentId: () => `clock_${this.createId()}`,
-            at: canonicalObservation.timestamp,
-          })
+        ? {
+            ...recordTemporalActivity(this.state.temporal, {
+              clock: this.clock,
+              activity: 'kyo-interaction',
+              processId: this.processId,
+              createAdjustmentId: () => `clock_${this.createId()}`,
+              at: canonicalObservation.timestamp,
+            }),
+            engine: resetTemporalAbsenceInterval(this.state.temporal.engine, {
+              at: canonicalObservation.timestamp,
+              intervalId: `absence_${this.createId()}`,
+            }),
+          }
         : this.state.temporal,
       identity,
       memories: nextMemories,
@@ -634,13 +699,17 @@ export class Nan0Kernel {
         clearTimeout(timeoutHandle)
       this.activeComputationRequestIds.delete(requestId)
     }
-    if (options.autonomous && options.intention) {
+    if (options.autonomous && (options.intention || options.temporalEvent)) {
+      const provenanceReason = options.intention
+        ? autonomousReasonCode(options.intention)
+        : temporalAutonomousReasonCode(options.temporalEvent!)
       thought = {
         ...thought,
-        reasonCodes: [...new Set([...thought.reasonCodes, autonomousReasonCode(options.intention)])].slice(0, 12),
+        reasonCodes: [...new Set([...thought.reasonCodes, provenanceReason])].slice(0, 12),
         metadata: {
           ...thought.metadata,
-          intentionId: options.intention.intentionId,
+          intentionId: options.intention?.intentionId,
+          temporalEventId: options.temporalEvent?.temporalEventId,
           autonomous: true,
         },
       }
@@ -713,7 +782,7 @@ export class Nan0Kernel {
       createdAt: this.now(),
       additionalConstraints: options.autonomous
         ? [
-            { code: 'autonomy.intention-valid', passed: Boolean(options.intention), hard: true },
+            { code: 'autonomy.provenance-valid', passed: Boolean(options.intention || options.temporalEvent), hard: true },
             { code: 'autonomy.authoritative-owner', passed: true, hard: true },
             { code: 'autonomy.host-ready', passed: options.hostReady === true, hard: true },
             { code: 'autonomy.runtime-awake', passed: this.state.temporal.currentPhase === 'running', hard: true },
@@ -1002,6 +1071,18 @@ export class Nan0Kernel {
           resolution: 'autonomy.expression-persisted',
         })
       : this.state.pendingIntentions
+    const temporalEventId = typeof turn.metadata.temporalEventId === 'string'
+      ? turn.metadata.temporalEventId
+      : typeof input.metadata?.temporalEventId === 'string' ? input.metadata.temporalEventId : null
+    const temporalEngine = temporalEventId
+      ? settleTemporalEventEvaluation(this.state.temporal.engine, {
+          temporalEventId,
+          at: completedAt,
+          thoughtId: input.thoughtId,
+          decisionId: decision.decisionId,
+          resolution: 'autonomy.expression-persisted',
+        })
+      : this.state.temporal.engine
 
     this.state = {
       ...this.state,
@@ -1012,7 +1093,7 @@ export class Nan0Kernel {
       continuity,
       relationships: relationshipResult.relationships,
       pendingIntentions,
-      temporal: recordTemporalActivity(this.state.temporal, {
+      temporal: recordTemporalActivity({ ...this.state.temporal, engine: temporalEngine }, {
         clock: this.clock,
         activity: 'nan0-expression',
         processId: this.processId,
@@ -1279,6 +1360,7 @@ export class Nan0Kernel {
         },
         timestamp: this.now(),
         intentionId: evaluating.intentionId,
+        temporalEventId: null,
         relatedGoalId: evaluating.goalId,
         triggerType: evaluating.trigger.type,
         wakeReason: candidate.wakeReason,
@@ -1392,6 +1474,232 @@ export class Nan0Kernel {
     this.state = await this.dependencies.stateStore.save(this.state)
   }
 
+  getTemporalEvents(): Nan0TemporalEvent[] {
+    return structuredClone(this.state.temporal.engine.events)
+  }
+
+  async evaluateTemporalAutonomy(input: {
+    reason: 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual'
+    hostReady: boolean
+    sessionId?: string
+  }): Promise<Nan0TemporalAutonomyEvaluationBatch> {
+    this.assertBooted()
+    if (!input.hostReady
+      || this.state.temporal.currentPhase !== 'running'
+      || this.state.turns.some(turn => turn.status === 'prepared')) {
+      return { evaluations: [], nextEvaluationAt: this.state.temporal.nextEvaluationAt }
+    }
+
+    const configuration = resolveTemporalEngineConfiguration(this.dependencies.temporalEngineConfiguration)
+    const evidence = evaluateTemporalEvidence({
+      temporal: this.state.temporal,
+      clock: this.clock,
+      context: {
+        goals: this.state.goals,
+        intentions: this.state.pendingIntentions.intentions,
+        continuityThreads: this.state.continuity.threads,
+        relationships: Object.values(this.state.relationships.records),
+      },
+      reason: input.reason,
+      createId: this.createId,
+      configuration: this.dependencies.temporalEngineConfiguration,
+    })
+    const conditions = evaluateTemporalConditions(evidence.temporal, {
+      clock: this.clock,
+      processId: this.processId,
+      createAdjustmentId: () => `clock_${this.createId()}`,
+      limit: configuration.maxConditionsPerEvaluation,
+      allowEligibility: evidence.clockTrusted,
+    })
+    this.state = {
+      ...this.state,
+      temporal: conditions.temporal,
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    if (!evidence.eligible.length)
+      return { evaluations: [], nextEvaluationAt: this.state.temporal.nextEvaluationAt }
+
+    const results: Nan0TemporalAutonomyEvaluationResult[] = []
+    for (const candidate of evidence.eligible.slice(0, configuration.maxObservationsPerEvaluation)) {
+      const current = this.state.temporal.engine.events.find(event => event.temporalEventId === candidate.temporalEventId)
+      if (!current || current.status !== 'eligible')
+        continue
+      const observationId = `observation_${this.createId()}`
+      this.state = {
+        ...this.state,
+        temporal: {
+          ...this.state.temporal,
+          engine: beginTemporalEventEvaluation(this.state.temporal.engine, {
+            temporalEventId: current.temporalEventId,
+            observationId,
+            at: this.now(),
+          }),
+        },
+        updatedAt: this.now(),
+      }
+      this.state = await this.dependencies.stateStore.save(this.state)
+      const evaluating = this.state.temporal.engine.events.find(event => event.temporalEventId === current.temporalEventId)!
+      const factualReason = [
+        `Temporal event ${evaluating.eventType} was recorded.`,
+        evaluating.observedDurationMs == null ? null : `Observed duration: ${evaluating.observedDurationMs} milliseconds.`,
+        evaluating.thresholdMs == null ? null : `Relevant threshold: ${evaluating.thresholdMs} milliseconds.`,
+        evaluating.phase == null ? null : `Local phase: ${evaluating.phase}.`,
+      ].filter(Boolean).join(' ')
+      const observation: import('../types').Nan0InternalObservation = {
+        id: observationId,
+        source: 'internal:temporal',
+        sessionId: input.sessionId ?? this.state.timeline.activeSessionId ?? undefined,
+        actorId: 'nan0',
+        displayName: 'Nan0',
+        content: factualReason,
+        metadata: {
+          temporalEventId: evaluating.temporalEventId,
+          eventType: evaluating.eventType,
+          evidenceKey: evaluating.evidenceKey,
+          observedDurationMs: evaluating.observedDurationMs,
+          thresholdMs: evaluating.thresholdMs,
+          phase: evaluating.phase,
+          significance: evaluating.significance,
+          confidence: evaluating.confidence,
+          reasonCodes: evaluating.reasonCodes,
+          relatedGoalIds: evaluating.relatedGoalIds,
+          relatedIntentionIds: evaluating.relatedIntentionIds,
+          relatedRelationshipIds: evaluating.relatedRelationshipIds,
+          relatedEventIds: evaluating.relatedEventIds,
+          continuityThreadIds: typeof evaluating.metadata.threadId === 'string' ? [evaluating.metadata.threadId] : [],
+          internalOwner: 'nan0',
+        },
+        timestamp: this.now(),
+        intentionId: null,
+        temporalEventId: evaluating.temporalEventId,
+        relatedGoalId: evaluating.relatedGoalIds[0] ?? null,
+        triggerType: 'temporal-event',
+        wakeReason: factualReason,
+        references: uniqueStrings([
+          ...evaluating.relatedEventIds,
+          ...evaluating.relatedTurnIds,
+          ...evaluating.relatedGoalIds,
+          ...evaluating.relatedIntentionIds,
+          ...evaluating.relatedRelationshipIds,
+        ]),
+      }
+      const prepared = await this.prepareTurn(observation, {
+        temporalEvent: evaluating,
+        autonomous: true,
+        hostReady: input.hostReady,
+      })
+      const outcome = prepared.thought.status === 'failed'
+        ? 'provider-failure' as const
+        : prepared.decision.finalDecision
+      if (outcome === 'SPEAK' && prepared.decision.allowed) {
+        results.push({
+          temporalEventId: evaluating.temporalEventId,
+          observationId,
+          prepared,
+          outcome,
+          nextEvaluationAt: this.state.temporal.nextEvaluationAt,
+        })
+        break
+      }
+      if (outcome === 'SPEAK')
+        throw new Error(`Autonomous temporal SPEAK decision ${prepared.decision.decisionId} was not allowed.`)
+
+      if (outcome === 'SILENCE') {
+        await this.recordSilenceDecision({
+          turnId: prepared.turnId,
+          thoughtId: prepared.thoughtId,
+          reason: prepared.decision.reasonCodes.join(','),
+          metadata: { temporalEventId: evaluating.temporalEventId },
+        })
+      }
+      else if (outcome === 'provider-failure') {
+        await this.failTurn({
+          turnId: prepared.turnId,
+          thoughtId: prepared.thoughtId,
+          error: 'temporal.private-thought-provider-failure',
+          metadata: { temporalEventId: evaluating.temporalEventId, failureLayer: 'thought-generation' },
+        })
+      }
+      else {
+        await this.recordNonSpeechDecision({
+          turnId: prepared.turnId,
+          thoughtId: prepared.thoughtId,
+          decision: outcome,
+          reason: prepared.decision.reasonCodes.join(','),
+          metadata: { temporalEventId: evaluating.temporalEventId },
+        })
+      }
+      results.push({
+        temporalEventId: evaluating.temporalEventId,
+        observationId,
+        prepared: null,
+        outcome,
+        nextEvaluationAt: this.state.temporal.nextEvaluationAt,
+      })
+    }
+    return { evaluations: results, nextEvaluationAt: this.state.temporal.nextEvaluationAt }
+  }
+
+  async deferTemporalAutonomousExpression(input: {
+    temporalEventId: string
+    turnId: string
+    thoughtId: string
+    reason: string
+  }): Promise<void> {
+    await this.failTurn({
+      turnId: input.turnId,
+      thoughtId: input.thoughtId,
+      error: input.reason,
+      metadata: { temporalEventId: input.temporalEventId, failureLayer: 'autonomous-expression-handoff' },
+    })
+  }
+
+  async setTemporalSleepCompatibility(input: {
+    status: 'awake' | 'sleeping'
+    sleepId?: string
+    startedAt?: number
+    expectedWakeAt?: number | null
+    maximumWakeAt?: number | null
+    metadata?: Record<string, unknown>
+  }): Promise<void> {
+    this.assertBooted()
+    const at = input.startedAt ?? this.now()
+    const sleepId = input.status === 'sleeping' ? input.sleepId ?? `sleep_${this.createId()}` : null
+    const conditionId = sleepId ? `sleep-wake:${sleepId}` : null
+    let temporal: Nan0TemporalState = {
+      ...this.state.temporal,
+      engine: {
+        ...this.state.temporal.engine,
+        revision: this.state.temporal.engine.revision + 1,
+        sleep: {
+          status: input.status,
+          sleepId,
+          startedAt: input.status === 'sleeping' ? at : null,
+          expectedWakeAt: input.status === 'sleeping' ? input.expectedWakeAt ?? null : null,
+          maximumWakeAt: input.status === 'sleeping' ? input.maximumWakeAt ?? null : null,
+          wakeConditionId: conditionId,
+          metadata: { ...(input.metadata ?? {}), compatibilityOnly: true },
+        },
+      },
+    }
+    if (conditionId && input.expectedWakeAt != null) {
+      temporal = registerTemporalCondition(temporal, {
+        schemaVersion: 1,
+        conditionId,
+        ownerType: 'sleep',
+        ownerId: sleepId!,
+        dueAt: input.expectedWakeAt,
+        status: 'pending',
+        eligibleAt: null,
+        lastEvaluatedAt: null,
+        metadata: { compatibilityOnly: true, expectedWake: true },
+      })
+    }
+    this.state = { ...this.state, temporal, updatedAt: this.now() }
+    this.state = await this.dependencies.stateStore.save(this.state)
+  }
+
   async registerTemporalCondition(condition: import('../types').Nan0TemporalCondition): Promise<void> {
     this.assertBooted()
     this.state = {
@@ -1402,13 +1710,27 @@ export class Nan0Kernel {
     this.state = await this.dependencies.stateStore.save(this.state)
   }
 
-  async evaluateTemporalEligibility(limit = 100) {
+  async evaluateTemporalEligibility(limit = 5) {
     this.assertBooted()
-    const evaluation = evaluateTemporalConditions(this.state.temporal, {
+    const evidence = evaluateTemporalEvidence({
+      temporal: this.state.temporal,
+      clock: this.clock,
+      context: {
+        goals: this.state.goals,
+        intentions: this.state.pendingIntentions.intentions,
+        continuityThreads: this.state.continuity.threads,
+        relationships: Object.values(this.state.relationships.records),
+      },
+      reason: 'manual',
+      createId: this.createId,
+      configuration: this.dependencies.temporalEngineConfiguration,
+    })
+    const evaluation = evaluateTemporalConditions(evidence.temporal, {
       clock: this.clock,
       processId: this.processId,
       createAdjustmentId: () => `clock_${this.createId()}`,
       limit,
+      allowEligibility: evidence.clockTrusted,
     })
     this.state = {
       ...this.state,
@@ -1427,11 +1749,25 @@ export class Nan0Kernel {
       processId: this.processId,
       createAdjustmentId: () => `clock_${this.createId()}`,
     })
-    const evaluation = evaluateTemporalConditions(resumed, {
+    const evidence = evaluateTemporalEvidence({
+      temporal: resumed,
+      clock: this.clock,
+      context: {
+        goals: this.state.goals,
+        intentions: this.state.pendingIntentions.intentions,
+        continuityThreads: this.state.continuity.threads,
+        relationships: Object.values(this.state.relationships.records),
+      },
+      reason: 'session-resume',
+      createId: this.createId,
+      configuration: this.dependencies.temporalEngineConfiguration,
+    })
+    const evaluation = evaluateTemporalConditions(evidence.temporal, {
       clock: this.clock,
       processId: this.processId,
       createAdjustmentId: () => `clock_${this.createId()}`,
-      limit: 100,
+      limit: resolveTemporalEngineConfiguration(this.dependencies.temporalEngineConfiguration).maxConditionsPerEvaluation,
+      allowEligibility: evidence.clockTrusted,
     })
     this.state = {
       ...this.state,
@@ -1705,12 +2041,25 @@ export class Nan0Kernel {
           resolution: input.error,
         })
       : this.state.pendingIntentions
+    const temporalEventId = typeof turn.metadata.temporalEventId === 'string'
+      ? turn.metadata.temporalEventId
+      : typeof input.metadata?.temporalEventId === 'string' ? input.metadata.temporalEventId : null
+    const temporalEngine = temporalEventId
+      ? settleTemporalEventEvaluation(this.state.temporal.engine, {
+          temporalEventId,
+          at: completedAt,
+          thoughtId: turn.thoughtId,
+          decisionId: input.decisionId ?? null,
+          resolution: input.error,
+        })
+      : this.state.temporal.engine
     this.state = {
       ...this.state,
       turns,
       timeline: appended.timeline,
       continuity,
       pendingIntentions,
+      temporal: { ...this.state.temporal, engine: temporalEngine },
       updatedAt: this.now(),
     }
     this.state = {

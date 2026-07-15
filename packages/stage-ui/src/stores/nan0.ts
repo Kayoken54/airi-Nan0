@@ -15,7 +15,7 @@ import type {
   Nan0BridgeRequestMap,
   Nan0PreparedTurnProxy,
 } from './nan0-bridge'
-import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toPreparedTurnProxy } from './nan0-bridge'
+import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
 import { createNan0AutonomyScheduler } from './nan0-autonomy-scheduler'
 import type { Nan0RendererIdentity } from './nan0-renderer'
 
@@ -230,8 +230,16 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           const batch = await kernel.evaluatePendingIntentions(payload as Nan0BridgeRequestMap['evaluateAutonomy'])
           return toAutonomyEvaluationProxy(batch)
         }
+        case 'evaluateTemporalAutonomy': {
+          const batch = await kernel.evaluateTemporalAutonomy(payload as Nan0BridgeRequestMap['evaluateTemporalAutonomy'])
+          return toTemporalAutonomyEvaluationProxy(batch)
+        }
         case 'deferAutonomy': {
           await kernel.deferAutonomousExpression(payload as Nan0BridgeRequestMap['deferAutonomy'])
+          return { persisted: true }
+        }
+        case 'deferTemporalAutonomy': {
+          await kernel.deferTemporalAutonomousExpression(payload as Nan0BridgeRequestMap['deferTemporalAutonomy'])
           return { persisted: true }
         }
       }
@@ -262,11 +270,18 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     const { useChatOrchestratorStore } = await import('./chat')
     const chat = useChatOrchestratorStore()
     const preparedTurns = new Map<string, Nan0PreparedTurnProxy>()
-    const autonomyByTurn = new Map<string, { intentionId: string, evaluationId: string }>()
+    const autonomyByTurn = new Map<string, {
+      intentionId?: string
+      evaluationId?: string
+      temporalEventId?: string
+      source: 'internal:intention' | 'internal:temporal'
+    }>()
     const pendingAutonomy = new Map<string, {
       prepared: Nan0PreparedTurnProxy
-      intentionId: string
-      evaluationId: string
+      intentionId?: string
+      evaluationId?: string
+      temporalEventId?: string
+      source: 'internal:intention' | 'internal:temporal'
     }>()
 
     function turnKey(context: { message: { id?: string } }): string {
@@ -287,11 +302,14 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           autonomyByTurn.set(key, {
             intentionId: autonomous.intentionId,
             evaluationId: autonomous.evaluationId,
+            temporalEventId: autonomous.temporalEventId,
+            source: autonomous.source,
           })
           lastThoughtId.value = autonomous.prepared.thoughtId
           diagnostic('autonomy.executor.prepared', {
             intentionId: autonomous.intentionId,
             evaluationId: autonomous.evaluationId,
+            temporalEventId: autonomous.temporalEventId,
             thoughtId: autonomous.prepared.thoughtId,
             turnId: autonomous.prepared.turnId,
           })
@@ -432,6 +450,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             completionHook: 'onAssistantResponseEnd',
             intentionId: autonomy?.intentionId,
             evaluationId: autonomy?.evaluationId,
+            temporalEventId: autonomy?.temporalEventId,
           },
         })
         preparedTurns.delete(key)
@@ -465,6 +484,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
               : 'decision-terminal',
             intentionId: autonomy?.intentionId,
             evaluationId: autonomy?.evaluationId,
+            temporalEventId: autonomy?.temporalEventId,
           },
         })
         preparedTurns.delete(key)
@@ -490,6 +510,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             completionHook: 'onChatError',
             intentionId: autonomy?.intentionId,
             evaluationId: autonomy?.evaluationId,
+            temporalEventId: autonomy?.temporalEventId,
           },
         })
         preparedTurns.delete(key)
@@ -501,6 +522,54 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     const scheduler = createNan0AutonomyScheduler({
       isHostReady: () => !chat.sending,
       async evaluate(reason) {
+        const temporalResponse = await requestNan0Owner(renderer.instanceId, 'evaluateTemporalAutonomy', {
+          reason,
+          hostReady: !chat.sending,
+        })
+        let temporalSpeakStarted = false
+        for (const evaluation of temporalResponse.evaluations) {
+          if (!evaluation.prepared)
+            continue
+          temporalSpeakStarted = true
+          if (chat.sending) {
+            await requestNan0Owner(renderer.instanceId, 'deferTemporalAutonomy', {
+              temporalEventId: evaluation.temporalEventId,
+              turnId: evaluation.prepared.turnId,
+              thoughtId: evaluation.prepared.thoughtId,
+              reason: 'autonomy.host-became-busy',
+            })
+            continue
+          }
+          const correlationId = `temporal_autonomy_${nanoid()}`
+          pendingAutonomy.set(correlationId, {
+            prepared: evaluation.prepared,
+            temporalEventId: evaluation.temporalEventId,
+            source: 'internal:temporal',
+          })
+          try {
+            await chat.ingest('', {
+              triggerOnly: true,
+              metadata: {
+                nan0AutonomyCorrelationId: correlationId,
+                temporalEventId: evaluation.temporalEventId,
+                actorId: 'nan0',
+                source: 'internal:temporal',
+              },
+            }, evaluation.prepared.sessionId)
+          }
+          catch (error) {
+            pendingAutonomy.delete(correlationId)
+            await requestNan0Owner(renderer.instanceId, 'deferTemporalAutonomy', {
+              temporalEventId: evaluation.temporalEventId,
+              turnId: evaluation.prepared.turnId,
+              thoughtId: evaluation.prepared.thoughtId,
+              reason: error instanceof Error ? error.message : 'temporal-autonomy.expression-handoff-failed',
+            })
+          }
+        }
+        if (temporalSpeakStarted)
+          return { nextEvaluationAt: temporalResponse.nextEvaluationAt }
+
         const response = await requestNan0Owner(renderer.instanceId, 'evaluateAutonomy', {
           reason,
           hostReady: !chat.sending,
@@ -523,6 +592,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             prepared: evaluation.prepared,
             intentionId: evaluation.intentionId,
             evaluationId: evaluation.evaluationId,
+            source: 'internal:intention',
           })
           try {
             await chat.ingest('', {
@@ -546,7 +616,10 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             })
           }
         }
-        return { nextEvaluationAt: response.nextEvaluationAt }
+        const nextEvaluationAt = [temporalResponse.nextEvaluationAt, response.nextEvaluationAt]
+          .filter((candidate): candidate is number => candidate != null)
+          .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null)
+        return { nextEvaluationAt }
       },
       onError: error => diagnostic('autonomy.scheduler.failed', {
         error: error instanceof Error ? error.message : String(error),

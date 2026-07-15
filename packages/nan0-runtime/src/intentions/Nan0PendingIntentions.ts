@@ -302,6 +302,10 @@ export function eligiblePendingIntentions(input: {
     if (intention.cooldownUntil != null && input.now < intention.cooldownUntil)
       continue
 
+    const clockEligibilityBlocked = typeof input.temporal.engine.metadata.clockEligibilityBlockedAdjustmentId === 'string'
+    if (clockEligibilityBlocked && intention.trigger.type !== 'on-session-resume')
+      continue
+
     if (intention.trigger.type === 'on-session-resume') {
       if (input.reason !== 'session-resume' || input.bootCount <= intention.trigger.afterBootCount)
         continue
@@ -585,6 +589,8 @@ export function nextPendingIntentionEvaluationAt(
   state: Readonly<Nan0PendingIntentionState>,
   temporal: Readonly<Nan0TemporalState>,
 ): number | null {
+  if (typeof temporal.engine.metadata.clockEligibilityBlockedAdjustmentId === 'string')
+    return temporal.engine.nextEvaluationAt
   const due = state.intentions
     .filter(item => eligibleStatus(item.status) && !item.blockedReason && item.trigger.type !== 'on-session-resume')
     .map(item => effectiveIntentionDueAt(item, temporal))
@@ -623,9 +629,12 @@ export function syncPendingIntentionsToTemporal(
   const retained = temporal.conditions.filter(condition => condition.metadata.pendingIntentionIndex !== true)
   const nextConditions = [...retained, ...conditions]
     .sort((left, right) => left.dueAt - right.dueAt || left.conditionId.localeCompare(right.conditionId))
-  const nextEvaluationAt = nextConditions
+  const conditionNextEvaluationAt = nextConditions
     .filter(condition => condition.status === 'pending')
     .reduce<number | null>((next, condition) => next == null ? condition.dueAt : Math.min(next, condition.dueAt), null)
+  const nextEvaluationAt = [conditionNextEvaluationAt, temporal.engine.nextEvaluationAt]
+    .filter((candidate): candidate is number => candidate != null)
+    .reduce<number | null>((next, candidate) => next == null ? candidate : Math.min(next, candidate), null)
   return {
     ...structuredClone(temporal),
     revision: temporal.revision + 1,

@@ -157,6 +157,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       relationshipCount: Object.keys(state.relationships.records).length,
       bootCount: state.bootCount,
       temporalRevision: state.temporal.revision,
+      temporalEventCount: state.temporal.engine.events.length,
       clockAdjustmentCount: state.temporal.detectedClockAdjustments.length,
     })
     return state
@@ -185,6 +186,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       relationshipCount: Object.keys(merged.relationships.records).length,
       thoughtId: merged.lastThoughtId,
       temporalRevision: merged.temporal.revision,
+      temporalEventCount: merged.temporal.engine.events.length,
       clockAdjustmentCount: merged.temporal.detectedClockAdjustments.length,
     })
     return structuredClone(merged)

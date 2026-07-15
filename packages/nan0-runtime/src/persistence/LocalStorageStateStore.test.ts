@@ -384,4 +384,63 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
       conditions: [expect.objectContaining({ conditionId: 'wake-1', status: 'eligible', eligibleAt: 10_000 })],
     })
   })
+
+  it('persists handled temporal events monotonically across stale writers and restart', async () => {
+    const storage = new TestStorage()
+    const clock = new ControllableNan0Clock({ wallTime: 10_000 })
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage, clock })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage, clock })
+    const stale = await currentWriter.save(state([]))
+    const temporalEvent = {
+      schemaVersion: 1 as const,
+      temporalEventId: 'temporal-1',
+      createdAt: 10_000,
+      eventType: 'absence-threshold' as const,
+      source: 'temporal-engine' as const,
+      severity: 'notable' as const,
+      subjectActorId: 'kyo',
+      relatedEventIds: [],
+      relatedTurnIds: ['turn-1'],
+      relatedThoughtIds: ['thought-1'],
+      relatedGoalIds: [],
+      relatedIntentionIds: [],
+      relatedRelationshipIds: ['relationship-kyo'],
+      conditionId: null,
+      observedDurationMs: 10_000,
+      thresholdMs: 5_000,
+      phase: 'morning' as const,
+      confidence: 1,
+      significance: 0.8,
+      status: 'handled' as const,
+      reasonCodes: ['temporal.absence-threshold'],
+      evidenceKey: 'absence:interval-1:notable',
+      evaluationCount: 1,
+      handledAt: 10_100,
+      observationId: 'observation-1',
+      thoughtId: 'thought-1',
+      decisionId: 'decision-1',
+      metadata: { resolution: 'SILENCE' },
+    }
+    await currentWriter.save(state([], {
+      temporal: {
+        ...stale.temporal,
+        revision: stale.temporal.revision + 1,
+        engine: {
+          ...stale.temporal.engine,
+          revision: stale.temporal.engine.revision + 1,
+          events: [temporalEvent],
+        },
+      },
+    }))
+    await staleWriter.save(stale)
+
+    const restarted = await new LocalStorageStateStore('nan0-test', { storage, clock }).load()
+    expect(restarted?.temporal.engine.events).toEqual([temporalEvent])
+    expect(restarted?.temporal.engine.events[0]).toMatchObject({
+      status: 'handled',
+      evaluationCount: 1,
+      thoughtId: 'thought-1',
+      decisionId: 'decision-1',
+    })
+  })
 })

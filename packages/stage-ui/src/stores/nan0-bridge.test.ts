@@ -1,7 +1,7 @@
 import type { Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
 import { describe, expect, it } from 'vitest'
 
-import { toAutonomyEvaluationProxy, toPreparedTurnProxy } from './nan0-bridge'
+import { toAutonomyEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
 
 function preparedTurn(): Nan0PreparedTurn {
   return {
@@ -115,6 +115,29 @@ describe('Nan0 renderer bridge', () => {
     })
     const serialized = JSON.stringify(proxy)
     expect(serialized).toContain('intention-1')
+    expect(serialized).not.toContain('privateText')
+    expect(serialized).not.toContain('This must stay')
+    expect(serialized).not.toContain('interpretation')
+  })
+
+  it('sends temporal provenance without exposing the private temporal thought', () => {
+    const proxy = toTemporalAutonomyEvaluationProxy({
+      nextEvaluationAt: 42_000,
+      evaluations: [{
+        temporalEventId: 'temporal-1',
+        observationId: 'observation-temporal-1',
+        prepared: preparedTurn(),
+        outcome: 'SPEAK',
+        nextEvaluationAt: 42_000,
+      }],
+    })
+    const serialized = JSON.stringify(proxy)
+
+    expect(proxy.evaluations[0]).toMatchObject({
+      temporalEventId: 'temporal-1',
+      observationId: 'observation-temporal-1',
+      outcome: 'SPEAK',
+    })
     expect(serialized).not.toContain('privateText')
     expect(serialized).not.toContain('This must stay')
     expect(serialized).not.toContain('interpretation')
