@@ -18,6 +18,8 @@ import {
 } from '../relationship/RelationshipMemory'
 import { mergeNan0Thoughts } from '../thought/Nan0ThoughtEngine'
 import { mergeNan0Decisions } from '../decision/Nan0DecisionEngine'
+import { mergeNan0Goals } from '../goals/Nan0Goals'
+import { mergeActionIntents, mergeComputationAttempts } from '../lifecycle/Nan0Lifecycle'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -39,6 +41,9 @@ export function mergeNan0States(
       revision: (candidate.revision ?? 0) + 1,
       thoughts: mergeNan0Thoughts([], candidate.thoughts),
       decisions: mergeNan0Decisions([], candidate.decisions),
+      goals: mergeNan0Goals([], candidate.goals),
+      computations: mergeComputationAttempts([], candidate.computations),
+      actionIntents: mergeActionIntents([], candidate.actionIntents),
       turns: normalizeConversationTurns(candidate.turns),
       timeline: normalizeTimelineState(candidate.timeline),
       continuity: normalizeContinuityState(candidate.continuity),
@@ -73,6 +78,9 @@ export function mergeNan0States(
     memories,
     thoughts: mergeNan0Thoughts(persisted.thoughts, candidate.thoughts),
     decisions: mergeNan0Decisions(persisted.decisions, candidate.decisions),
+    goals: mergeNan0Goals(persisted.goals, candidate.goals),
+    computations: mergeComputationAttempts(persisted.computations, candidate.computations),
+    actionIntents: mergeActionIntents(persisted.actionIntents, candidate.actionIntents),
     turns: mergeConversationTurns(persisted.turns, candidate.turns),
     timeline: mergeTimelineStates(persisted.timeline, candidate.timeline),
     continuity: mergeContinuityStates(persisted.continuity, candidate.continuity),
@@ -107,6 +115,9 @@ export class LocalStorageStateStore implements Nan0StateStore {
       revision: parsed.revision ?? 0,
       thoughts: mergeNan0Thoughts([], parsed.thoughts),
       decisions: mergeNan0Decisions([], parsed.decisions),
+      goals: mergeNan0Goals([], parsed.goals),
+      computations: mergeComputationAttempts([], parsed.computations),
+      actionIntents: mergeActionIntents([], parsed.actionIntents),
       turns: normalizeConversationTurns(parsed.turns),
       timeline: parsed.timeline
         ? normalizeTimelineState(parsed.timeline)
@@ -123,6 +134,9 @@ export class LocalStorageStateStore implements Nan0StateStore {
       memoryCount: state.memories.length,
       thoughtCount: state.thoughts.length,
       decisionCount: state.decisions.length,
+      goalCount: state.goals.length,
+      computationCount: state.computations.length,
+      actionIntentCount: state.actionIntents.length,
       turnCount: state.turns.length,
       timelineEventCount: state.timeline.events.length,
       continuityThreadCount: state.continuity.threads.length,
@@ -147,6 +161,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       memoryCount: merged.memories.length,
       thoughtCount: merged.thoughts.length,
       decisionCount: merged.decisions.length,
+      goalCount: merged.goals.length,
       turnCount: merged.turns.length,
       timelineEventCount: merged.timeline.events.length,
       continuityThreadCount: merged.continuity.threads.length,

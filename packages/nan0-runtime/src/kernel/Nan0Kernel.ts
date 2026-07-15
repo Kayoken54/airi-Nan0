@@ -1,10 +1,14 @@
 import type {
   LegacyNan0Export,
   Nan0ConversationTurn,
+  Nan0ActionAuthority,
+  Nan0ActionIntentRecord,
   Nan0ContinuityContext,
   Nan0ContinuityThreadStatus,
   Nan0DecisionRecord,
   Nan0Expression,
+  Nan0Goal,
+  Nan0GoalStatus,
   Nan0KernelDependencies,
   Nan0KernelState,
   Nan0MemoryRecord,
@@ -12,6 +16,7 @@ import type {
   Nan0RelationshipContext,
   Nan0Thought,
 } from '../types'
+import { Nan0CapabilityRegistry } from '../capabilities/Nan0CapabilityRegistry'
 import {
   attachPreparedTurnToContinuity,
   attachTerminalEventToContinuity,
@@ -38,8 +43,10 @@ import {
   subjectiveTime,
   timelineEvents,
 } from '../timeline/SessionTimeline'
-import { generateNan0Thought, mergeNan0Thoughts } from '../thought/Nan0ThoughtEngine'
+import { createFailedNan0Thought, generateNan0Thought, mergeNan0Thoughts } from '../thought/Nan0ThoughtEngine'
 import { evaluateNan0Decision, mergeNan0Decisions, outwardDirectiveForDecision } from '../decision/Nan0DecisionEngine'
+import { evaluateNan0Goals, goalContext, linkGoalConflict, mergeNan0Goals, transitionNan0Goal } from '../goals/Nan0Goals'
+import { mergeActionIntents, mergeComputationAttempts, privateThoughtTimeoutPolicy } from '../lifecycle/Nan0Lifecycle'
 
 type ExpressionHandler = (expression: Nan0Expression) => void
 
@@ -54,6 +61,7 @@ export interface Nan0PreparedTurn {
   decision: Nan0DecisionRecord
   systemContext: string
   recalledMemories: Nan0MemoryRecord[]
+  actionAuthority: Nan0ActionAuthority | null
 }
 
 function defaultInitialState(now: number): Nan0KernelState {
@@ -74,6 +82,9 @@ function defaultInitialState(now: number): Nan0KernelState {
     memories: [],
     thoughts: [],
     decisions: [],
+    goals: [],
+    computations: [],
+    actionIntents: [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
@@ -91,16 +102,28 @@ function clamp(value: number, min = 0, max = 1): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function safeProviderMetadata(value: Record<string, unknown> | undefined): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const key of ['provider', 'providerId', 'model']) {
+    if (typeof value?.[key] === 'string')
+      result[key] = value[key].slice(0, 160)
+  }
+  return result
+}
+
 export class Nan0Kernel {
   private readonly expressionHandlers = new Set<ExpressionHandler>()
   private readonly now: () => number
   private readonly createId: () => string
+  private readonly capabilities: Nan0CapabilityRegistry
+  private readonly activeComputationRequestIds = new Set<string>()
   private state: Nan0KernelState
   private booted = false
 
   constructor(private readonly dependencies: Nan0KernelDependencies) {
     this.now = dependencies.now ?? (() => Date.now())
     this.createId = dependencies.createId ?? (() => crypto.randomUUID())
+    this.capabilities = new Nan0CapabilityRegistry(dependencies.capabilityDefinitions)
     this.state = dependencies.createInitialState?.()
       ?? defaultInitialState(this.now())
   }
@@ -111,6 +134,10 @@ export class Nan0Kernel {
 
   getStateSnapshot(): Readonly<Nan0KernelState> {
     return structuredClone(this.state)
+  }
+
+  getGoals(): readonly Nan0Goal[] {
+    return structuredClone(this.state.goals)
   }
 
   async boot(): Promise<void> {
@@ -134,6 +161,9 @@ export class Nan0Kernel {
       memories,
       thoughts: mergeNan0Thoughts([], this.state.thoughts),
       decisions: mergeNan0Decisions([], this.state.decisions),
+      goals: mergeNan0Goals([], this.state.goals),
+      computations: mergeComputationAttempts([], this.state.computations),
+      actionIntents: mergeActionIntents([], this.state.actionIntents),
       bootCount: this.state.bootCount + 1,
       updatedAt: this.now(),
       turns: this.state.turns ?? [],
@@ -152,12 +182,56 @@ export class Nan0Kernel {
       bootCount: this.state.bootCount,
     })
     this.state = await this.dependencies.stateStore.save(this.state)
+    this.booted = true
+    await this.recoverInterruptedPreparedTurns()
     this.diagnostic('kernel.boot.complete', {
       revision: this.state.revision ?? 0,
       memoryCount: this.state.memories.length,
       bootCount: this.state.bootCount,
     })
-    this.booted = true
+  }
+
+  async recoverInterruptedPreparedTurns(): Promise<number> {
+    this.assertBooted()
+    let recovered = 0
+    for (const turn of this.state.turns.filter(item => item.status === 'prepared')) {
+      const computation = this.state.computations.find(item => item.turnId === turn.turnId && item.thoughtId === turn.thoughtId)
+      if (computation && this.activeComputationRequestIds.has(computation.requestId))
+        continue
+
+      const at = this.now()
+      const interrupted = computation
+        ? { ...computation, status: 'interrupted' as const, finishedAt: at, failureReason: 'thought.interrupted-before-completion' }
+        : {
+            schemaVersion: 1 as const,
+            requestId: `recovery_${this.createId()}`,
+            computationType: 'private-thought' as const,
+            turnId: turn.turnId,
+            thoughtId: turn.thoughtId,
+            policy: privateThoughtTimeoutPolicy(this.dependencies.privateThoughtTimeoutMs),
+            status: 'interrupted' as const,
+            startedAt: turn.startedAt,
+            finishedAt: at,
+            failureReason: 'thought.interrupted-before-completion',
+            providerMetadata: safeProviderMetadata(this.dependencies.privateThoughtProviderMetadata),
+            metadata: { recoveredAtBoot: true },
+          }
+      this.state = {
+        ...this.state,
+        computations: mergeComputationAttempts(this.state.computations, [interrupted]),
+        updatedAt: at,
+      }
+      this.state = await this.dependencies.stateStore.save(this.state)
+      await this.failTurn({
+        turnId: turn.turnId,
+        thoughtId: turn.thoughtId,
+        error: 'thought.interrupted-before-completion',
+        timestamp: at,
+        metadata: { failureLayer: 'thought-generation', recovery: 'authoritative-boot' },
+      })
+      recovered++
+    }
+    return recovered
   }
 
   async shutdown(): Promise<void> {
@@ -354,7 +428,42 @@ export class Nan0Kernel {
       memoryCount: this.state.memories.length,
     })
 
-    const thought = await generateNan0Thought({
+    const requestId = `request_${this.createId()}`
+    const timeoutPolicy = privateThoughtTimeoutPolicy(this.dependencies.privateThoughtTimeoutMs)
+    const computationStartedAt = this.now()
+    const activeComputation = {
+      schemaVersion: 1 as const,
+      requestId,
+      computationType: 'private-thought' as const,
+      turnId,
+      thoughtId,
+      policy: timeoutPolicy,
+      status: 'active' as const,
+      startedAt: computationStartedAt,
+      finishedAt: null,
+      failureReason: null,
+      providerMetadata: safeProviderMetadata(this.dependencies.privateThoughtProviderMetadata),
+      metadata: { observationId: canonicalObservation.id },
+    }
+    this.state = {
+      ...this.state,
+      computations: mergeComputationAttempts(this.state.computations, [activeComputation]),
+      updatedAt: computationStartedAt,
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    this.diagnostic('thought.computation.started', {
+      requestId,
+      turnId,
+      thoughtId,
+      timeoutPolicyId: timeoutPolicy.policyId,
+      timeoutDurationMs: timeoutPolicy.durationMs,
+    })
+
+    const controller = new AbortController()
+    this.activeComputationRequestIds.add(requestId)
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
+    const thoughtInput = {
       thoughtId,
       turnId,
       sessionId,
@@ -368,13 +477,57 @@ export class Nan0Kernel {
       relationship: structuredClone(relationshipContext),
       reasoningClient: this.dependencies.reasoningClient,
       createdAt: this.now(),
-    })
+      signal: controller.signal,
+    }
+    let thought: Nan0Thought
+    try {
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true
+          const error = new Error(`Private thought exceeded ${timeoutPolicy.durationMs}ms.`)
+          controller.abort(error)
+          reject(error)
+        }, timeoutPolicy.durationMs ?? 90_000)
+      })
+      thought = await Promise.race([generateNan0Thought(thoughtInput), timeout])
+    }
+    catch (error) {
+      thought = createFailedNan0Thought(
+        thoughtInput,
+        error,
+        1,
+        timedOut ? 'thought.computation-timeout' : 'thought.generation-failed',
+      )
+    }
+    finally {
+      if (timeoutHandle)
+        clearTimeout(timeoutHandle)
+      this.activeComputationRequestIds.delete(requestId)
+    }
+    const computationFinishedAt = this.now()
+    const terminalComputation = {
+      ...activeComputation,
+      status: timedOut ? 'timed-out' as const : thought.status === 'generated' ? 'completed' as const : 'failed' as const,
+      finishedAt: computationFinishedAt,
+      failureReason: thought.status === 'failed'
+        ? (timedOut ? 'thought.computation-timeout' : String(thought.metadata.error ?? 'thought.generation-failed'))
+        : null,
+    }
     this.state = {
       ...this.state,
       thoughts: mergeNan0Thoughts(this.state.thoughts, [thought]),
+      computations: mergeComputationAttempts(this.state.computations, [terminalComputation]),
       updatedAt: this.now(),
     }
     this.state = await this.dependencies.stateStore.save(this.state)
+    this.diagnostic('thought.computation.terminal', {
+      requestId,
+      turnId,
+      thoughtId,
+      status: terminalComputation.status,
+      timeoutPolicyId: timeoutPolicy.policyId,
+      failureReason: terminalComputation.failureReason,
+    })
     this.diagnostic('prepareTurn.thought-persisted', {
       thoughtId,
       turnId,
@@ -386,12 +539,22 @@ export class Nan0Kernel {
       thoughtCount: this.state.thoughts.length,
     })
 
+    const availableCapabilityIds = this.capabilities.availableCapabilityIds()
     const decision = evaluateNan0Decision({
       thought,
       existingDecisions: this.state.decisions,
-      capabilities: this.dependencies.decisionCapabilities ?? {
-        canSpeak: true,
-        availableActionIntents: [],
+      capabilities: {
+        canSpeak: this.dependencies.decisionCapabilities?.canSpeak ?? true,
+        availableActionIntents: availableCapabilityIds,
+        validateActionIntent: intent => this.capabilities.validate(
+          intent.type,
+          intent.parameters,
+          intent.executionMode,
+        ) != null,
+        allowsActionDuringSpeak: (intent) => {
+          const definition = this.capabilities.validate(intent.type, intent.parameters, intent.executionMode)
+          return Boolean(definition?.canRunDuringSpeak && !definition.requiresAct)
+        },
       },
       decisionId: `decision_${this.createId()}`,
       createdAt: this.now(),
@@ -407,9 +570,58 @@ export class Nan0Kernel {
         proposedDecision: decision.proposedDecision,
       },
     }
+    const goals = evaluateNan0Goals({
+      observationText: text,
+      ownership,
+      thought,
+      decision,
+      turn: turnsWithDecision[preparedTurnIndex],
+      allThoughts: this.state.thoughts,
+      allDecisions: mergeNan0Decisions(this.state.decisions, [decision]),
+      existingGoals: this.state.goals,
+      relationship: relationshipContext,
+      continuityThreadId: continuityResult.thread.threadId,
+      trustedObligations: this.dependencies.trustedGoalObligations,
+      createGoalId: this.createId,
+      now: this.now(),
+    })
+    let actionIntent: Nan0ActionIntentRecord | null = null
+    let actionAuthority: Nan0ActionAuthority | null = null
+    if ((decision.finalDecision === 'ACT' || decision.finalDecision === 'SPEAK') && decision.allowed && decision.actionIntent) {
+      const definition = this.capabilities.validate(
+        decision.actionIntent.type,
+        decision.actionIntent.parameters,
+        decision.actionIntent.executionMode,
+      )
+      if (definition) {
+        const executionMode = decision.actionIntent.executionMode ?? definition.supportedExecutionModes[0]
+        actionIntent = {
+          schemaVersion: 1,
+          actionIntentId: `action_${this.createId()}`,
+          decisionId: decision.decisionId,
+          thoughtId,
+          turnId,
+          capabilityId: definition.capabilityId,
+          executionMode,
+          requestedAt: this.now(),
+          parameters: structuredClone(decision.actionIntent.parameters),
+          timeoutPolicy: structuredClone(definition.defaultTimeoutPolicy),
+          deadline: definition.defaultTimeoutPolicy.deadline,
+          resumePolicy: definition.supportsResume ? 'if-supported' : 'never',
+          interruptPolicy: executionMode === 'state-transition' ? 'persist-state' : definition.supportsResume ? 'pause-if-supported' : 'cancel',
+          status: 'authorized',
+          metadata: { source: canonicalObservation.source },
+        }
+        actionAuthority = this.capabilities.authorityFor(actionIntent, decision)
+      }
+    }
     this.state = {
       ...this.state,
       decisions: mergeNan0Decisions(this.state.decisions, [decision]),
+      goals,
+      actionIntents: actionIntent
+        ? mergeActionIntents(this.state.actionIntents, [actionIntent])
+        : this.state.actionIntents,
       turns: turnsWithDecision,
       updatedAt: this.now(),
     }
@@ -422,6 +634,7 @@ export class Nan0Kernel {
       allowed: decision.allowed,
       revision: this.state.revision ?? 0,
       decisionCount: this.state.decisions.length,
+      goalCount: this.state.goals.length,
     })
 
     if (thought.status === 'failed') {
@@ -444,6 +657,7 @@ export class Nan0Kernel {
       thought,
       decision,
       recalledMemories,
+      actionAuthority,
       systemContext: decision.finalDecision === 'SPEAK' && decision.allowed
         ? this.composeNan0Context(thought, decision, ownership, recalledMemories, continuityContext, relationshipContext)
         : '',
@@ -626,6 +840,46 @@ export class Nan0Kernel {
       outputExists: persisted?.memories.some(item => item.id === memory.id) ?? false,
     })
     return structuredClone(completedTurn)
+  }
+
+  async transitionGoal(input: {
+    goalId: string
+    status: Nan0GoalStatus
+    progress?: number
+    blockedReason?: string | null
+    deferredUntil?: number | null
+    supersededByGoalId?: string
+    metadata?: Record<string, unknown>
+  }): Promise<Nan0Goal> {
+    this.assertBooted()
+    const goal = this.state.goals.find(item => item.goalId === input.goalId)
+    if (!goal)
+      throw new Error(`Unknown Nan0 goal ${input.goalId}.`)
+    const updated = transitionNan0Goal(goal, { ...input, at: this.now() })
+    this.state = {
+      ...this.state,
+      goals: this.state.goals.map(item => item.goalId === updated.goalId ? updated : item),
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    return structuredClone(updated)
+  }
+
+  async recordGoalConflict(leftGoalId: string, rightGoalId: string): Promise<[Nan0Goal, Nan0Goal]> {
+    this.assertBooted()
+    const left = this.state.goals.find(item => item.goalId === leftGoalId)
+    const right = this.state.goals.find(item => item.goalId === rightGoalId)
+    if (!left || !right)
+      throw new Error('Both Nan0 goals must exist before recording a conflict.')
+    const linked = linkGoalConflict(left, right, this.now())
+    const replacements = new Map(linked.map(goal => [goal.goalId, goal]))
+    this.state = {
+      ...this.state,
+      goals: this.state.goals.map(goal => replacements.get(goal.goalId) ?? goal),
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    return structuredClone(linked)
   }
 
   async failTurn(input: {
@@ -1016,6 +1270,10 @@ ${carryover}`
       ...thought.relationshipReferences.map(reference => `relationship:${reference}`),
       ...thought.memoryReferences.map(reference => `memory:${reference}`),
     ].slice(0, 12).join(', ') || 'none'
+    const goals = goalContext(this.state.goals, {
+      continuityThreadId: continuity.currentThreadId,
+      relationshipId: relationship.relationshipId,
+    })
 
     return `[NAN0 KERNEL CONTEXT]
 This application is Nan0. You are not a generic assistant and this is not an optional character mode.
@@ -1047,6 +1305,9 @@ CURRENT EVENT OWNERSHIP
 
 CURRENT EMOTIONAL STATE
 ${emotionalState || 'neutral'}
+
+CURRENT GOALS
+${goals}
 
 RELEVANT CONTINUITY
 ${memoryText}

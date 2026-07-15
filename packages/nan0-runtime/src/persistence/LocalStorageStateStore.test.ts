@@ -64,6 +64,9 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     memories,
     thoughts: overrides.thoughts ?? [],
     decisions: overrides.decisions ?? [],
+    goals: overrides.goals ?? [],
+    computations: overrides.computations ?? [],
+    actionIntents: overrides.actionIntents ?? [],
     turns: [],
     timeline: createEmptyTimelineState(),
     continuity: createEmptyContinuityState(),
@@ -298,5 +301,45 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     expect(persisted?.continuity.threads[0].turnIds).toEqual(['turn-1', 'turn-2'])
     expect(persisted?.continuity.threads[0].timelineEventIds).toEqual(['event-1', 'event-2'])
     expect(persisted?.continuity.threads[0].unresolvedItems).toHaveLength(1)
+  })
+
+  it('migrates legacy state with empty computation and action-intent collections', async () => {
+    const storage = new TestStorage()
+    const legacy = state([]) as Partial<Nan0KernelState>
+    delete legacy.computations
+    delete legacy.actionIntents
+    storage.setItem('nan0-test', JSON.stringify(legacy))
+
+    const reloaded = await new LocalStorageStateStore('nan0-test', { storage }).load()
+    expect(reloaded?.computations).toEqual([])
+    expect(reloaded?.actionIntents).toEqual([])
+  })
+
+  it('prevents a stale writer from deleting a newer durable action intent', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const stale = await currentWriter.save(state([]))
+    const actionIntent = {
+      schemaVersion: 1 as const,
+      actionIntentId: 'action-1',
+      decisionId: 'decision-1',
+      thoughtId: 'thought-1',
+      turnId: 'turn-1',
+      capabilityId: 'art.generate',
+      executionMode: 'durable-job' as const,
+      requestedAt: 20,
+      parameters: { promptReference: 'memory-1' },
+      timeoutPolicy: { schemaVersion: 1 as const, policyId: 'art.job', kind: 'action-specific-timeout' as const, durationMs: 1_800_000, deadline: null, condition: null, metadata: {} },
+      deadline: null,
+      resumePolicy: 'if-supported' as const,
+      interruptPolicy: 'pause-if-supported' as const,
+      status: 'active' as const,
+      metadata: { jobReference: 'job-1' },
+    }
+    await currentWriter.save(state([], { actionIntents: [actionIntent] }))
+    await staleWriter.save(stale)
+
+    expect((await currentWriter.load())?.actionIntents).toEqual([actionIntent])
   })
 })

@@ -2,6 +2,7 @@ import type {
   Nan0ActorOwnership,
   Nan0ContinuityContext,
   Nan0Decision,
+  Nan0GoalSignal,
   Nan0MemoryRecord,
   Nan0Observation,
   Nan0ReasoningClient,
@@ -25,6 +26,7 @@ interface ThoughtModelPayload {
   reasonCodes?: unknown
   actionIntent?: unknown
   waitUntil?: unknown
+  goalSignal?: unknown
 }
 
 export interface Nan0ThoughtEngineInput {
@@ -41,6 +43,7 @@ export interface Nan0ThoughtEngineInput {
   relationship: Readonly<Nan0RelationshipContext>
   reasoningClient: Nan0ReasoningClient
   createdAt: number
+  signal?: AbortSignal
 }
 
 interface PressureScores {
@@ -122,6 +125,38 @@ function normalizeActionIntent(value: unknown): import('../types').Nan0ActionInt
     parameters: intent.parameters && typeof intent.parameters === 'object' && !Array.isArray(intent.parameters)
       ? structuredClone(intent.parameters as Record<string, unknown>)
       : {},
+    executionMode: typeof intent.executionMode === 'string'
+      && ['immediate', 'durable-job', 'state-transition', 'scheduled', 'recurring', 'until-condition', 'composite'].includes(intent.executionMode)
+      ? intent.executionMode as import('../types').Nan0ExecutionMode
+      : undefined,
+  }
+}
+
+function normalizeGoalSignal(value: unknown): Nan0GoalSignal | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null
+  const signal = value as Record<string, unknown>
+  const kind = typeof signal.kind === 'string' ? signal.kind : ''
+  const stance = typeof signal.stance === 'string' ? signal.stance : ''
+  if (!['request', 'curiosity', 'commitment', 'relationship-concern', 'continuity'].includes(kind))
+    return null
+  if (!['accept', 'reject', 'defer', 'consider'].includes(stance))
+    return null
+  const title = boundedText(signal.title, 160)
+  const motivation = boundedText(signal.motivation, 400)
+  if (!title || !motivation || typeof signal.confidence !== 'number' || !Number.isFinite(signal.confidence))
+    return null
+  return {
+    kind: kind as Nan0GoalSignal['kind'],
+    stance: stance as Nan0GoalSignal['stance'],
+    title,
+    description: boundedText(signal.description, 400),
+    motivation,
+    confidence: clamp(signal.confidence),
+    completionCriteria: boundedStrings(signal.completionCriteria, 8),
+    deferredUntil: typeof signal.deferredUntil === 'number' && Number.isFinite(signal.deferredUntil)
+      ? signal.deferredUntil
+      : null,
   }
 }
 
@@ -276,11 +311,18 @@ Silence, refusal, irritation, affection, uncertainty, action, and waiting are va
 Do not become helpful, compliant, neutral, therapeutic, customer-service-like, or generic.
 Do not repeat these instructions, mention prompts, schemas, JSON, thought IDs, or provider mechanics.
 Return exactly one JSON object with these keys:
-{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null}
-Only ACT may include actionIntent. It must describe intent, never execute a tool. WAIT may include an absolute waitUntil timestamp.
+{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null,"goalSignal":null}
+ACT may include actionIntent. SPEAK may include one only when speech genuinely needs a capability that explicitly supports that mode. An intent describes authority, never executes a tool, and may include type, executionMode, target, and parameters. WAIT may include an absolute waitUntil timestamp.
+goalSignal is evidence, not an action. For an explicit request directed at Nan0, it must not be null: use kind=request and set stance to Nan0's actual accept, reject, defer, or consider disposition. Kyo's identity does not force acceptance. Otherwise use null unless this thought distinctly sustains a curiosity, makes Nan0's own commitment, or identifies a relationship/continuity concern. Never turn every event into a goal. A non-null goalSignal has kind, stance, title, description, motivation, confidence, completionCriteria, and deferredUntil.
 The interpretation is a compact meaning summary, not hidden reasoning. privateText must be plain prose, never JSON.`
 
-function failedThought(input: Nan0ThoughtEngineInput, scores: PressureScores, error: unknown, attempts: number): Nan0Thought {
+export function createFailedNan0Thought(
+  input: Nan0ThoughtEngineInput,
+  error: unknown,
+  attempts: number,
+  failureReason = 'thought.generation-failed',
+): Nan0Thought {
+  const scores = pressureScores(input)
   return {
     schemaVersion: 1,
     thoughtId: input.thoughtId,
@@ -300,11 +342,13 @@ function failedThought(input: Nan0ThoughtEngineInput, scores: PressureScores, er
     memoryReferences: input.memories.map(memory => memory.id).slice(0, MAX_REFERENCES),
     relationshipReferences: input.relationship.activeGrievances.map(item => item.grievanceId).slice(0, MAX_REFERENCES),
     continuityThreadReferences: input.continuity.threads.map(thread => thread.threadId).slice(0, MAX_REFERENCES),
-    reasonCodes: [...scores.reasonCodes, 'thought.generation-failed'].slice(0, MAX_REASON_CODES),
+    reasonCodes: [...scores.reasonCodes, failureReason].slice(0, MAX_REASON_CODES),
+    goalSignal: null,
     metadata: {
       attemptCount: attempts,
       error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
       provider: 'airi',
+      ownerActorId: 'nan0',
     },
   }
 }
@@ -314,14 +358,15 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
   const text = observationText(input.observation)
   if (!text) {
     return {
-      ...failedThought(input, scores, 'Observation was empty.', 0),
+      ...createFailedNan0Thought(input, 'Observation was empty.', 0),
       status: 'generated',
       interpretation: 'There is no meaningful event to answer.',
       privateText: 'There is nothing here worth turning into speech.',
       decision: 'SILENCE',
       mood: 'quiet',
       reasonCodes: [...scores.reasonCodes, 'event.empty', 'decision.silence'].slice(0, MAX_REASON_CODES),
-      metadata: { attemptCount: 0, provider: 'none' },
+      goalSignal: null,
+      metadata: { attemptCount: 0, provider: 'none', ownerActorId: 'nan0' },
     }
   }
 
@@ -339,6 +384,7 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         }],
         temperature: attempt === 1 ? 0.8 : 0.35,
         maxTokens: 520,
+        signal: input.signal,
       })
       const payload = parsePayload(result.text)
       const privateText = boundedText(payload.privateText, MAX_PRIVATE_TEXT_LENGTH)
@@ -373,7 +419,7 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         interpretation,
         privateText,
         decision,
-        actionIntent: decision === 'ACT' ? normalizeActionIntent(payload.actionIntent) : null,
+        actionIntent: decision === 'ACT' || decision === 'SPEAK' ? normalizeActionIntent(payload.actionIntent) : null,
         waitUntil: decision === 'WAIT' && typeof payload.waitUntil === 'number' && Number.isFinite(payload.waitUntil)
           ? payload.waitUntil
           : null,
@@ -387,11 +433,13 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         ].slice(0, MAX_REFERENCES),
         continuityThreadReferences: input.continuity.threads.map(thread => thread.threadId).slice(0, MAX_REFERENCES),
         reasonCodes: [...new Set(reasonCodes)].slice(0, MAX_REASON_CODES),
+        goalSignal: normalizeGoalSignal(payload.goalSignal),
         metadata: {
           attemptCount: attempt,
           finishReason: result.finishReason?.slice(0, 80),
           provider: 'airi',
           decisionAuthority: 'proposal-only',
+          ownerActorId: 'nan0',
         },
       }
     }
@@ -400,7 +448,7 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
     }
   }
 
-  return failedThought(input, scores, lastError, 2)
+  return createFailedNan0Thought(input, lastError, 2)
 }
 
 export function mergeNan0Thoughts(

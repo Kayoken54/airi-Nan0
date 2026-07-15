@@ -134,6 +134,10 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         }
       },
     },
+    privateThoughtProviderMetadata: {
+      provider: 'airi-provider-selection',
+      model: 'active-consciousness-model',
+    },
     diagnostic: ({ event, details }) => diagnostic(event, details),
   })
 
@@ -328,6 +332,18 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         const prepared = preparedTurns.get(turnKey(context))
         if (!prepared)
           return
+
+        context.nan0ToolAuthority = {
+          schemaVersion: 1,
+          finalDecision: prepared.decision.finalDecision,
+          thoughtId: prepared.thoughtId,
+          decisionId: prepared.decision.decisionId,
+          turnId: prepared.turnId,
+          actionIntentId: prepared.actionAuthority?.actionIntentId ?? null,
+          capabilityId: prepared.actionAuthority?.capabilityId ?? null,
+          lifecyclePolicyId: prepared.actionAuthority?.lifecyclePolicyId ?? null,
+          authorizedToolNames: [...(prepared.actionAuthority?.authorizedToolNames ?? [])],
+        }
 
         if (prepared.decision.finalDecision === 'SPEAK' && prepared.decision.allowed)
           return

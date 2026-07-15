@@ -11,6 +11,8 @@ export const NAN0_SPEAKABILITY_THRESHOLD = 0.35
 export interface Nan0DecisionCapabilities {
   canSpeak: boolean
   availableActionIntents: readonly string[]
+  validateActionIntent?: (intent: Readonly<Nan0ActionIntent>) => boolean
+  allowsActionDuringSpeak?: (intent: Readonly<Nan0ActionIntent>) => boolean
 }
 
 export interface Nan0DecisionEngineInput {
@@ -51,6 +53,7 @@ function normalizeActionIntent(value: Nan0ActionIntent | null | undefined): Nan0
     parameters: value.parameters && typeof value.parameters === 'object' && !Array.isArray(value.parameters)
       ? structuredClone(value.parameters)
       : {},
+    executionMode: value.executionMode,
   }
 }
 
@@ -84,7 +87,9 @@ function constraintsFor(
     {
       code: 'action.capability-available',
       passed: thought.decision !== 'ACT'
-        || (actionIntent != null && capabilities.availableActionIntents.includes(actionIntent.type)),
+        || (actionIntent != null
+          && capabilities.availableActionIntents.includes(actionIntent.type)
+          && (capabilities.validateActionIntent?.(actionIntent) ?? true)),
       hard: false,
     },
   ]
@@ -125,6 +130,11 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
       allowed = false
       suppressionReason = 'decision.below-speakability-threshold'
     }
+    else if (actionIntent && !(input.capabilities.allowsActionDuringSpeak?.(actionIntent) ?? false)) {
+      finalDecision = 'WAIT'
+      allowed = false
+      suppressionReason = 'action.speak-authorization-unavailable'
+    }
   }
   else if (thought.decision === 'ACT') {
     if (!actionIntent) {
@@ -132,7 +142,8 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
       allowed = false
       suppressionReason = 'action.intent-invalid'
     }
-    else if (!input.capabilities.availableActionIntents.includes(actionIntent.type)) {
+    else if (!input.capabilities.availableActionIntents.includes(actionIntent.type)
+      || !(input.capabilities.validateActionIntent?.(actionIntent) ?? true)) {
       finalDecision = 'WAIT'
       allowed = false
       suppressionReason = 'action.capability-unavailable'
@@ -159,7 +170,10 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
     reasonCodes: [...new Set(reasonCodes)].slice(0, 16),
     constraintResults,
     suppressionReason,
-    actionIntent: finalDecision === 'ACT' ? actionIntent : null,
+    actionIntent: finalDecision === 'ACT'
+      || (finalDecision === 'SPEAK' && actionIntent && (input.capabilities.allowsActionDuringSpeak?.(actionIntent) ?? false))
+      ? actionIntent
+      : null,
     waitUntil: finalDecision === 'WAIT' && Number.isFinite(thought.waitUntil)
       ? Math.max(input.createdAt, Number(thought.waitUntil))
       : null,

@@ -29,7 +29,7 @@ function preparedTurn(): Nan0PreparedTurn {
       actionIntent: null,
       waitUntil: null,
     },
-  } as Nan0PreparedTurn
+  } as unknown as Nan0PreparedTurn
 }
 
 describe('Nan0 renderer bridge', () => {
@@ -45,6 +45,7 @@ describe('Nan0 renderer bridge', () => {
       inputEventId: 'event-1',
       threadId: 'thread-1',
       outwardDirective: '[NAN0 KERNEL CONTEXT]\nBounded outward directive.',
+      actionAuthority: null,
       decision: {
         decisionId: 'decision-1',
         finalDecision: 'SPEAK',
@@ -71,5 +72,32 @@ describe('Nan0 renderer bridge', () => {
     proxy.decision.reasonCodes.push('executor-change')
 
     expect(prepared.decision.reasonCodes).toEqual(['kyo-addressed'])
+  })
+
+  it('transmits only bounded action authority and clones sanitized parameters', () => {
+    const prepared = preparedTurn()
+    prepared.actionAuthority = {
+      schemaVersion: 1,
+      actionIntentId: 'action-1',
+      decisionId: 'decision-1',
+      thoughtId: 'thought-1',
+      turnId: 'turn-1',
+      capabilityId: 'test.noop',
+      executionMode: 'immediate',
+      lifecyclePolicyId: 'test.immediate',
+      parameters: { safe: true },
+      authorizedToolNames: ['test_noop'],
+    }
+    const proxy = toPreparedTurnProxy(prepared)
+    proxy.actionAuthority!.parameters.safe = false
+
+    expect(prepared.actionAuthority.parameters).toEqual({ safe: true })
+    expect(JSON.stringify(proxy)).not.toContain('privateText')
+    expect(proxy.actionAuthority).toMatchObject({
+      actionIntentId: 'action-1',
+      capabilityId: 'test.noop',
+      lifecyclePolicyId: 'test.immediate',
+      authorizedToolNames: ['test_noop'],
+    })
   })
 })

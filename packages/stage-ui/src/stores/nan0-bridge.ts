@@ -1,4 +1,4 @@
-import type { Nan0Decision, Nan0Observation, Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
+import type { Nan0ActionAuthority, Nan0Decision, Nan0Observation, Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
 
 export interface Nan0PreparedDecisionProxy {
   decisionId: string
@@ -22,6 +22,7 @@ export interface Nan0PreparedTurnProxy {
   threadId: string
   outwardDirective: string
   decision: Nan0PreparedDecisionProxy
+  actionAuthority: Nan0ActionAuthority | null
 }
 
 export interface Nan0BridgeRequestMap {
@@ -86,7 +87,9 @@ interface ResponseMessage {
 
 const CHANNEL_NAME = 'nan0-runtime-owner-v1'
 const REQUEST_RETRY_MS = 500
-const REQUEST_TIMEOUT_MS = 90_000
+// NOTICE: Owner-side private thought owns its 90s cancellation deadline. The
+// bridge margin allows the owner to persist and return the terminal outcome.
+const REQUEST_TIMEOUT_MS = 100_000
 const OWNER_RESPONSE_CACHE_LIMIT = 256
 
 let channel: BroadcastChannel | null = null
@@ -122,6 +125,7 @@ export function toPreparedTurnProxy(prepared: Nan0PreparedTurn): Nan0PreparedTur
         : null,
       waitUntil: prepared.decision.waitUntil,
     },
+    actionAuthority: prepared.actionAuthority ? structuredClone(prepared.actionAuthority) : null,
   }
 }
 

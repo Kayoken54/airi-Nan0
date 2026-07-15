@@ -26,6 +26,7 @@ import { useCompactionStore } from './chat/compaction'
 import { createDatetimeContext, createEternalRecordContext, createExpressionsContext, createScenesContext, createStickersContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { createChatHooks } from './chat/hooks'
+import { gateToolsWithNan0Authority } from './chat/nan0-tool-authority'
 import { responseDispositionFor } from './chat/response-disposition'
 import { clearArtistryStaging, clearJournalStaging, pendingIntrusionStaging, stageArtistryIntrusion, stageJournalIntrusion } from './chat/intrusion-staging'
 import { useChatSessionStore } from './chat/session-store'
@@ -743,8 +744,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           argsRaw = match[2] || ''
         }
 
-        const resolvedTools = typeof options.tools === 'function' ? await options.tools() : options.tools
-        const tool = resolvedTools?.find(t => (t.function?.name || (t as any).name) === toolName)
+        const resolvedTools = typeof effectiveTools === 'function' ? await effectiveTools() : effectiveTools
+        const tool = resolvedTools?.find((t: any) => (t.function?.name || t.name) === toolName)
 
         if (!tool) {
           chatLog(`[ChatDebug] Marker found but tool not executable/found in this context: ${toolName}`)
@@ -1191,6 +1192,7 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
 
         await hooks.emitAfterMessageComposedHooks(sendingMessage, streamingMessageContext)
         await hooks.emitBeforeSendHooks(sendingMessage, streamingMessageContext)
+        effectiveTools = gateToolsWithNan0Authority(effectiveTools, streamingMessageContext)
 
         const disposition = responseDispositionFor(streamingMessageContext)
         if (disposition) {

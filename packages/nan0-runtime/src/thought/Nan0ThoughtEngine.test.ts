@@ -1,4 +1,4 @@
-import type { Nan0Observation, Nan0ReasoningClient, Nan0Thought } from '../types'
+import type { Nan0CapabilityDefinition, Nan0Observation, Nan0ReasoningClient, Nan0Thought } from '../types'
 import { describe, expect, it } from 'vitest'
 
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
@@ -38,6 +38,25 @@ function createKernel(
 ) {
   let id = 0
   let now = 1_000
+  const capabilityDefinitions: Nan0CapabilityDefinition[] = availableActionIntents.map(capabilityId => ({
+    capabilityId,
+    description: 'Test-only no-op capability.',
+    acceptedParameters: (parameters: unknown): parameters is Record<string, unknown> => Boolean(parameters && typeof parameters === 'object' && !Array.isArray(parameters)),
+    supportedExecutionModes: ['immediate'],
+    permissionRequirements: [],
+    canRunDuringSpeak: false,
+    requiresAct: true,
+    defaultTimeoutPolicy: { schemaVersion: 1, policyId: 'test.immediate', kind: 'action-specific-timeout', durationMs: 1_000, deadline: null, condition: null, metadata: {} },
+    maximumActiveDurationMs: 1_000,
+    supportsResume: false,
+    supportsCancellation: true,
+    supportsProgress: false,
+    resultType: 'none',
+    sideEffects: [],
+    constitutionalConstraints: [],
+    availability: 'available',
+    toolNames: ['test_noop'],
+  }))
   return {
     kernel: new Nan0Kernel({
       reasoningClient,
@@ -45,6 +64,7 @@ function createKernel(
       createId: () => `${prefix}-${++id}`,
       now: () => ++now,
       decisionCapabilities: { canSpeak: true, availableActionIntents },
+      capabilityDefinitions,
     }),
     store,
   }
@@ -85,6 +105,35 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
     }])
     await kernel.recordAssistantTurn({ turnId: prepared.turnId, thoughtId: prepared.thoughtId, content: 'Still here.' })
     expect(kernel.getStateSnapshot().memories.at(-1)?.metadata.thoughtId).toBe(prepared.thoughtId)
+  })
+
+  it('forms and injects an accepted Kyo goal from the existing private-thought inference', async () => {
+    const goalSignal = {
+      kind: 'request',
+      stance: 'accept',
+      title: 'Revisit the copper lighthouse',
+      description: 'Return to the topic later.',
+      motivation: 'I want to preserve this thread.',
+      confidence: 0.92,
+      completionCriteria: ['The topic is revisited.'],
+      deferredUntil: null,
+    }
+    const { kernel, prepared } = await preparedKernel(
+      clientWith(thoughtEnvelope({ goalSignal })),
+      { content: 'Please remember to revisit the copper lighthouse later.' },
+    )
+
+    expect(kernel.getGoals()).toMatchObject([{
+      origin: 'kyo-requested',
+      originActorId: 'kyo',
+      status: 'active',
+      supportingThoughtIds: [prepared.thoughtId],
+      supportingDecisionIds: [prepared.decision.decisionId],
+      supportingTurnIds: [prepared.turnId],
+    }])
+    expect(prepared.systemContext).toContain('CURRENT GOALS')
+    expect(prepared.systemContext).toContain('Revisit the copper lighthouse')
+    expect(prepared.systemContext).not.toContain(prepared.thought.privateText)
   })
 
   it('keeps one thoughtId across thought, turn, input, and output', async () => {
@@ -225,6 +274,13 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
     })
     expect(kernel.getConversationTurns()[0].decision).toBe('ACT')
     expect(kernel.getStateSnapshot().memories.filter(memory => memory.actorId === 'nan0')).toHaveLength(0)
+    expect(kernel.getStateSnapshot().actionIntents).toHaveLength(1)
+    expect(prepared.actionAuthority).toMatchObject({
+      thoughtId: prepared.thoughtId,
+      decisionId: prepared.decision.decisionId,
+      capabilityId: 'test.noop',
+      authorizedToolNames: ['test_noop'],
+    })
   })
 
   it('persists WAIT without producing output memory', async () => {

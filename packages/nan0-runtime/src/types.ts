@@ -57,6 +57,186 @@ export interface Nan0ActionIntent {
   type: string
   target?: string
   parameters: Record<string, unknown>
+  executionMode?: Nan0ExecutionMode
+}
+
+export type Nan0ExecutionMode
+  = | 'immediate'
+    | 'durable-job'
+    | 'state-transition'
+    | 'scheduled'
+    | 'recurring'
+    | 'until-condition'
+    | 'composite'
+
+export type Nan0LifecyclePolicyKind
+  = | 'computation-timeout'
+    | 'action-specific-timeout'
+    | 'deadline'
+    | 'no-active-timeout'
+    | 'until-condition'
+    | 'state-duration'
+    | 'manual-cancel'
+    | 'recurring-window'
+
+export interface Nan0LifecyclePolicy {
+  schemaVersion: 1
+  policyId: string
+  kind: Nan0LifecyclePolicyKind
+  durationMs: number | null
+  deadline: number | null
+  condition: string | null
+  metadata: Record<string, unknown>
+}
+
+export type Nan0ComputationStatus = 'active' | 'completed' | 'timed-out' | 'failed' | 'interrupted'
+
+export interface Nan0ComputationAttempt {
+  schemaVersion: 1
+  requestId: string
+  computationType: 'private-thought'
+  turnId: string
+  thoughtId: string
+  policy: Nan0LifecyclePolicy
+  status: Nan0ComputationStatus
+  startedAt: number
+  finishedAt: number | null
+  failureReason: string | null
+  providerMetadata: Record<string, unknown>
+  metadata: Record<string, unknown>
+}
+
+export type Nan0ActionIntentStatus = 'authorized' | 'active' | 'completed' | 'failed' | 'cancelled'
+
+export interface Nan0ActionIntentRecord {
+  schemaVersion: 1
+  actionIntentId: string
+  decisionId: string
+  thoughtId: string
+  turnId: string
+  capabilityId: string
+  executionMode: Nan0ExecutionMode
+  requestedAt: number
+  parameters: Record<string, unknown>
+  timeoutPolicy: Nan0LifecyclePolicy
+  deadline: number | null
+  resumePolicy: 'never' | 'if-supported' | 'required'
+  interruptPolicy: 'cancel' | 'pause-if-supported' | 'persist-state'
+  status: Nan0ActionIntentStatus
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0CapabilityDefinition {
+  capabilityId: string
+  description: string
+  acceptedParameters: (parameters: unknown) => parameters is Record<string, unknown>
+  supportedExecutionModes: readonly Nan0ExecutionMode[]
+  permissionRequirements: readonly string[]
+  canRunDuringSpeak: boolean
+  requiresAct: boolean
+  defaultTimeoutPolicy: Nan0LifecyclePolicy
+  maximumActiveDurationMs: number | null
+  supportsResume: boolean
+  supportsCancellation: boolean
+  supportsProgress: boolean
+  resultType: string
+  sideEffects: readonly string[]
+  constitutionalConstraints: readonly string[]
+  availability: 'available' | 'unavailable'
+  toolNames: readonly string[]
+}
+
+export interface Nan0ActionAuthority {
+  schemaVersion: 1
+  actionIntentId: string
+  decisionId: string
+  thoughtId: string
+  turnId: string
+  capabilityId: string
+  executionMode: Nan0ExecutionMode
+  lifecyclePolicyId: string
+  parameters: Record<string, unknown>
+  authorizedToolNames: string[]
+}
+
+export type Nan0GoalOrigin
+  = | 'self-generated'
+    | 'kyo-requested'
+    | 'external-request'
+    | 'relationship-derived'
+    | 'continuity-derived'
+    | 'curiosity'
+    | 'maintenance'
+    | 'constitutional'
+
+export type Nan0GoalStatus
+  = | 'candidate'
+    | 'active'
+    | 'deferred'
+    | 'blocked'
+    | 'completed'
+    | 'abandoned'
+    | 'rejected'
+    | 'superseded'
+
+export type Nan0GoalSignalKind
+  = | 'request'
+    | 'curiosity'
+    | 'commitment'
+    | 'relationship-concern'
+    | 'continuity'
+
+export interface Nan0GoalSignal {
+  kind: Nan0GoalSignalKind
+  stance: 'accept' | 'reject' | 'defer' | 'consider'
+  title: string
+  description: string
+  motivation: string
+  confidence: number
+  completionCriteria: string[]
+  deferredUntil: number | null
+}
+
+export interface Nan0Goal {
+  schemaVersion: 1
+  goalId: string
+  createdAt: number
+  updatedAt: number
+  origin: Nan0GoalOrigin
+  originActorId: string
+  status: Nan0GoalStatus
+  title: string
+  description: string
+  motivation: string
+  priority: number
+  importance: number
+  confidence: number
+  urgency: number
+  activation: number
+  progress: number
+  parentGoalId: string | null
+  conflictingGoalIds: string[]
+  supportingThoughtIds: string[]
+  supportingDecisionIds: string[]
+  supportingTurnIds: string[]
+  continuityThreadIds: string[]
+  relationshipIds: string[]
+  constitutionalReferences: string[]
+  completionCriteria: string[]
+  blockedReason: string | null
+  deferredUntil: number | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TrustedGoalObligation {
+  origin: 'maintenance' | 'constitutional'
+  title: string
+  description: string
+  motivation: string
+  constitutionalReferences?: readonly string[]
+  completionCriteria?: readonly string[]
+  priority?: number
+  importance?: number
 }
 
 export interface Nan0DecisionConstraintResult {
@@ -117,6 +297,7 @@ export interface Nan0Thought {
   relationshipReferences: string[]
   continuityThreadReferences: string[]
   reasonCodes: string[]
+  goalSignal?: Nan0GoalSignal | null
   metadata: Record<string, unknown>
 }
 
@@ -442,6 +623,9 @@ export interface Nan0KernelState {
   memories: Nan0MemoryRecord[]
   thoughts: Nan0Thought[]
   decisions: Nan0DecisionRecord[]
+  goals: Nan0Goal[]
+  computations: Nan0ComputationAttempt[]
+  actionIntents: Nan0ActionIntentRecord[]
   turns: Nan0ConversationTurn[]
   timeline: Nan0TimelineState
   continuity: Nan0ContinuityState
@@ -488,6 +672,10 @@ export interface Nan0KernelDependencies {
     canSpeak: boolean
     availableActionIntents: readonly string[]
   }
+  capabilityDefinitions?: readonly Nan0CapabilityDefinition[]
+  privateThoughtTimeoutMs?: number
+  privateThoughtProviderMetadata?: Record<string, unknown>
+  trustedGoalObligations?: readonly Nan0TrustedGoalObligation[]
   diagnostic?: (event: Nan0DiagnosticEvent) => void
 }
 
