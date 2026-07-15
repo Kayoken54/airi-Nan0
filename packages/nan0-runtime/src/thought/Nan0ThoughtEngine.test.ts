@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
 import { mergeNan0States } from '../persistence/LocalStorageStateStore'
+import { ControllableNan0Clock } from '../temporal/Nan0Clock'
 
 function thoughtEnvelope(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -37,7 +38,7 @@ function createKernel(
   availableActionIntents: readonly string[] = [],
 ) {
   let id = 0
-  let now = 1_000
+  const clock = new ControllableNan0Clock({ wallTime: 1_000, monotonicTime: 1_000 })
   const capabilityDefinitions: Nan0CapabilityDefinition[] = availableActionIntents.map(capabilityId => ({
     capabilityId,
     description: 'Test-only no-op capability.',
@@ -62,7 +63,7 @@ function createKernel(
       reasoningClient,
       stateStore: store,
       createId: () => `${prefix}-${++id}`,
-      now: () => ++now,
+      clock,
       decisionCapabilities: { canSpeak: true, availableActionIntents },
       capabilityDefinitions,
     }),

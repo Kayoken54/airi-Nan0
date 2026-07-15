@@ -21,6 +21,9 @@ export interface Nan0DecisionEngineInput {
   capabilities: Readonly<Nan0DecisionCapabilities>
   decisionId: string
   createdAt: number
+  additionalConstraints?: readonly Nan0DecisionConstraintResult[]
+  minimumSpeakAttention?: number
+  policy?: string
 }
 
 function clamp(value: number, min = 0, max = 1): number {
@@ -71,6 +74,7 @@ function constraintsFor(
   thought: Readonly<Nan0Thought>,
   capabilities: Readonly<Nan0DecisionCapabilities>,
   actionIntent: Nan0ActionIntent | null,
+  additional: readonly Nan0DecisionConstraintResult[] = [],
 ): Nan0DecisionConstraintResult[] {
   const privateViolation = privateThoughtViolation(thought.privateText)
   return [
@@ -92,6 +96,7 @@ function constraintsFor(
           && (capabilities.validateActionIntent?.(actionIntent) ?? true)),
       hard: false,
     },
+    ...additional.map(result => ({ ...result })),
   ]
 }
 
@@ -102,7 +107,7 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
 
   const thought = input.thought
   const actionIntent = normalizeActionIntent(thought.actionIntent)
-  const constraintResults = constraintsFor(thought, input.capabilities, actionIntent)
+  const constraintResults = constraintsFor(thought, input.capabilities, actionIntent, input.additionalConstraints)
   const hardFailure = constraintResults.find(result => result.hard && !result.passed)
   const reasonCodes = [...new Set(thought.reasonCodes)]
   let finalDecision: Nan0Decision = thought.decision
@@ -129,6 +134,11 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
       finalDecision = 'SILENCE'
       allowed = false
       suppressionReason = 'decision.below-speakability-threshold'
+    }
+    else if (input.minimumSpeakAttention != null && thought.attentionScore < input.minimumSpeakAttention) {
+      finalDecision = 'SILENCE'
+      allowed = false
+      suppressionReason = 'decision.below-autonomous-relevance-threshold'
     }
     else if (actionIntent && !(input.capabilities.allowsActionDuringSpeak?.(actionIntent) ?? false)) {
       finalDecision = 'WAIT'
@@ -178,7 +188,7 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
       ? Math.max(input.createdAt, Number(thought.waitUntil))
       : null,
     metadata: {
-      policy: 'nan0-decision-v1',
+      policy: input.policy ?? 'nan0-decision-v1',
       speakabilityThreshold: NAN0_SPEAKABILITY_THRESHOLD,
       source: thought.source,
       actorId: thought.actorId,

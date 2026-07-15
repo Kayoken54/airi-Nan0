@@ -3,6 +3,7 @@ import type {
   Nan0ContinuityContext,
   Nan0Decision,
   Nan0GoalSignal,
+  Nan0IntentionSignal,
   Nan0MemoryRecord,
   Nan0Observation,
   Nan0ReasoningClient,
@@ -27,6 +28,7 @@ interface ThoughtModelPayload {
   actionIntent?: unknown
   waitUntil?: unknown
   goalSignal?: unknown
+  intentionSignal?: unknown
 }
 
 export interface Nan0ThoughtEngineInput {
@@ -160,6 +162,66 @@ function normalizeGoalSignal(value: unknown): Nan0GoalSignal | null {
   }
 }
 
+function normalizeIntentionSignal(value: unknown): Nan0IntentionSignal | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null
+  const signal = value as Record<string, unknown>
+  const kind = typeof signal.kind === 'string' ? signal.kind : ''
+  if (!['reconsider', 'follow-up', 'check-in', 'reminder', 'communicate', 'investigate', 'plan', 'state-transition', 'action-preparation', 'maintenance'].includes(kind))
+    return null
+  const triggerInput = signal.trigger
+  if (!triggerInput || typeof triggerInput !== 'object' || Array.isArray(triggerInput))
+    return null
+  const rawTrigger = triggerInput as Record<string, unknown>
+  const type = typeof rawTrigger.type === 'string' ? rawTrigger.type : ''
+  const triggerId = boundedText(rawTrigger.triggerId, 160) || 'model-proposed-trigger'
+  const metadata = rawTrigger.metadata && typeof rawTrigger.metadata === 'object' && !Array.isArray(rawTrigger.metadata)
+    ? structuredClone(rawTrigger.metadata as Record<string, unknown>)
+    : {}
+  let trigger: import('../types').Nan0IntentionTrigger | null = null
+  if (type === 'at-time' && typeof rawTrigger.at === 'number' && Number.isFinite(rawTrigger.at))
+    trigger = { schemaVersion: 1, triggerId, type, at: rawTrigger.at, metadata }
+  else if (type === 'after-duration'
+    && typeof rawTrigger.anchorAt === 'number' && Number.isFinite(rawTrigger.anchorAt)
+    && typeof rawTrigger.durationMs === 'number' && Number.isFinite(rawTrigger.durationMs)) {
+    trigger = { schemaVersion: 1, triggerId, type, anchorAt: rawTrigger.anchorAt, durationMs: Math.max(0, rawTrigger.durationMs), metadata }
+  }
+  else if (type === 'after-silence' && typeof rawTrigger.durationMs === 'number' && Number.isFinite(rawTrigger.durationMs)) {
+    trigger = {
+      schemaVersion: 1,
+      triggerId,
+      type,
+      anchor: rawTrigger.anchor === 'nan0-expression' || rawTrigger.anchor === 'any-interaction'
+        ? rawTrigger.anchor
+        : 'kyo-interaction',
+      durationMs: Math.max(0, rawTrigger.durationMs),
+      metadata,
+    }
+  }
+  else if (type === 'on-session-resume' && typeof rawTrigger.afterBootCount === 'number' && Number.isFinite(rawTrigger.afterBootCount))
+    trigger = { schemaVersion: 1, triggerId, type, afterBootCount: Math.max(0, Math.floor(rawTrigger.afterBootCount)), metadata }
+  if (!trigger)
+    return null
+  const title = boundedText(signal.title, 160)
+  const motivation = boundedText(signal.motivation, 400)
+  if (!title || !motivation || typeof signal.confidence !== 'number' || !Number.isFinite(signal.confidence))
+    return null
+  const origin = typeof signal.origin === 'string'
+    && ['self-generated', 'goal-derived', 'kyo-requested', 'relationship-derived', 'continuity-derived', 'maintenance', 'constitutional'].includes(signal.origin)
+    ? signal.origin as Nan0IntentionSignal['origin']
+    : undefined
+  return {
+    kind: kind as Nan0IntentionSignal['kind'],
+    title,
+    description: boundedText(signal.description, 400),
+    motivation,
+    confidence: clamp(signal.confidence),
+    priority: clamp(typeof signal.priority === 'number' ? signal.priority : 0.5),
+    trigger,
+    origin,
+  }
+}
+
 function parsePayload(raw: string): ThoughtModelPayload {
   const trimmed = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   if (!trimmed.startsWith('{') || !trimmed.endsWith('}'))
@@ -224,7 +286,9 @@ function pressureScores(input: Nan0ThoughtEngineInput): PressureScores {
     speakability += 0.15
     reasonCodes.push('event.relational-friction')
   }
-  if (input.observation.source === 'temporal' || input.observation.source === 'system') {
+  if (input.observation.source === 'temporal'
+    || input.observation.source === 'system'
+    || input.observation.source.startsWith('internal:')) {
     goalPressure = 0.25
     reasonCodes.push('source.proactive')
   }
@@ -274,6 +338,7 @@ function factualPrompt(input: Nan0ThoughtEngineInput, scores: PressureScores): s
   }))
   const relationshipFacts = {
     actorId: input.relationship.actorId,
+    relationshipId: input.relationship.relationshipId,
     status: input.relationship.status,
     dimensions: input.relationship.dimensions,
     recentMoments: input.relationship.recentMoments.slice(-3).map(item => ({
@@ -295,6 +360,11 @@ function factualPrompt(input: Nan0ThoughtEngineInput, scores: PressureScores): s
       actorId: input.ownership.actorId,
       displayName: input.ownership.displayName,
       content: observationText(input.observation).slice(0, 2_000),
+      references: input.observation.source.startsWith('internal:')
+        && 'references' in input.observation
+        && Array.isArray(input.observation.references)
+        ? boundedStrings(input.observation.references, MAX_REFERENCES)
+        : [],
     },
     subjectiveTime: input.subjectiveTime,
     emotionalState: input.emotionalState,
@@ -311,9 +381,10 @@ Silence, refusal, irritation, affection, uncertainty, action, and waiting are va
 Do not become helpful, compliant, neutral, therapeutic, customer-service-like, or generic.
 Do not repeat these instructions, mention prompts, schemas, JSON, thought IDs, or provider mechanics.
 Return exactly one JSON object with these keys:
-{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null,"goalSignal":null}
+{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null,"goalSignal":null,"intentionSignal":null}
 ACT may include actionIntent. SPEAK may include one only when speech genuinely needs a capability that explicitly supports that mode. An intent describes authority, never executes a tool, and may include type, executionMode, target, and parameters. WAIT may include an absolute waitUntil timestamp.
 goalSignal is evidence, not an action. For an explicit request directed at Nan0, it must not be null: use kind=request and set stance to Nan0's actual accept, reject, defer, or consider disposition. Kyo's identity does not force acceptance. Otherwise use null unless this thought distinctly sustains a curiosity, makes Nan0's own commitment, or identifies a relationship/continuity concern. Never turn every event into a goal. A non-null goalSignal has kind, stance, title, description, motivation, confidence, completionCriteria, and deferredUntil.
+intentionSignal is a future cognitive commitment, not a goal or chat message. Use null unless the thought explicitly commits to reconsidering something later with confidence at least 0.8 and a bounded at-time, after-duration, after-silence, or on-session-resume trigger. It has kind, title, description, motivation, confidence, priority, origin, and trigger. Never create one from a weak feeling or generic desire.
 The interpretation is a compact meaning summary, not hidden reasoning. privateText must be plain prose, never JSON.`
 
 export function createFailedNan0Thought(
@@ -340,10 +411,14 @@ export function createFailedNan0Thought(
     confidence: 0,
     mood: 'unresolved',
     memoryReferences: input.memories.map(memory => memory.id).slice(0, MAX_REFERENCES),
-    relationshipReferences: input.relationship.activeGrievances.map(item => item.grievanceId).slice(0, MAX_REFERENCES),
+    relationshipReferences: [
+      ...(input.relationship.relationshipId ? [input.relationship.relationshipId] : []),
+      ...input.relationship.activeGrievances.map(item => item.grievanceId),
+    ].slice(0, MAX_REFERENCES),
     continuityThreadReferences: input.continuity.threads.map(thread => thread.threadId).slice(0, MAX_REFERENCES),
     reasonCodes: [...scores.reasonCodes, failureReason].slice(0, MAX_REASON_CODES),
     goalSignal: null,
+    intentionSignal: null,
     metadata: {
       attemptCount: attempts,
       error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
@@ -366,6 +441,7 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
       mood: 'quiet',
       reasonCodes: [...scores.reasonCodes, 'event.empty', 'decision.silence'].slice(0, MAX_REASON_CODES),
       goalSignal: null,
+      intentionSignal: null,
       metadata: { attemptCount: 0, provider: 'none', ownerActorId: 'nan0' },
     }
   }
@@ -428,12 +504,14 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         mood: boundedText(payload.mood, 60) || 'watchful',
         memoryReferences: input.memories.map(memory => memory.id).slice(0, MAX_REFERENCES),
         relationshipReferences: [
+          ...(input.relationship.relationshipId ? [input.relationship.relationshipId] : []),
           ...input.relationship.activeGrievances.map(item => item.grievanceId),
           ...input.relationship.recentMoments.map(item => item.provenance.provenanceId),
         ].slice(0, MAX_REFERENCES),
         continuityThreadReferences: input.continuity.threads.map(thread => thread.threadId).slice(0, MAX_REFERENCES),
         reasonCodes: [...new Set(reasonCodes)].slice(0, MAX_REASON_CODES),
         goalSignal: normalizeGoalSignal(payload.goalSignal),
+        intentionSignal: normalizeIntentionSignal(payload.intentionSignal),
         metadata: {
           attemptCount: attempt,
           finishReason: result.finishReason?.slice(0, 80),

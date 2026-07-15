@@ -34,4 +34,9 @@ describe('Nan0 renderer ownership', () => {
     })
     expect(appendCount).toBe(0)
   })
+
+  it('never grants a non-owner renderer temporal writer responsibility', () => {
+    const renderers = ['#/actor', '#/settings', '#/caption'].map(hash => createNan0RendererIdentity(hash, () => `renderer-${hash}`))
+    expect(renderers.every(renderer => !renderer.isOwner)).toBe(true)
+  })
 })

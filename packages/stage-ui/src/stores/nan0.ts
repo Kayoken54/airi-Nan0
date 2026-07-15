@@ -4,6 +4,7 @@ import {
   InMemoryStateStore,
   LocalStorageStateStore,
   Nan0Kernel,
+  SystemNan0Clock,
 } from '@proj-airi/nan0-runtime'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -14,7 +15,8 @@ import type {
   Nan0BridgeRequestMap,
   Nan0PreparedTurnProxy,
 } from './nan0-bridge'
-import { requestNan0Owner, setNan0OwnerHandler, toPreparedTurnProxy } from './nan0-bridge'
+import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toPreparedTurnProxy } from './nan0-bridge'
+import { createNan0AutonomyScheduler } from './nan0-autonomy-scheduler'
 import type { Nan0RendererIdentity } from './nan0-renderer'
 
 const NAN0_CONTEXT_MARKER = '[NAN0 KERNEL CONTEXT]'
@@ -73,15 +75,18 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     }
   }
 
+  const clock = new SystemNan0Clock()
   const stateStore = typeof window !== 'undefined' && window.localStorage
     ? new LocalStorageStateStore('nan0/kernel-state/v1', {
         storage: window.localStorage,
+        clock,
         diagnostic,
       })
     : new InMemoryStateStore()
 
   const kernel = new Nan0Kernel({
     stateStore,
+    clock,
     createId: () => nanoid(),
     reasoningClient: {
       async generate(request) {
@@ -221,11 +226,30 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           await kernel.failTurn(payload as Nan0BridgeRequestMap['fail'])
           return { persisted: true }
         }
+        case 'evaluateAutonomy': {
+          const batch = await kernel.evaluatePendingIntentions(payload as Nan0BridgeRequestMap['evaluateAutonomy'])
+          return toAutonomyEvaluationProxy(batch)
+        }
+        case 'deferAutonomy': {
+          await kernel.deferAutonomousExpression(payload as Nan0BridgeRequestMap['deferAutonomy'])
+          return { persisted: true }
+        }
       }
     }
 
     activeInstallationCleanup?.()
-    activeInstallationCleanup = setNan0OwnerHandler(renderer.instanceId, handleOwnerRequest)
+    const cleanupOwnerHandler = setNan0OwnerHandler(renderer.instanceId, handleOwnerRequest)
+    const recordShutdown = () => {
+      void kernel.shutdown().catch(error => diagnostic('kernel.shutdown.failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    }
+    window.addEventListener('pagehide', recordShutdown)
+    activeInstallationCleanup = () => {
+      window.removeEventListener('pagehide', recordShutdown)
+      cleanupOwnerHandler()
+      recordShutdown()
+    }
     installed.value = true
     diagnostic('store.owner.install.complete', {
       memoryCount: kernel.getStateSnapshot().memories.length,
@@ -238,6 +262,12 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     const { useChatOrchestratorStore } = await import('./chat')
     const chat = useChatOrchestratorStore()
     const preparedTurns = new Map<string, Nan0PreparedTurnProxy>()
+    const autonomyByTurn = new Map<string, { intentionId: string, evaluationId: string }>()
+    const pendingAutonomy = new Map<string, {
+      prepared: Nan0PreparedTurnProxy
+      intentionId: string
+      evaluationId: string
+    }>()
 
     function turnKey(context: { message: { id?: string } }): string {
       const messageId = context.message.id
@@ -248,6 +278,25 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
 
     const cleanups = [
       chat.onBeforeMessageComposed(async (message, context) => {
+        const autonomyCorrelationId = String((context.message as any).nan0AutonomyCorrelationId ?? '')
+        const autonomous = autonomyCorrelationId ? pendingAutonomy.get(autonomyCorrelationId) : undefined
+        if (autonomous) {
+          const key = turnKey(context)
+          pendingAutonomy.delete(autonomyCorrelationId)
+          preparedTurns.set(key, autonomous.prepared)
+          autonomyByTurn.set(key, {
+            intentionId: autonomous.intentionId,
+            evaluationId: autonomous.evaluationId,
+          })
+          lastThoughtId.value = autonomous.prepared.thoughtId
+          diagnostic('autonomy.executor.prepared', {
+            intentionId: autonomous.intentionId,
+            evaluationId: autonomous.evaluationId,
+            thoughtId: autonomous.prepared.thoughtId,
+            turnId: autonomous.prepared.turnId,
+          })
+          return
+        }
         const source = context.input?.type?.startsWith('input:')
           ? context.input.type.slice('input:'.length)
           : 'chat'
@@ -363,6 +412,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       chat.onAssistantResponseEnd(async (message, context) => {
         const key = turnKey(context)
         const prepared = preparedTurns.get(key)
+        const autonomy = autonomyByTurn.get(key)
         diagnostic('bridge.delegate.assistant-end.fired', {
           thoughtId: prepared?.thoughtId,
           outputLength: message.length,
@@ -380,18 +430,23 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             assistantMessageId: context.assistantMessageId,
             inputType: context.input?.type,
             completionHook: 'onAssistantResponseEnd',
+            intentionId: autonomy?.intentionId,
+            evaluationId: autonomy?.evaluationId,
           },
         })
         preparedTurns.delete(key)
+        autonomyByTurn.delete(key)
         diagnostic('bridge.delegate.assistant-end.acknowledged', {
           thoughtId: prepared.thoughtId,
           turnId: prepared.turnId,
         })
+        scheduler.notify('turn-complete')
       }),
 
       chat.onAssistantSilence(async (reason, context) => {
         const key = turnKey(context)
         const prepared = preparedTurns.get(key)
+        const autonomy = autonomyByTurn.get(key)
         if (!prepared)
           return
         await requestNan0Owner(renderer.instanceId, 'terminal', {
@@ -408,14 +463,19 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             expressionOutcome: prepared.decision.finalDecision === 'SPEAK'
               ? 'provider-silence'
               : 'decision-terminal',
+            intentionId: autonomy?.intentionId,
+            evaluationId: autonomy?.evaluationId,
           },
         })
         preparedTurns.delete(key)
+        autonomyByTurn.delete(key)
+        scheduler.notify('turn-complete')
       }),
 
       chat.onChatError(async (error, context) => {
         const key = turnKey(context)
         const prepared = preparedTurns.get(key)
+        const autonomy = autonomyByTurn.get(key)
         if (!prepared)
           return
 
@@ -428,17 +488,80 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             technicalDetail: error.detail,
             inputType: context.input?.type,
             completionHook: 'onChatError',
+            intentionId: autonomy?.intentionId,
+            evaluationId: autonomy?.evaluationId,
           },
         })
         preparedTurns.delete(key)
+        autonomyByTurn.delete(key)
+        scheduler.notify('turn-complete')
       }),
     ]
+
+    const scheduler = createNan0AutonomyScheduler({
+      isHostReady: () => !chat.sending,
+      async evaluate(reason) {
+        const response = await requestNan0Owner(renderer.instanceId, 'evaluateAutonomy', {
+          reason,
+          hostReady: !chat.sending,
+          limit: 2,
+        })
+        for (const evaluation of response.evaluations) {
+          if (!evaluation.prepared)
+            continue
+          if (chat.sending) {
+            await requestNan0Owner(renderer.instanceId, 'deferAutonomy', {
+              intentionId: evaluation.intentionId,
+              turnId: evaluation.prepared.turnId,
+              thoughtId: evaluation.prepared.thoughtId,
+              reason: 'autonomy.host-became-busy',
+            })
+            continue
+          }
+          const correlationId = `autonomy_${nanoid()}`
+          pendingAutonomy.set(correlationId, {
+            prepared: evaluation.prepared,
+            intentionId: evaluation.intentionId,
+            evaluationId: evaluation.evaluationId,
+          })
+          try {
+            await chat.ingest('', {
+              triggerOnly: true,
+              metadata: {
+                nan0AutonomyCorrelationId: correlationId,
+                intentionId: evaluation.intentionId,
+                evaluationId: evaluation.evaluationId,
+                actorId: 'nan0',
+                source: 'internal:intention',
+              },
+            }, evaluation.prepared.sessionId)
+          }
+          catch (error) {
+            pendingAutonomy.delete(correlationId)
+            await requestNan0Owner(renderer.instanceId, 'deferAutonomy', {
+              intentionId: evaluation.intentionId,
+              turnId: evaluation.prepared.turnId,
+              thoughtId: evaluation.prepared.thoughtId,
+              reason: error instanceof Error ? error.message : 'autonomy.expression-handoff-failed',
+            })
+          }
+        }
+        return { nextEvaluationAt: response.nextEvaluationAt }
+      },
+      onError: error => diagnostic('autonomy.scheduler.failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    })
+    scheduler.start()
 
     activeInstallationCleanup?.()
     activeInstallationCleanup = () => {
       for (const cleanup of cleanups)
         cleanup()
+      scheduler.stop()
       preparedTurns.clear()
+      autonomyByTurn.clear()
+      pendingAutonomy.clear()
     }
     installed.value = true
     diagnostic('store.executor.install.complete', {

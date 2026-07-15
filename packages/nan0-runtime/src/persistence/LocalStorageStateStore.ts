@@ -1,4 +1,4 @@
-import type { Nan0KernelState, Nan0StateStore } from '../types'
+import type { Nan0Clock, Nan0KernelState, Nan0StateStore } from '../types'
 import {
   createEmptyContinuityState,
   mergeContinuityStates,
@@ -19,7 +19,10 @@ import {
 import { mergeNan0Thoughts } from '../thought/Nan0ThoughtEngine'
 import { mergeNan0Decisions } from '../decision/Nan0DecisionEngine'
 import { mergeNan0Goals } from '../goals/Nan0Goals'
+import { mergePendingIntentionStates, normalizePendingIntentionState } from '../intentions/Nan0PendingIntentions'
 import { mergeActionIntents, mergeComputationAttempts } from '../lifecycle/Nan0Lifecycle'
+import { SystemNan0Clock } from '../temporal/Nan0Clock'
+import { mergeTemporalStates, normalizeTemporalState } from '../temporal/Nan0Temporal'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -28,12 +31,14 @@ export interface Nan0StorageLike {
 
 export interface LocalStorageStateStoreOptions {
   storage?: Nan0StorageLike
+  clock?: Nan0Clock
   diagnostic?: (event: string, details: Record<string, unknown>) => void
 }
 
 export function mergeNan0States(
   persisted: Nan0KernelState | null,
   candidate: Nan0KernelState,
+  clock: Nan0Clock = new SystemNan0Clock(),
 ): Nan0KernelState {
   if (!persisted) {
     return {
@@ -42,10 +47,12 @@ export function mergeNan0States(
       thoughts: mergeNan0Thoughts([], candidate.thoughts),
       decisions: mergeNan0Decisions([], candidate.decisions),
       goals: mergeNan0Goals([], candidate.goals),
+      pendingIntentions: normalizePendingIntentionState(candidate.pendingIntentions, candidate.createdAt),
       computations: mergeComputationAttempts([], candidate.computations),
       actionIntents: mergeActionIntents([], candidate.actionIntents),
       turns: normalizeConversationTurns(candidate.turns),
       timeline: normalizeTimelineState(candidate.timeline),
+      temporal: normalizeTemporalState(candidate.temporal, clock, candidate.createdAt),
       continuity: normalizeContinuityState(candidate.continuity),
       relationships: normalizeRelationshipState(candidate.relationships, candidate.createdAt),
     }
@@ -79,10 +86,12 @@ export function mergeNan0States(
     thoughts: mergeNan0Thoughts(persisted.thoughts, candidate.thoughts),
     decisions: mergeNan0Decisions(persisted.decisions, candidate.decisions),
     goals: mergeNan0Goals(persisted.goals, candidate.goals),
+    pendingIntentions: mergePendingIntentionStates(persisted.pendingIntentions, candidate.pendingIntentions, Math.min(persisted.createdAt, candidate.createdAt)),
     computations: mergeComputationAttempts(persisted.computations, candidate.computations),
     actionIntents: mergeActionIntents(persisted.actionIntents, candidate.actionIntents),
     turns: mergeConversationTurns(persisted.turns, candidate.turns),
     timeline: mergeTimelineStates(persisted.timeline, candidate.timeline),
+    temporal: mergeTemporalStates(persisted.temporal, candidate.temporal, clock, Math.min(persisted.createdAt, candidate.createdAt)),
     continuity: mergeContinuityStates(persisted.continuity, candidate.continuity),
     relationships: mergeRelationshipStates(
       normalizeRelationshipState(persisted.relationships, persisted.createdAt),
@@ -93,12 +102,14 @@ export function mergeNan0States(
 
 export class LocalStorageStateStore implements Nan0StateStore {
   private readonly storage: Nan0StorageLike | undefined
+  private readonly clock: Nan0Clock
 
   constructor(
     private readonly key = 'nan0/kernel-state/v1',
     private readonly options: LocalStorageStateStoreOptions = {},
   ) {
     this.storage = options.storage ?? globalThis.localStorage
+    this.clock = options.clock ?? new SystemNan0Clock()
   }
 
   async load(): Promise<Nan0KernelState | null> {
@@ -116,12 +127,14 @@ export class LocalStorageStateStore implements Nan0StateStore {
       thoughts: mergeNan0Thoughts([], parsed.thoughts),
       decisions: mergeNan0Decisions([], parsed.decisions),
       goals: mergeNan0Goals([], parsed.goals),
+      pendingIntentions: normalizePendingIntentionState(parsed.pendingIntentions, parsed.createdAt),
       computations: mergeComputationAttempts([], parsed.computations),
       actionIntents: mergeActionIntents([], parsed.actionIntents),
       turns: normalizeConversationTurns(parsed.turns),
       timeline: parsed.timeline
         ? normalizeTimelineState(parsed.timeline)
         : createEmptyTimelineState(),
+      temporal: normalizeTemporalState(parsed.temporal, this.clock, parsed.createdAt),
       continuity: parsed.continuity
         ? normalizeContinuityState(parsed.continuity)
         : createEmptyContinuityState(),
@@ -135,6 +148,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       thoughtCount: state.thoughts.length,
       decisionCount: state.decisions.length,
       goalCount: state.goals.length,
+      pendingIntentionCount: state.pendingIntentions.intentions.length,
       computationCount: state.computations.length,
       actionIntentCount: state.actionIntents.length,
       turnCount: state.turns.length,
@@ -142,6 +156,8 @@ export class LocalStorageStateStore implements Nan0StateStore {
       continuityThreadCount: state.continuity.threads.length,
       relationshipCount: Object.keys(state.relationships.records).length,
       bootCount: state.bootCount,
+      temporalRevision: state.temporal.revision,
+      clockAdjustmentCount: state.temporal.detectedClockAdjustments.length,
     })
     return state
   }
@@ -151,7 +167,7 @@ export class LocalStorageStateStore implements Nan0StateStore {
       throw new Error('localStorage is unavailable in this runtime.')
 
     const before = await this.load()
-    const merged = mergeNan0States(before, state)
+    const merged = mergeNan0States(before, state, this.clock)
     this.storage.setItem(this.key, JSON.stringify(merged))
     this.options.diagnostic?.('state.save', {
       previousRevision: before?.revision ?? 0,
@@ -162,11 +178,14 @@ export class LocalStorageStateStore implements Nan0StateStore {
       thoughtCount: merged.thoughts.length,
       decisionCount: merged.decisions.length,
       goalCount: merged.goals.length,
+      pendingIntentionCount: merged.pendingIntentions.intentions.length,
       turnCount: merged.turns.length,
       timelineEventCount: merged.timeline.events.length,
       continuityThreadCount: merged.continuity.threads.length,
       relationshipCount: Object.keys(merged.relationships.records).length,
       thoughtId: merged.lastThoughtId,
+      temporalRevision: merged.temporal.revision,
+      clockAdjustmentCount: merged.temporal.detectedClockAdjustments.length,
     })
     return structuredClone(merged)
   }

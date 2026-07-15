@@ -6,6 +6,8 @@ import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
 import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
 import { createEmptyRelationshipState } from '../relationship/RelationshipMemory'
+import { ControllableNan0Clock } from '../temporal/Nan0Clock'
+import { createEmptyTemporalState } from '../temporal/Nan0Temporal'
 import { createEmptyTimelineState } from './SessionTimeline'
 
 const reasoningClient: Nan0ReasoningClient = {
@@ -15,11 +17,7 @@ const reasoningClient: Nan0ReasoningClient = {
 }
 
 function createClock(initial = 100) {
-  let value = initial
-  return {
-    now: () => value,
-    set: (next: number) => { value = next },
-  }
+  return new ControllableNan0Clock({ wallTime: initial, monotonicTime: initial })
 }
 
 function createKernel(
@@ -34,7 +32,7 @@ function createKernel(
     kernel: new Nan0Kernel({
       stateStore,
       reasoningClient: client,
-      now: clock.now,
+      clock,
       createId: () => `${prefix}-${++nextId}`,
     }),
   }
@@ -68,10 +66,12 @@ function legacyState(memories: Nan0KernelState['memories']): Nan0KernelState {
     thoughts: [],
     decisions: [],
     goals: [],
+    pendingIntentions: { schemaVersion: 1, revision: 0, intentions: [] },
     computations: [],
     actionIntents: [],
     turns: [],
     timeline: createEmptyTimelineState(),
+    temporal: createEmptyTemporalState(new ControllableNan0Clock({ wallTime: 1 }), 1),
     continuity: createEmptyContinuityState(),
     relationships: createEmptyRelationshipState(1),
   }

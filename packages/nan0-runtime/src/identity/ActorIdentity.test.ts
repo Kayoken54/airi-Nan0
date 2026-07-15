@@ -7,6 +7,8 @@ import { createEmptyRelationshipState } from '../relationship/RelationshipMemory
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
 import { createDefaultIdentityState, hydrateIdentityState, normalizeActorId, resolveObservationOwnership } from './ActorIdentity'
+import { ControllableNan0Clock } from '../temporal/Nan0Clock'
+import { createEmptyTemporalState } from '../temporal/Nan0Temporal'
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
@@ -32,7 +34,7 @@ function createKernel(stateStore = new InMemoryStateStore()) {
   return new Nan0Kernel({
     stateStore,
     reasoningClient,
-    now: () => 1000,
+    clock: new ControllableNan0Clock({ wallTime: 1000, monotonicTime: 1000 }),
     createId: () => `id-${++nextId}`,
   })
 }
@@ -182,6 +184,7 @@ describe('actor identity ownership', () => {
       thoughts: [],
       decisions: [],
       goals: [],
+      pendingIntentions: { schemaVersion: 1, revision: 0, intentions: [] },
       computations: [],
       actionIntents: [],
       turns: [],
@@ -195,6 +198,7 @@ describe('actor identity ownership', () => {
         sessions: {},
         events: [],
       },
+      temporal: createEmptyTemporalState(new ControllableNan0Clock({ wallTime: 1 }), 1),
       memories: [
         {
           id: 'legacy-user',

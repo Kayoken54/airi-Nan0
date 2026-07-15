@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
+import { ControllableNan0Clock } from '../temporal/Nan0Clock'
 import { mergeActionIntents, mergeComputationAttempts, privateThoughtTimeoutPolicy } from './Nan0Lifecycle'
 
 const observation: Nan0Observation = {
@@ -33,14 +34,14 @@ function successThought() {
 
 function kernel(client: Nan0ReasoningClient, store = new InMemoryStateStore(), timeout = 10) {
   let id = 0
-  let now = 1_000
+  const clock = new ControllableNan0Clock({ wallTime: 1_000, monotonicTime: 1_000 })
   return new Nan0Kernel({
     stateStore: store,
     reasoningClient: client,
     privateThoughtTimeoutMs: timeout,
     privateThoughtProviderMetadata: { providerId: 'safe-provider', model: 'safe-model' },
     createId: () => `lifecycle-${++id}`,
-    now: () => ++now,
+    clock,
   })
 }
 
@@ -192,8 +193,9 @@ describe('bounded Nan0 computation lifecycle', () => {
   })
 
   it('permits durable deadlines far beyond private computation timeout', () => {
-    const intentionPolicy = { schemaVersion: 1 as const, policyId: 'future.deadline', kind: 'deadline' as const, durationMs: null, deadline: Date.now() + 86_400_000, condition: null, metadata: {} }
-    expect(intentionPolicy.deadline! - Date.now()).toBeGreaterThan(privateThoughtTimeoutPolicy().durationMs!)
+    const now = 1_000
+    const intentionPolicy = { schemaVersion: 1 as const, policyId: 'future.deadline', kind: 'deadline' as const, durationMs: null, deadline: now + 86_400_000, condition: null, metadata: {} }
+    expect(intentionPolicy.deadline! - now).toBeGreaterThan(privateThoughtTimeoutPolicy().durationMs!)
   })
 
   it('booting persisted long-lived state triggers no provider computation', async () => {

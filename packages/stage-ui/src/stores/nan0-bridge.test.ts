@@ -1,7 +1,7 @@
 import type { Nan0PreparedTurn } from '@proj-airi/nan0-runtime'
 import { describe, expect, it } from 'vitest'
 
-import { toPreparedTurnProxy } from './nan0-bridge'
+import { toAutonomyEvaluationProxy, toPreparedTurnProxy } from './nan0-bridge'
 
 function preparedTurn(): Nan0PreparedTurn {
   return {
@@ -99,5 +99,24 @@ describe('Nan0 renderer bridge', () => {
       lifecyclePolicyId: 'test.immediate',
       authorizedToolNames: ['test_noop'],
     })
+  })
+
+  it('never sends a private autonomous thought across the owner bridge', () => {
+    const proxy = toAutonomyEvaluationProxy({
+      nextEvaluationAt: null,
+      evaluations: [{
+        intentionId: 'intention-1',
+        evaluationId: 'evaluation-1',
+        observationId: 'observation-1',
+        prepared: preparedTurn(),
+        outcome: 'SPEAK',
+        nextEvaluationAt: null,
+      }],
+    })
+    const serialized = JSON.stringify(proxy)
+    expect(serialized).toContain('intention-1')
+    expect(serialized).not.toContain('privateText')
+    expect(serialized).not.toContain('This must stay')
+    expect(serialized).not.toContain('interpretation')
   })
 })

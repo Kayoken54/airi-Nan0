@@ -5,6 +5,8 @@ import { createDefaultIdentityState, nan0Ownership } from '../identity/ActorIden
 import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
 import { createEmptyRelationshipState } from '../relationship/RelationshipMemory'
 import { createEmptyTimelineState } from '../timeline/SessionTimeline'
+import { ControllableNan0Clock } from '../temporal/Nan0Clock'
+import { createEmptyTemporalState } from '../temporal/Nan0Temporal'
 import { LocalStorageStateStore } from './LocalStorageStateStore'
 
 class TestStorage {
@@ -65,10 +67,12 @@ function state(memories: Nan0MemoryRecord[], overrides: Partial<Nan0KernelState>
     thoughts: overrides.thoughts ?? [],
     decisions: overrides.decisions ?? [],
     goals: overrides.goals ?? [],
+    pendingIntentions: overrides.pendingIntentions ?? { schemaVersion: 1, revision: 0, intentions: [] },
     computations: overrides.computations ?? [],
     actionIntents: overrides.actionIntents ?? [],
     turns: [],
     timeline: createEmptyTimelineState(),
+    temporal: overrides.temporal ?? createEmptyTemporalState(new ControllableNan0Clock({ wallTime: 1 }), 1),
     continuity: createEmptyContinuityState(),
     ...overrides,
     relationships: overrides.relationships ?? createEmptyRelationshipState(1),
@@ -303,16 +307,20 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     expect(persisted?.continuity.threads[0].unresolvedItems).toHaveLength(1)
   })
 
-  it('migrates legacy state with empty computation and action-intent collections', async () => {
+  it('migrates legacy state with empty lifecycle and temporal collections', async () => {
     const storage = new TestStorage()
     const legacy = state([]) as Partial<Nan0KernelState>
     delete legacy.computations
     delete legacy.actionIntents
+    delete legacy.temporal
+    delete legacy.pendingIntentions
     storage.setItem('nan0-test', JSON.stringify(legacy))
 
     const reloaded = await new LocalStorageStateStore('nan0-test', { storage }).load()
     expect(reloaded?.computations).toEqual([])
     expect(reloaded?.actionIntents).toEqual([])
+    expect(reloaded?.pendingIntentions).toEqual({ schemaVersion: 1, revision: 0, intentions: [] })
+    expect(reloaded?.temporal).toMatchObject({ schemaVersion: 1, conditions: [], detectedClockAdjustments: [] })
   })
 
   it('prevents a stale writer from deleting a newer durable action intent', async () => {
@@ -341,5 +349,39 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     await staleWriter.save(stale)
 
     expect((await currentWriter.load())?.actionIntents).toEqual([actionIntent])
+  })
+
+  it('prevents a stale writer from rolling temporal markers or eligibility backward', async () => {
+    const storage = new TestStorage()
+    const clock = new ControllableNan0Clock({ wallTime: 10_000, monotonicTime: 100 })
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage, clock })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage, clock })
+    const stale = await currentWriter.save(state([], {
+      temporal: {
+        ...createEmptyTemporalState(clock),
+        revision: 1,
+        lastKyoInteractionAt: 1_000,
+        conditions: [
+          { schemaVersion: 1, conditionId: 'wake-1', ownerType: 'sleep', ownerId: 'sleep-1', dueAt: 5_000, status: 'pending', eligibleAt: null, lastEvaluatedAt: null, metadata: {} },
+        ],
+        nextEvaluationAt: 5_000,
+      },
+    }))
+    await currentWriter.save(state([], {
+      temporal: {
+        ...stale.temporal,
+        revision: 3,
+        lastKyoInteractionAt: 9_000,
+        conditions: stale.temporal.conditions.map(item => ({ ...item, status: 'eligible' as const, eligibleAt: 10_000, lastEvaluatedAt: 10_000 })),
+        nextEvaluationAt: null,
+      },
+    }))
+    await staleWriter.save(stale)
+
+    expect((await currentWriter.load())?.temporal).toMatchObject({
+      lastKyoInteractionAt: 9_000,
+      nextEvaluationAt: null,
+      conditions: [expect.objectContaining({ conditionId: 'wake-1', status: 'eligible', eligibleAt: 10_000 })],
+    })
   })
 })

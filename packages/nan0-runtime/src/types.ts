@@ -5,6 +5,10 @@ export type Nan0ObservationSource =
   | 'vision'
   | 'system'
   | 'temporal'
+  | 'internal:intention'
+  | 'internal:temporal'
+  | 'internal:session-resume'
+  | 'internal:state-change'
 
 export interface Nan0Observation {
   id: string
@@ -15,6 +19,21 @@ export interface Nan0Observation {
   content: unknown
   metadata: Record<string, unknown>
   timestamp: number
+}
+
+export type Nan0InternalObservationSource = Extract<
+  Nan0ObservationSource,
+  `internal:${string}`
+>
+
+export interface Nan0InternalObservation extends Nan0Observation {
+  source: Nan0InternalObservationSource
+  actorId: 'nan0'
+  intentionId: string
+  relatedGoalId: string | null
+  triggerType: Nan0IntentionTrigger['type']
+  wakeReason: string
+  references: string[]
 }
 
 export type Nan0ActorKind = 'kyo' | 'nan0' | 'external' | 'unknown'
@@ -52,6 +71,27 @@ export interface Nan0ActorOwnership {
 }
 
 export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
+
+export interface Nan0LocalTime {
+  utcEpochMs: number
+  utcIso: string
+  localIso: string
+  timezone: string
+  timezoneOffsetMinutes: number
+}
+
+export interface Nan0Clock {
+  readonly source: string
+  readonly confidence: number
+  utcNow(): number
+  localNow(): Nan0LocalTime
+  monotonicNow(): number
+  timezone(): string
+  timezoneOffsetMinutes(atUtcMs?: number): number
+  toLocal(utcEpochMs: number): Nan0LocalTime
+  elapsedWall(startUtcMs: number, endUtcMs?: number): number
+  elapsedMonotonic(startMonotonicMs: number, endMonotonicMs?: number): number
+}
 
 export interface Nan0ActionIntent {
   type: string
@@ -101,6 +141,9 @@ export interface Nan0ComputationAttempt {
   status: Nan0ComputationStatus
   startedAt: number
   finishedAt: number | null
+  startedMonotonicAt?: number | null
+  finishedMonotonicAt?: number | null
+  elapsedMonotonicMs?: number | null
   failureReason: string | null
   providerMetadata: Record<string, unknown>
   metadata: Record<string, unknown>
@@ -228,6 +271,151 @@ export interface Nan0Goal {
   metadata: Record<string, unknown>
 }
 
+export type Nan0PendingIntentionOrigin
+  = | 'self-generated'
+    | 'goal-derived'
+    | 'kyo-requested'
+    | 'relationship-derived'
+    | 'continuity-derived'
+    | 'maintenance'
+    | 'constitutional'
+
+export type Nan0PendingIntentionStatus
+  = | 'pending'
+    | 'eligible'
+    | 'evaluating'
+    | 'deferred'
+    | 'blocked'
+    | 'completed'
+    | 'cancelled'
+    | 'expired'
+    | 'superseded'
+    | 'failed'
+
+export type Nan0PendingIntentionKind
+  = | 'reconsider'
+    | 'follow-up'
+    | 'check-in'
+    | 'reminder'
+    | 'communicate'
+    | 'investigate'
+    | 'plan'
+    | 'state-transition'
+    | 'action-preparation'
+    | 'maintenance'
+
+interface Nan0IntentionTriggerBase {
+  schemaVersion: 1
+  triggerId: string
+  type:
+    | 'at-time'
+    | 'after-duration'
+    | 'after-silence'
+    | 'on-session-resume'
+    | 'on-relationship-condition'
+    | 'on-goal-condition'
+    | 'on-continuity-condition'
+    | 'on-state-change'
+    | 'manual'
+    | 'until-condition'
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0AtTimeTrigger extends Nan0IntentionTriggerBase {
+  type: 'at-time'
+  at: number
+}
+
+export interface Nan0AfterDurationTrigger extends Nan0IntentionTriggerBase {
+  type: 'after-duration'
+  anchorAt: number
+  durationMs: number
+}
+
+export interface Nan0AfterSilenceTrigger extends Nan0IntentionTriggerBase {
+  type: 'after-silence'
+  anchor: 'kyo-interaction' | 'nan0-expression' | 'any-interaction'
+  durationMs: number
+}
+
+export interface Nan0SessionResumeTrigger extends Nan0IntentionTriggerBase {
+  type: 'on-session-resume'
+  afterBootCount: number
+}
+
+export interface Nan0ReferencedConditionTrigger extends Nan0IntentionTriggerBase {
+  type:
+    | 'on-relationship-condition'
+    | 'on-goal-condition'
+    | 'on-continuity-condition'
+    | 'on-state-change'
+    | 'manual'
+    | 'until-condition'
+  referenceId: string | null
+  condition: string
+}
+
+export type Nan0IntentionTrigger
+  = | Nan0AtTimeTrigger
+    | Nan0AfterDurationTrigger
+    | Nan0AfterSilenceTrigger
+    | Nan0SessionResumeTrigger
+    | Nan0ReferencedConditionTrigger
+
+export interface Nan0IntentionSignal {
+  kind: Nan0PendingIntentionKind
+  title: string
+  description: string
+  motivation: string
+  confidence: number
+  priority: number
+  trigger: Nan0IntentionTrigger
+  origin?: Nan0PendingIntentionOrigin
+}
+
+export interface Nan0PendingIntention {
+  schemaVersion: 1
+  intentionId: string
+  createdAt: number
+  updatedAt: number
+  ownerActorId: 'nan0'
+  origin: Nan0PendingIntentionOrigin
+  originActorId: string
+  status: Nan0PendingIntentionStatus
+  kind: Nan0PendingIntentionKind
+  title: string
+  description: string
+  motivation: string
+  priority: number
+  confidence: number
+  goalId: string | null
+  thoughtId: string | null
+  decisionId: string | null
+  turnId: string | null
+  continuityThreadIds: string[]
+  relationshipIds: string[]
+  trigger: Nan0IntentionTrigger
+  earliestAt: number | null
+  dueAt: number | null
+  expiresAt: number | null
+  lastEvaluatedAt: number | null
+  evaluationCount: number
+  attemptCount: number
+  cooldownUntil: number | null
+  blockedReason: string | null
+  resolution: string | null
+  lastEvaluationId: string | null
+  lastWakeObservationId: string | null
+  lastTriggerEvidenceKey: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0PendingIntentionState {
+  schemaVersion: 1
+  revision: number
+  intentions: Nan0PendingIntention[]
+}
+
 export interface Nan0TrustedGoalObligation {
   origin: 'maintenance' | 'constitutional'
   title: string
@@ -298,6 +486,7 @@ export interface Nan0Thought {
   continuityThreadReferences: string[]
   reasonCodes: string[]
   goalSignal?: Nan0GoalSignal | null
+  intentionSignal?: Nan0IntentionSignal | null
   metadata: Record<string, unknown>
 }
 
@@ -364,6 +553,71 @@ export interface Nan0TimelineState {
   activeSessionId: string | null
   sessions: Record<string, Nan0TimelineSession>
   events: Nan0TimelineEvent[]
+}
+
+export type Nan0TemporalPhase = 'unknown' | 'running' | 'suspended' | 'stopped'
+
+export type Nan0ClockAdjustmentKind
+  = | 'wall-clock-backward'
+    | 'wall-clock-forward'
+    | 'timezone-change'
+    | 'timezone-offset-change'
+    | 'unclean-process-gap'
+
+export interface Nan0ClockAdjustment {
+  schemaVersion: 1
+  adjustmentId: string
+  kind: Nan0ClockAdjustmentKind
+  detectedAt: number
+  previousWallTime: number
+  observedWallTime: number
+  expectedWallTime: number | null
+  deltaMs: number
+  previousTimezone: string
+  observedTimezone: string
+  clockSource: string
+  confidence: number
+  metadata: Record<string, unknown>
+}
+
+export type Nan0TemporalConditionOwner = 'intention' | 'action' | 'job' | 'sleep' | 'cooldown' | 'condition'
+export type Nan0TemporalConditionStatus = 'pending' | 'eligible' | 'satisfied' | 'cancelled'
+
+export interface Nan0TemporalCondition {
+  schemaVersion: 1
+  conditionId: string
+  ownerType: Nan0TemporalConditionOwner
+  ownerId: string
+  dueAt: number
+  status: Nan0TemporalConditionStatus
+  eligibleAt: number | null
+  lastEvaluatedAt: number | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0TemporalState {
+  schemaVersion: 1
+  revision: number
+  lastObservedWallTime: number
+  lastObservedMonotonicTime: number
+  lastBootAt: number | null
+  lastShutdownAt: number | null
+  lastResumeAt: number | null
+  timezone: string
+  timezoneOffset: number
+  clockSource: string
+  clockConfidence: number
+  detectedClockAdjustments: Nan0ClockAdjustment[]
+  lastKyoInteractionAt: number | null
+  lastNan0ThoughtAt: number | null
+  lastNan0ExpressionAt: number | null
+  lastNan0ActionAt: number | null
+  lastNan0SleepAt: number | null
+  lastNan0WakeAt: number | null
+  currentPhase: Nan0TemporalPhase
+  nextEvaluationAt: number | null
+  conditions: Nan0TemporalCondition[]
+  metadata: Record<string, unknown>
 }
 
 export interface Nan0SubjectiveTime {
@@ -624,10 +878,12 @@ export interface Nan0KernelState {
   thoughts: Nan0Thought[]
   decisions: Nan0DecisionRecord[]
   goals: Nan0Goal[]
+  pendingIntentions: Nan0PendingIntentionState
   computations: Nan0ComputationAttempt[]
   actionIntents: Nan0ActionIntentRecord[]
   turns: Nan0ConversationTurn[]
   timeline: Nan0TimelineState
+  temporal: Nan0TemporalState
   continuity: Nan0ContinuityState
   relationships: Nan0RelationshipState
 }
@@ -666,7 +922,8 @@ export interface Nan0KernelDependencies {
   stateStore: Nan0StateStore
   reasoningClient: Nan0ReasoningClient
   createInitialState?: () => Nan0KernelState
-  now?: () => number
+  clock?: Nan0Clock
+  processId?: string
   createId?: () => string
   decisionCapabilities?: {
     canSpeak: boolean

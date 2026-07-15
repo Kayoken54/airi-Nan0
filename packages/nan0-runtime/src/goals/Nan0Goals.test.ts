@@ -12,6 +12,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDefaultIdentityState } from '../identity/ActorIdentity'
 import { createEmptyContinuityState } from '../continuity/ConversationContinuity'
 import { createEmptyTimelineState } from '../timeline/SessionTimeline'
+import { ControllableNan0Clock } from '../temporal/Nan0Clock'
+import { createEmptyTemporalState } from '../temporal/Nan0Temporal'
 import { createEmptyRelationshipState } from '../relationship/RelationshipMemory'
 import { LocalStorageStateStore, mergeNan0States } from '../persistence/LocalStorageStateStore'
 import {
@@ -177,10 +179,12 @@ function state(goals: Nan0Goal[]): Nan0KernelState {
     thoughts: [],
     decisions: [],
     goals,
+    pendingIntentions: { schemaVersion: 1, revision: 0, intentions: [] },
     computations: [],
     actionIntents: [],
     turns: [],
     timeline: createEmptyTimelineState(),
+    temporal: createEmptyTemporalState(new ControllableNan0Clock({ wallTime: 1 }), 1),
     continuity: createEmptyContinuityState(),
     relationships: createEmptyRelationshipState(1),
   }

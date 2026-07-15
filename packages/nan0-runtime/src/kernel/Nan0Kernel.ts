@@ -13,6 +13,8 @@ import type {
   Nan0KernelState,
   Nan0MemoryRecord,
   Nan0Observation,
+  Nan0PendingIntention,
+  Nan0PendingIntentionState,
   Nan0RelationshipContext,
   Nan0Thought,
 } from '../types'
@@ -47,6 +49,27 @@ import { createFailedNan0Thought, generateNan0Thought, mergeNan0Thoughts } from 
 import { evaluateNan0Decision, mergeNan0Decisions, outwardDirectiveForDecision } from '../decision/Nan0DecisionEngine'
 import { evaluateNan0Goals, goalContext, linkGoalConflict, mergeNan0Goals, transitionNan0Goal } from '../goals/Nan0Goals'
 import { mergeActionIntents, mergeComputationAttempts, privateThoughtTimeoutPolicy } from '../lifecycle/Nan0Lifecycle'
+import {
+  beginIntentionEvaluation,
+  createEmptyPendingIntentionState,
+  eligiblePendingIntentions,
+  formPendingIntentions,
+  mergePendingIntentionStates,
+  nextPendingIntentionEvaluationAt,
+  normalizePendingIntention,
+  recoverInterruptedIntentionEvaluations,
+  settleIntentionEvaluation,
+  syncPendingIntentionsToTemporal,
+} from '../intentions/Nan0PendingIntentions'
+import { SystemNan0Clock } from '../temporal/Nan0Clock'
+import {
+  createEmptyTemporalState,
+  evaluateTemporalConditions,
+  normalizeTemporalState,
+  observeTemporalClock,
+  recordTemporalActivity,
+  registerTemporalCondition,
+} from '../temporal/Nan0Temporal'
 
 type ExpressionHandler = (expression: Nan0Expression) => void
 
@@ -64,7 +87,27 @@ export interface Nan0PreparedTurn {
   actionAuthority: Nan0ActionAuthority | null
 }
 
-function defaultInitialState(now: number): Nan0KernelState {
+export interface Nan0AutonomyEvaluationResult {
+  intentionId: string
+  evaluationId: string
+  observationId: string
+  prepared: Nan0PreparedTurn | null
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  nextEvaluationAt: number | null
+}
+
+export interface Nan0AutonomyEvaluationBatch {
+  evaluations: Nan0AutonomyEvaluationResult[]
+  nextEvaluationAt: number | null
+}
+
+interface Nan0PrepareTurnOptions {
+  intention?: Nan0PendingIntention
+  autonomous?: boolean
+  hostReady?: boolean
+}
+
+function defaultInitialState(now: number, clock: import('../types').Nan0Clock): Nan0KernelState {
   return {
     schemaVersion: 1,
     revision: 0,
@@ -83,10 +126,12 @@ function defaultInitialState(now: number): Nan0KernelState {
     thoughts: [],
     decisions: [],
     goals: [],
+    pendingIntentions: createEmptyPendingIntentionState(),
     computations: [],
     actionIntents: [],
     turns: [],
     timeline: createEmptyTimelineState(),
+    temporal: createEmptyTemporalState(clock, now),
     continuity: createEmptyContinuityState(),
     relationships: createEmptyRelationshipState(now),
   }
@@ -111,21 +156,37 @@ function safeProviderMetadata(value: Record<string, unknown> | undefined): Recor
   return result
 }
 
+function autonomousReasonCode(intention: Readonly<Nan0PendingIntention>): string {
+  if (intention.trigger.type === 'on-session-resume')
+    return 'session.resume-thought'
+  if (intention.origin === 'continuity-derived')
+    return 'continuity.unresolved'
+  if (intention.origin === 'relationship-derived' || intention.kind === 'check-in')
+    return 'relationship.check-in'
+  if (intention.origin === 'goal-derived')
+    return 'goal.reconsideration'
+  return 'intention.follow-up-due'
+}
+
 export class Nan0Kernel {
   private readonly expressionHandlers = new Set<ExpressionHandler>()
+  private readonly clock: import('../types').Nan0Clock
   private readonly now: () => number
   private readonly createId: () => string
+  private readonly processId: string
   private readonly capabilities: Nan0CapabilityRegistry
   private readonly activeComputationRequestIds = new Set<string>()
   private state: Nan0KernelState
   private booted = false
 
   constructor(private readonly dependencies: Nan0KernelDependencies) {
-    this.now = dependencies.now ?? (() => Date.now())
+    this.clock = dependencies.clock ?? new SystemNan0Clock()
+    this.now = () => this.clock.utcNow()
     this.createId = dependencies.createId ?? (() => crypto.randomUUID())
+    this.processId = dependencies.processId ?? crypto.randomUUID()
     this.capabilities = new Nan0CapabilityRegistry(dependencies.capabilityDefinitions)
     this.state = dependencies.createInitialState?.()
-      ?? defaultInitialState(this.now())
+      ?? defaultInitialState(this.now(), this.clock)
   }
 
   get isBooted(): boolean {
@@ -138,6 +199,14 @@ export class Nan0Kernel {
 
   getGoals(): readonly Nan0Goal[] {
     return structuredClone(this.state.goals)
+  }
+
+  getTemporalState() {
+    return structuredClone(this.state.temporal)
+  }
+
+  getCurrentLocalTime() {
+    return this.clock.localNow()
   }
 
   async boot(): Promise<void> {
@@ -155,6 +224,22 @@ export class Nan0Kernel {
       return normalized.memory
     })
 
+    const temporalAtBoot = observeTemporalClock(
+      normalizeTemporalState(this.state.temporal, this.clock, this.state.createdAt),
+      {
+        clock: this.clock,
+        kind: 'boot',
+        processId: this.processId,
+        createAdjustmentId: () => `clock_${this.createId()}`,
+      },
+    )
+    const temporalEvaluation = evaluateTemporalConditions(temporalAtBoot, {
+      clock: this.clock,
+      processId: this.processId,
+      createAdjustmentId: () => `clock_${this.createId()}`,
+      limit: 100,
+    })
+
     this.state = migrateLegacyContinuity(migrateLegacyTimeline({
       ...this.state,
       identity,
@@ -162,12 +247,17 @@ export class Nan0Kernel {
       thoughts: mergeNan0Thoughts([], this.state.thoughts),
       decisions: mergeNan0Decisions([], this.state.decisions),
       goals: mergeNan0Goals([], this.state.goals),
+      pendingIntentions: recoverInterruptedIntentionEvaluations(
+        mergePendingIntentionStates(undefined, this.state.pendingIntentions, this.state.createdAt),
+        this.now(),
+      ),
       computations: mergeComputationAttempts([], this.state.computations),
       actionIntents: mergeActionIntents([], this.state.actionIntents),
       bootCount: this.state.bootCount + 1,
       updatedAt: this.now(),
       turns: this.state.turns ?? [],
       timeline: this.state.timeline ?? createEmptyTimelineState(),
+      temporal: temporalEvaluation.temporal,
       continuity: this.state.continuity ?? createEmptyContinuityState(),
       relationships: normalizeRelationshipState(
         this.state.relationships,
@@ -175,11 +265,16 @@ export class Nan0Kernel {
         actorId => normalizeActorId(actorId, identity, '', false),
       ),
     }))
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
+    }
 
     this.diagnostic('kernel.boot.before-save', {
       revision: this.state.revision ?? 0,
       memoryCount: this.state.memories.length,
       bootCount: this.state.bootCount,
+      eligibleTemporalConditionIds: temporalEvaluation.eligible.map(condition => condition.conditionId),
     })
     this.state = await this.dependencies.stateStore.save(this.state)
     this.booted = true
@@ -240,6 +335,12 @@ export class Nan0Kernel {
 
     this.state = {
       ...this.state,
+      temporal: observeTemporalClock(this.state.temporal, {
+        clock: this.clock,
+        kind: 'shutdown',
+        processId: this.processId,
+        createAdjustmentId: () => `clock_${this.createId()}`,
+      }),
       updatedAt: this.now(),
     }
 
@@ -275,7 +376,7 @@ export class Nan0Kernel {
    * Nan0 persists the observation and private thought before AIRI may generate
    * an outward response. AIRI still owns provider execution for both phases.
    */
-  async prepareTurn(observation: Nan0Observation): Promise<Nan0PreparedTurn> {
+  async prepareTurn(observation: Nan0Observation, options: Nan0PrepareTurnOptions = {}): Promise<Nan0PreparedTurn> {
     this.assertBooted()
 
     const { identity, ownership } = resolveObservationOwnership(observation, this.state.identity)
@@ -285,6 +386,7 @@ export class Nan0Kernel {
       displayName: ownership.displayName,
     }
     const text = observationText(canonicalObservation).trim()
+    const isInternalObservation = canonicalObservation.source.startsWith('internal:')
     const thoughtId = `thought_${this.createId()}`
     const turnId = this.createId()
     const sessionId = canonicalObservation.sessionId
@@ -311,7 +413,7 @@ export class Nan0Kernel {
       actorId: ownership.actorId,
       sessionId,
       content: text,
-      tags: [observation.source, 'user-input'],
+      tags: [observation.source, isInternalObservation ? 'internal-observation' : 'user-input'],
       createdAt: canonicalObservation.timestamp,
       metadata: {
         ...canonicalObservation.metadata,
@@ -333,7 +435,7 @@ export class Nan0Kernel {
     })
     const inputTimelineEvent = appendTimelineEvent(timeline, {
       eventId: this.createId(),
-      eventType: 'input',
+      eventType: isInternalObservation ? 'internal-observation' : 'input',
       actorId: ownership.actorId,
       source: canonicalObservation.source,
       sessionId,
@@ -345,6 +447,9 @@ export class Nan0Kernel {
       metadata: {
         observationId: canonicalObservation.id,
         ownership,
+        intentionId: canonicalObservation.metadata.intentionId,
+        evaluationId: canonicalObservation.metadata.evaluationId,
+        autonomous: isInternalObservation,
       },
     })
     timeline = {
@@ -372,6 +477,9 @@ export class Nan0Kernel {
       metadata: {
         observationId: canonicalObservation.id,
         ownership,
+        intentionId: canonicalObservation.metadata.intentionId,
+        evaluationId: canonicalObservation.metadata.evaluationId,
+        autonomous: isInternalObservation,
       },
     }
 
@@ -391,18 +499,27 @@ export class Nan0Kernel {
     }
     const nextMemories = text ? [...this.state.memories, userEvent] : this.state.memories
     const nextTurns = [...this.state.turns, turn]
+    const preferredContinuityThreadId = options.intention?.continuityThreadIds.find(threadId =>
+      this.state.continuity.threads.some(thread => thread.threadId === threadId),
+    )
     const continuityContext = continuityContextForTurn({
       continuity: continuityResult.continuity,
-      currentThreadId: continuityResult.thread.threadId,
+      currentThreadId: preferredContinuityThreadId ?? continuityResult.thread.threadId,
       query: text,
       turns: nextTurns,
       memories: nextMemories,
       at: canonicalObservation.timestamp,
       resumed: continuityResult.resumed,
     })
+    const intentionRelationship = options.intention?.relationshipIds
+      .map(relationshipId => Object.values(this.state.relationships.records).find(record => record.relationshipId === relationshipId))
+      .find(Boolean)
+    const relationshipActorId = intentionRelationship?.actorId
+      ?? (options.intention?.originActorId === 'kyo' ? 'kyo' : ownership.actorId)
+    const relationshipActor = this.state.identity.actors[relationshipActorId]
     const relationshipContext = relationshipContextForActor(this.state.relationships, {
-      actorId: ownership.actorId,
-      actorKind: ownership.kind,
+      actorId: relationshipActorId,
+      actorKind: relationshipActor?.kind ?? ownership.kind,
       source: canonicalObservation.source,
       sourceActorId: ownership.externalIdentity?.sourceActorId ?? ownership.rawActorId,
       at: canonicalObservation.timestamp,
@@ -412,6 +529,15 @@ export class Nan0Kernel {
       ...this.state,
       lastObservationAt: canonicalObservation.timestamp,
       lastThoughtId: thoughtId,
+      temporal: ownership.actorId === 'kyo'
+        ? recordTemporalActivity(this.state.temporal, {
+            clock: this.clock,
+            activity: 'kyo-interaction',
+            processId: this.processId,
+            createAdjustmentId: () => `clock_${this.createId()}`,
+            at: canonicalObservation.timestamp,
+          })
+        : this.state.temporal,
       identity,
       memories: nextMemories,
       turns: nextTurns,
@@ -431,6 +557,7 @@ export class Nan0Kernel {
     const requestId = `request_${this.createId()}`
     const timeoutPolicy = privateThoughtTimeoutPolicy(this.dependencies.privateThoughtTimeoutMs)
     const computationStartedAt = this.now()
+    const computationStartedMonotonicAt = this.clock.monotonicNow()
     const activeComputation = {
       schemaVersion: 1 as const,
       requestId,
@@ -441,6 +568,9 @@ export class Nan0Kernel {
       status: 'active' as const,
       startedAt: computationStartedAt,
       finishedAt: null,
+      startedMonotonicAt: computationStartedMonotonicAt,
+      finishedMonotonicAt: null,
+      elapsedMonotonicMs: null,
       failureReason: null,
       providerMetadata: safeProviderMetadata(this.dependencies.privateThoughtProviderMetadata),
       metadata: { observationId: canonicalObservation.id },
@@ -504,11 +634,25 @@ export class Nan0Kernel {
         clearTimeout(timeoutHandle)
       this.activeComputationRequestIds.delete(requestId)
     }
+    if (options.autonomous && options.intention) {
+      thought = {
+        ...thought,
+        reasonCodes: [...new Set([...thought.reasonCodes, autonomousReasonCode(options.intention)])].slice(0, 12),
+        metadata: {
+          ...thought.metadata,
+          intentionId: options.intention.intentionId,
+          autonomous: true,
+        },
+      }
+    }
     const computationFinishedAt = this.now()
+    const computationFinishedMonotonicAt = this.clock.monotonicNow()
     const terminalComputation = {
       ...activeComputation,
       status: timedOut ? 'timed-out' as const : thought.status === 'generated' ? 'completed' as const : 'failed' as const,
       finishedAt: computationFinishedAt,
+      finishedMonotonicAt: computationFinishedMonotonicAt,
+      elapsedMonotonicMs: this.clock.elapsedMonotonic(computationStartedMonotonicAt, computationFinishedMonotonicAt),
       failureReason: thought.status === 'failed'
         ? (timedOut ? 'thought.computation-timeout' : String(thought.metadata.error ?? 'thought.generation-failed'))
         : null,
@@ -517,6 +661,15 @@ export class Nan0Kernel {
       ...this.state,
       thoughts: mergeNan0Thoughts(this.state.thoughts, [thought]),
       computations: mergeComputationAttempts(this.state.computations, [terminalComputation]),
+      temporal: thought.status === 'generated'
+        ? recordTemporalActivity(this.state.temporal, {
+            clock: this.clock,
+            activity: 'nan0-thought',
+            processId: this.processId,
+            createAdjustmentId: () => `clock_${this.createId()}`,
+            at: thought.createdAt,
+          })
+        : this.state.temporal,
       updatedAt: this.now(),
     }
     this.state = await this.dependencies.stateStore.save(this.state)
@@ -558,6 +711,18 @@ export class Nan0Kernel {
       },
       decisionId: `decision_${this.createId()}`,
       createdAt: this.now(),
+      additionalConstraints: options.autonomous
+        ? [
+            { code: 'autonomy.intention-valid', passed: Boolean(options.intention), hard: true },
+            { code: 'autonomy.authoritative-owner', passed: true, hard: true },
+            { code: 'autonomy.host-ready', passed: options.hostReady === true, hard: true },
+            { code: 'autonomy.runtime-awake', passed: this.state.temporal.currentPhase === 'running', hard: true },
+            { code: 'autonomy.cooldown-clear', passed: (options.intention?.cooldownUntil ?? 0) <= this.now(), hard: true },
+            { code: 'autonomy.constitution-clear', passed: !options.intention?.blockedReason, hard: true },
+          ]
+        : undefined,
+      minimumSpeakAttention: options.autonomous ? 0.25 : undefined,
+      policy: options.autonomous ? 'nan0-autonomous-decision-v1' : undefined,
     })
     const preparedTurnIndex = this.state.turns.findIndex(item => item.turnId === turnId)
     const turnsWithDecision = [...this.state.turns]
@@ -584,6 +749,16 @@ export class Nan0Kernel {
       trustedObligations: this.dependencies.trustedGoalObligations,
       createGoalId: this.createId,
       now: this.now(),
+    })
+    const linkedGoal = goals.find(goal => goal.supportingThoughtIds.includes(thoughtId)) ?? null
+    const pendingIntentions = formPendingIntentions({
+      thought,
+      decision,
+      ownership,
+      goal: linkedGoal,
+      existing: this.state.pendingIntentions,
+      now: this.now(),
+      createId: this.createId,
     })
     let actionIntent: Nan0ActionIntentRecord | null = null
     let actionAuthority: Nan0ActionAuthority | null = null
@@ -619,11 +794,16 @@ export class Nan0Kernel {
       ...this.state,
       decisions: mergeNan0Decisions(this.state.decisions, [decision]),
       goals,
+      pendingIntentions,
       actionIntents: actionIntent
         ? mergeActionIntents(this.state.actionIntents, [actionIntent])
         : this.state.actionIntents,
       turns: turnsWithDecision,
       updatedAt: this.now(),
+    }
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
     }
     this.state = await this.dependencies.stateStore.save(this.state)
     this.diagnostic('prepareTurn.decision-persisted', {
@@ -809,6 +989,19 @@ export class Nan0Kernel {
           context: `Completed Nan0 turn with output event ${outputTimelineEvent.event.eventId}.`,
         }, this.createId)
       : { relationships: this.state.relationships, record: null, applied: false }
+    const intentionId = typeof turn.metadata.intentionId === 'string' ? turn.metadata.intentionId : null
+    const pendingIntentions = intentionId
+      ? settleIntentionEvaluation({
+          state: this.state.pendingIntentions,
+          intentionId,
+          at: completedAt,
+          outcome: 'SPEAK',
+          thoughtId: input.thoughtId,
+          decisionId: decision.decisionId,
+          turnId: turn.turnId,
+          resolution: 'autonomy.expression-persisted',
+        })
+      : this.state.pendingIntentions
 
     this.state = {
       ...this.state,
@@ -818,7 +1011,19 @@ export class Nan0Kernel {
       timeline: outputTimelineEvent.timeline,
       continuity,
       relationships: relationshipResult.relationships,
+      pendingIntentions,
+      temporal: recordTemporalActivity(this.state.temporal, {
+        clock: this.clock,
+        activity: 'nan0-expression',
+        processId: this.processId,
+        createAdjustmentId: () => `clock_${this.createId()}`,
+        at: completedAt,
+      }),
       updatedAt: this.now(),
+    }
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
     }
 
     this.diagnostic('recordAssistantTurn.before-save', {
@@ -963,6 +1168,293 @@ export class Nan0Kernel {
     }
     this.state = await this.dependencies.stateStore.save(this.state)
     return sessionId
+  }
+
+  getPendingIntentions(): Nan0PendingIntention[] {
+    return structuredClone(this.state.pendingIntentions.intentions)
+  }
+
+  async upsertPendingIntention(intention: Nan0PendingIntention): Promise<Nan0PendingIntention> {
+    this.assertBooted()
+    const normalized = normalizePendingIntention(intention, this.now())
+    if (!normalized.intentionId)
+      throw new Error('Pending intention requires a stable intentionId.')
+    this.state = {
+      ...this.state,
+      pendingIntentions: mergePendingIntentionStates(this.state.pendingIntentions, {
+        schemaVersion: 1,
+        revision: this.state.pendingIntentions.revision + 1,
+        intentions: [normalized],
+      }, this.state.createdAt),
+      updatedAt: this.now(),
+    }
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    return structuredClone(this.state.pendingIntentions.intentions.find(item => item.intentionId === normalized.intentionId)!)
+  }
+
+  async evaluatePendingIntentions(input: {
+    reason: 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual'
+    hostReady: boolean
+    sessionId?: string
+    limit?: number
+  }): Promise<Nan0AutonomyEvaluationBatch> {
+    this.assertBooted()
+    if (!input.hostReady
+      || this.state.temporal.currentPhase !== 'running'
+      || this.state.turns.some(turn => turn.status === 'prepared')) {
+      return {
+        evaluations: [],
+        nextEvaluationAt: nextPendingIntentionEvaluationAt(this.state.pendingIntentions, this.state.temporal),
+      }
+    }
+    const at = this.now()
+    const eligibility = eligiblePendingIntentions({
+      state: this.state.pendingIntentions,
+      temporal: this.state.temporal,
+      now: at,
+      bootCount: this.state.bootCount,
+      reason: input.reason,
+      limit: input.limit ?? 2,
+    })
+    this.state = {
+      ...this.state,
+      pendingIntentions: eligibility.state,
+      updatedAt: at,
+    }
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
+    }
+    if (!eligibility.eligible.length) {
+      this.state = await this.dependencies.stateStore.save(this.state)
+      return { evaluations: [], nextEvaluationAt: this.state.temporal.nextEvaluationAt }
+    }
+
+    const results: Nan0AutonomyEvaluationResult[] = []
+    for (const candidate of eligibility.eligible) {
+      const current = this.state.pendingIntentions.intentions.find(item => item.intentionId === candidate.intention.intentionId)
+      if (!current || !['pending', 'eligible', 'deferred'].includes(current.status))
+        continue
+      const evaluationId = `evaluation_${this.createId()}`
+      const observationId = `observation_${this.createId()}`
+      this.state = {
+        ...this.state,
+        pendingIntentions: beginIntentionEvaluation({
+          state: this.state.pendingIntentions,
+          intentionId: current.intentionId,
+          evaluationId,
+          observationId,
+          evidenceKey: candidate.evidenceKey,
+          at: this.now(),
+        }),
+        updatedAt: this.now(),
+      }
+      this.state = {
+        ...this.state,
+        temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
+      }
+      this.state = await this.dependencies.stateStore.save(this.state)
+      const evaluating = this.state.pendingIntentions.intentions.find(item => item.intentionId === current.intentionId)!
+      const observation: import('../types').Nan0InternalObservation = {
+        id: observationId,
+        source: candidate.source,
+        sessionId: input.sessionId ?? this.state.timeline.activeSessionId ?? undefined,
+        actorId: 'nan0',
+        displayName: 'Nan0',
+        content: `Pending intention "${evaluating.title}" is due for reconsideration. ${candidate.wakeReason} ${evaluating.description}`.trim(),
+        metadata: {
+          intentionId: evaluating.intentionId,
+          evaluationId,
+          triggerId: evaluating.trigger.triggerId,
+          triggerType: evaluating.trigger.type,
+          triggerEvidenceKey: candidate.evidenceKey,
+          goalId: evaluating.goalId,
+          continuityThreadIds: evaluating.continuityThreadIds,
+          relationshipIds: evaluating.relationshipIds,
+          internalOwner: 'nan0',
+        },
+        timestamp: this.now(),
+        intentionId: evaluating.intentionId,
+        relatedGoalId: evaluating.goalId,
+        triggerType: evaluating.trigger.type,
+        wakeReason: candidate.wakeReason,
+        references: [
+          ...evaluating.continuityThreadIds,
+          ...evaluating.relationshipIds,
+          ...(evaluating.goalId ? [evaluating.goalId] : []),
+        ],
+      }
+      const prepared = await this.prepareTurn(observation, {
+        intention: evaluating,
+        autonomous: true,
+        hostReady: input.hostReady,
+      })
+      const outcome = prepared.thought.status === 'failed'
+        ? 'provider-failure' as const
+        : prepared.decision.finalDecision
+      if (outcome === 'SPEAK' && prepared.decision.allowed) {
+        results.push({
+          intentionId: evaluating.intentionId,
+          evaluationId,
+          observationId,
+          prepared,
+          outcome,
+          nextEvaluationAt: this.state.temporal.nextEvaluationAt,
+        })
+        break
+      }
+      if (outcome === 'SPEAK')
+        throw new Error(`Autonomous SPEAK decision ${prepared.decision.decisionId} was not allowed.`)
+
+      if (outcome === 'SILENCE') {
+        await this.recordSilenceDecision({
+          turnId: prepared.turnId,
+          thoughtId: prepared.thoughtId,
+          reason: prepared.decision.reasonCodes.join(','),
+          metadata: { intentionId: evaluating.intentionId, evaluationId },
+        })
+      }
+      else if (outcome !== 'provider-failure') {
+        await this.recordNonSpeechDecision({
+          turnId: prepared.turnId,
+          thoughtId: prepared.thoughtId,
+          decision: outcome,
+          reason: prepared.decision.reasonCodes.join(','),
+          metadata: { intentionId: evaluating.intentionId, evaluationId },
+        })
+      }
+      this.state = {
+        ...this.state,
+        pendingIntentions: settleIntentionEvaluation({
+          state: this.state.pendingIntentions,
+          intentionId: evaluating.intentionId,
+          at: this.now(),
+          outcome,
+          thoughtId: prepared.thoughtId,
+          decisionId: prepared.decision.decisionId,
+          turnId: prepared.turnId,
+          waitUntil: prepared.decision.waitUntil,
+        }),
+        updatedAt: this.now(),
+      }
+      this.state = {
+        ...this.state,
+        temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
+      }
+      this.state = await this.dependencies.stateStore.save(this.state)
+      results.push({
+        intentionId: evaluating.intentionId,
+        evaluationId,
+        observationId,
+        prepared: null,
+        outcome,
+        nextEvaluationAt: this.state.temporal.nextEvaluationAt,
+      })
+    }
+    return { evaluations: results, nextEvaluationAt: this.state.temporal.nextEvaluationAt }
+  }
+
+  async deferAutonomousExpression(input: {
+    intentionId: string
+    turnId: string
+    thoughtId: string
+    reason: string
+    waitUntil?: number
+  }): Promise<void> {
+    await this.failTurn({
+      turnId: input.turnId,
+      thoughtId: input.thoughtId,
+      error: input.reason,
+      metadata: { intentionId: input.intentionId, failureLayer: 'autonomous-expression-handoff' },
+    })
+    this.state = {
+      ...this.state,
+      pendingIntentions: settleIntentionEvaluation({
+        state: this.state.pendingIntentions,
+        intentionId: input.intentionId,
+        at: this.now(),
+        outcome: 'delivery-deferred',
+        thoughtId: input.thoughtId,
+        turnId: input.turnId,
+        waitUntil: input.waitUntil,
+        resolution: input.reason,
+      }),
+      updatedAt: this.now(),
+    }
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+  }
+
+  async registerTemporalCondition(condition: import('../types').Nan0TemporalCondition): Promise<void> {
+    this.assertBooted()
+    this.state = {
+      ...this.state,
+      temporal: registerTemporalCondition(this.state.temporal, condition),
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+  }
+
+  async evaluateTemporalEligibility(limit = 100) {
+    this.assertBooted()
+    const evaluation = evaluateTemporalConditions(this.state.temporal, {
+      clock: this.clock,
+      processId: this.processId,
+      createAdjustmentId: () => `clock_${this.createId()}`,
+      limit,
+    })
+    this.state = {
+      ...this.state,
+      temporal: evaluation.temporal,
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    return structuredClone(evaluation.eligible)
+  }
+
+  async resume(): Promise<import('../types').Nan0TemporalCondition[]> {
+    this.assertBooted()
+    const resumed = observeTemporalClock(this.state.temporal, {
+      clock: this.clock,
+      kind: 'resume',
+      processId: this.processId,
+      createAdjustmentId: () => `clock_${this.createId()}`,
+    })
+    const evaluation = evaluateTemporalConditions(resumed, {
+      clock: this.clock,
+      processId: this.processId,
+      createAdjustmentId: () => `clock_${this.createId()}`,
+      limit: 100,
+    })
+    this.state = {
+      ...this.state,
+      temporal: evaluation.temporal,
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
+    return structuredClone(evaluation.eligible)
+  }
+
+  async suspend(): Promise<void> {
+    this.assertBooted()
+    this.state = {
+      ...this.state,
+      temporal: observeTemporalClock(this.state.temporal, {
+        clock: this.clock,
+        kind: 'suspend',
+        processId: this.processId,
+        createAdjustmentId: () => `clock_${this.createId()}`,
+      }),
+      updatedAt: this.now(),
+    }
+    this.state = await this.dependencies.stateStore.save(this.state)
   }
 
   getConversationTurns(sessionId?: string): Nan0ConversationTurn[] {
@@ -1199,12 +1691,31 @@ export class Nan0Kernel {
       actorId: input.actorId,
       at: completedAt,
     })
+    const intentionId = typeof turn.metadata.intentionId === 'string' ? turn.metadata.intentionId : null
+    const pendingIntentions = intentionId && input.decision !== 'UNKNOWN'
+      ? settleIntentionEvaluation({
+          state: this.state.pendingIntentions,
+          intentionId,
+          at: completedAt,
+          outcome: input.decision,
+          thoughtId: turn.thoughtId,
+          decisionId: input.decisionId,
+          turnId: turn.turnId,
+          waitUntil: this.state.decisions.find(item => item.decisionId === input.decisionId)?.waitUntil,
+          resolution: input.error,
+        })
+      : this.state.pendingIntentions
     this.state = {
       ...this.state,
       turns,
       timeline: appended.timeline,
       continuity,
+      pendingIntentions,
       updatedAt: this.now(),
+    }
+    this.state = {
+      ...this.state,
+      temporal: syncPendingIntentionsToTemporal(this.state.pendingIntentions, this.state.temporal),
     }
     this.state = await this.dependencies.stateStore.save(this.state)
     this.diagnostic(`turn.${input.status}.persisted`, {
