@@ -13,7 +13,7 @@ import {
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: '{"interpretation":"The conversation continues.","privateText":"I remember where this was going.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
+    return { text: 'I remember the shape of this thread and where I wanted to take it.\n---EXTRACT---\n{"interpretation":"The conversation continues.","privateText":"I remember where this was going.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 

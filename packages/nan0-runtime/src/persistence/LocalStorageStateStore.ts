@@ -23,6 +23,7 @@ import { mergePendingIntentionStates, normalizePendingIntentionState } from '../
 import { mergeActionIntents, mergeComputationAttempts } from '../lifecycle/Nan0Lifecycle'
 import { SystemNan0Clock } from '../temporal/Nan0Clock'
 import { mergeTemporalStates, normalizeTemporalState } from '../temporal/Nan0Temporal'
+import { mergeCognitionPolicyIdentity, normalizeCognitionPolicyIdentity } from '../thought/Nan0ThoughtPolicy'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -35,6 +36,30 @@ export interface LocalStorageStateStoreOptions {
   diagnostic?: (event: string, details: Record<string, unknown>) => void
 }
 
+function emotionalVector(value: Nan0KernelState['emotionalState'] | null | undefined): Nan0KernelState['emotionalState'] {
+  return Object.fromEntries(
+    Object.entries(value ?? {})
+      .filter((entry): entry is [string, number] => Boolean(entry[0]) && Number.isFinite(entry[1])),
+  )
+}
+
+function mergeEmotionalState(
+  persisted: Nan0KernelState,
+  candidate: Nan0KernelState,
+): Pick<Nan0KernelState, 'emotionalState' | 'emotionalStateSchemaVersion' | 'emotionalStateRevision'> {
+  const persistedRevision = Math.max(0, Math.floor(persisted.emotionalStateRevision ?? 0))
+  const candidateRevision = Math.max(0, Math.floor(candidate.emotionalStateRevision ?? 0))
+  const persistedVector = emotionalVector(persisted.emotionalState)
+  const candidateVector = emotionalVector(candidate.emotionalState)
+  return {
+    emotionalStateSchemaVersion: 1,
+    emotionalStateRevision: Math.max(persistedRevision, candidateRevision),
+    emotionalState: candidateRevision >= persistedRevision
+      ? { ...persistedVector, ...candidateVector }
+      : { ...candidateVector, ...persistedVector },
+  }
+}
+
 export function mergeNan0States(
   persisted: Nan0KernelState | null,
   candidate: Nan0KernelState,
@@ -43,7 +68,12 @@ export function mergeNan0States(
   if (!persisted) {
     return {
       ...candidate,
+      schemaVersion: 2,
       revision: (candidate.revision ?? 0) + 1,
+      emotionalState: emotionalVector(candidate.emotionalState),
+      emotionalStateSchemaVersion: 1,
+      emotionalStateRevision: Math.max(0, Math.floor(candidate.emotionalStateRevision ?? 0)),
+      cognitionPolicy: normalizeCognitionPolicyIdentity(candidate.cognitionPolicy, candidate.createdAt),
       thoughts: mergeNan0Thoughts([], candidate.thoughts),
       decisions: mergeNan0Decisions([], candidate.decisions),
       goals: mergeNan0Goals([], candidate.goals),
@@ -69,9 +99,17 @@ export function mergeNan0States(
 
   return {
     ...candidate,
+    schemaVersion: 2,
     revision: Math.max(persisted.revision ?? 0, candidate.revision ?? 0) + 1,
     bootCount: Math.max(persisted.bootCount, candidate.bootCount),
     createdAt: Math.min(persisted.createdAt, candidate.createdAt),
+    updatedAt: Math.max(persisted.updatedAt, candidate.updatedAt),
+    ...mergeEmotionalState(persisted, candidate),
+    cognitionPolicy: mergeCognitionPolicyIdentity(
+      persisted.cognitionPolicy,
+      candidate.cognitionPolicy,
+      Math.min(persisted.createdAt, candidate.createdAt),
+    ),
     identity: {
       actors: {
         ...candidate.identity.actors,
@@ -118,12 +156,17 @@ export class LocalStorageStateStore implements Nan0StateStore {
       return null
 
     const parsed = JSON.parse(raw) as Nan0KernelState
-    if (parsed.schemaVersion !== 1)
+    if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2)
       throw new Error(`Unsupported Nan0 state schema: ${String(parsed.schemaVersion)}`)
 
     const state = {
       ...parsed,
+      schemaVersion: 2 as const,
       revision: parsed.revision ?? 0,
+      emotionalState: emotionalVector(parsed.emotionalState),
+      emotionalStateSchemaVersion: 1 as const,
+      emotionalStateRevision: Math.max(0, Math.floor(parsed.emotionalStateRevision ?? 0)),
+      cognitionPolicy: normalizeCognitionPolicyIdentity(parsed.cognitionPolicy, parsed.createdAt),
       thoughts: mergeNan0Thoughts([], parsed.thoughts),
       decisions: mergeNan0Decisions([], parsed.decisions),
       goals: mergeNan0Goals([], parsed.goals),

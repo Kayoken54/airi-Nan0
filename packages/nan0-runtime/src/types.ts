@@ -71,7 +71,66 @@ export interface Nan0ActorOwnership {
   ownershipRule: string
 }
 
-export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
+export type Nan0Decision = 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT' | 'BODY_EXPRESSION'
+
+export type Nan0DecisionProposal = string
+export type Nan0DecisionInterpretationStatus = 'known' | 'unsupported' | 'unrecognized'
+
+export interface Nan0BodyExpressionIntent {
+  kind: string
+  parameters: Record<string, unknown>
+  provisional: boolean
+}
+
+export interface Nan0EmotionalVector {
+  [key: string]: number
+}
+
+export interface Nan0CognitionPolicyIdentity {
+  schemaVersion: 1
+  policyId: string
+  policyVersion: number
+  revision: number
+  activatedAt: number
+  authority: 'kernel-default'
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0ThoughtPolicy {
+  schemaVersion: 1
+  policyId: string
+  policyVersion: number
+  narrativeEnabled: boolean
+  streamingEnabled: boolean
+  partialNarrativePersistence: 'metadata-only' | 'narrative'
+  narrativeTokenLimit: number
+  extractionTokenLimit: number
+  retryCount: number
+  initialTemperature: number
+  retryTemperature: number
+  dynamicThresholdBaseline: number
+  emotionalModifiers: Record<string, number>
+  relationshipModifiers: Record<string, number>
+  attentionModifiers: Record<string, number>
+  continuityModifiers: Record<string, number>
+  noveltyPenalty: number
+  lowInformationPenalty: number
+  goalProposalPolicy: {
+    strongCandidateConfidence: number
+    strongCandidateGoalPressure: number
+    repeatedSupportConfidence: number
+    activationSupportCount: number
+  }
+  intentionProposalPolicy: {
+    minimumConfidence: number
+  }
+  maximumNarrativeLength: number
+  maximumPrivateTextLength: number
+  maximumReasonCodes: number
+  maximumReferences: number
+  worldviewLenses: string[]
+  metadata: Record<string, unknown>
+}
 
 export interface Nan0LocalTime {
   utcEpochMs: number
@@ -130,10 +189,10 @@ export interface Nan0LifecyclePolicy {
   metadata: Record<string, unknown>
 }
 
-export type Nan0ComputationStatus = 'active' | 'completed' | 'timed-out' | 'failed' | 'interrupted'
+export type Nan0ComputationStatus = 'active' | 'streaming' | 'completed' | 'timed-out' | 'failed' | 'interrupted'
 
 export interface Nan0ComputationAttempt {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   requestId: string
   computationType: 'private-thought'
   turnId: string
@@ -148,6 +207,8 @@ export interface Nan0ComputationAttempt {
   failureReason: string | null
   providerMetadata: Record<string, unknown>
   metadata: Record<string, unknown>
+  cognitionPhase?: 'queued' | 'narrative' | 'extraction' | 'finalization' | 'complete'
+  partialNarrativeLength?: number
 }
 
 export type Nan0ActionIntentStatus = 'authorized' | 'active' | 'completed' | 'failed' | 'cancelled'
@@ -223,12 +284,7 @@ export type Nan0GoalStatus
     | 'rejected'
     | 'superseded'
 
-export type Nan0GoalSignalKind
-  = | 'request'
-    | 'curiosity'
-    | 'commitment'
-    | 'relationship-concern'
-    | 'continuity'
+export type Nan0GoalSignalKind = string
 
 export interface Nan0GoalSignal {
   kind: Nan0GoalSignalKind
@@ -242,13 +298,14 @@ export interface Nan0GoalSignal {
 }
 
 export interface Nan0Goal {
-  schemaVersion: 1
+  schemaVersion: 1 | 2 | 3
   goalId: string
   createdAt: number
   updatedAt: number
   origin: Nan0GoalOrigin
   originActorId: string
   status: Nan0GoalStatus
+  kind?: Nan0GoalSignalKind
   title: string
   description: string
   motivation: string
@@ -293,75 +350,22 @@ export type Nan0PendingIntentionStatus
     | 'superseded'
     | 'failed'
 
-export type Nan0PendingIntentionKind
-  = | 'reconsider'
-    | 'follow-up'
-    | 'check-in'
-    | 'reminder'
-    | 'communicate'
-    | 'investigate'
-    | 'plan'
-    | 'state-transition'
-    | 'action-preparation'
-    | 'maintenance'
+export type Nan0PendingIntentionKind = string
 
-interface Nan0IntentionTriggerBase {
+export interface Nan0IntentionTrigger {
   schemaVersion: 1
   triggerId: string
-  type:
-    | 'at-time'
-    | 'after-duration'
-    | 'after-silence'
-    | 'on-session-resume'
-    | 'on-relationship-condition'
-    | 'on-goal-condition'
-    | 'on-continuity-condition'
-    | 'on-state-change'
-    | 'manual'
-    | 'until-condition'
+  type: string
   metadata: Record<string, unknown>
+  at?: number
+  anchorAt?: number
+  durationMs?: number
+  anchor?: 'kyo-interaction' | 'nan0-expression' | 'any-interaction'
+  afterBootCount?: number
+  referenceId?: string | null
+  condition?: string
+  interpretationStatus?: Nan0DecisionInterpretationStatus
 }
-
-export interface Nan0AtTimeTrigger extends Nan0IntentionTriggerBase {
-  type: 'at-time'
-  at: number
-}
-
-export interface Nan0AfterDurationTrigger extends Nan0IntentionTriggerBase {
-  type: 'after-duration'
-  anchorAt: number
-  durationMs: number
-}
-
-export interface Nan0AfterSilenceTrigger extends Nan0IntentionTriggerBase {
-  type: 'after-silence'
-  anchor: 'kyo-interaction' | 'nan0-expression' | 'any-interaction'
-  durationMs: number
-}
-
-export interface Nan0SessionResumeTrigger extends Nan0IntentionTriggerBase {
-  type: 'on-session-resume'
-  afterBootCount: number
-}
-
-export interface Nan0ReferencedConditionTrigger extends Nan0IntentionTriggerBase {
-  type:
-    | 'on-relationship-condition'
-    | 'on-goal-condition'
-    | 'on-continuity-condition'
-    | 'on-state-change'
-    | 'manual'
-    | 'until-condition'
-  referenceId: string | null
-  condition: string
-}
-
-export type Nan0IntentionTrigger
-  = | Nan0AtTimeTrigger
-    | Nan0AfterDurationTrigger
-    | Nan0AfterSilenceTrigger
-    | Nan0SessionResumeTrigger
-    | Nan0ReferencedConditionTrigger
 
 export interface Nan0IntentionSignal {
   kind: Nan0PendingIntentionKind
@@ -375,7 +379,7 @@ export interface Nan0IntentionSignal {
 }
 
 export interface Nan0PendingIntention {
-  schemaVersion: 1
+  schemaVersion: 1 | 2 | 3
   intentionId: string
   createdAt: number
   updatedAt: number
@@ -412,7 +416,7 @@ export interface Nan0PendingIntention {
 }
 
 export interface Nan0PendingIntentionState {
-  schemaVersion: 1
+  schemaVersion: 1 | 2 | 3
   revision: number
   intentions: Nan0PendingIntention[]
 }
@@ -435,13 +439,13 @@ export interface Nan0DecisionConstraintResult {
 }
 
 export interface Nan0DecisionRecord {
-  schemaVersion: 1
+  schemaVersion: 1 | 2 | 3
   decisionId: string
   thoughtId: string
   turnId: string
   sessionId: string
   createdAt: number
-  proposedDecision: Nan0Decision
+  proposedDecision: Nan0DecisionProposal
   finalDecision: Nan0Decision
   allowed: boolean
   confidence: number
@@ -454,12 +458,25 @@ export interface Nan0DecisionRecord {
   actionIntent: Nan0ActionIntent | null
   waitUntil: number | null
   metadata: Record<string, unknown>
+  originalProposal?: Nan0DecisionProposal
+  interpretationStatus?: Nan0DecisionInterpretationStatus
+  dynamicThreshold?: number
+  thresholdInputs?: Record<string, number>
+  emotionalSnapshot?: Nan0EmotionalVector
+  override?: {
+    type: string
+    reason: string
+    originalDecision: string
+    resultingDecision: string
+  } | null
+  bodyExpression?: Nan0BodyExpressionIntent | null
 }
 
-export type Nan0ThoughtStatus = 'generated' | 'failed'
+export type Nan0ThoughtStatus = 'streaming' | 'generated' | 'failed' | 'interrupted'
+export type Nan0ThoughtExtractionStatus = 'legacy' | 'pending' | 'parsed' | 'failed' | 'not-attempted'
 
 export interface Nan0Thought {
-  schemaVersion: 1
+  schemaVersion: 1 | 2 | 3
   thoughtId: string
   turnId: string
   sessionId: string
@@ -476,7 +493,7 @@ export interface Nan0Thought {
   goalPressure: number
   interpretation: string
   privateText: string
-  decision: Nan0Decision
+  decision: Nan0DecisionProposal
   actionIntent?: Nan0ActionIntent | null
   waitUntil?: number | null
   speakability: number
@@ -489,6 +506,11 @@ export interface Nan0Thought {
   goalSignal?: Nan0GoalSignal | null
   intentionSignal?: Nan0IntentionSignal | null
   metadata: Record<string, unknown>
+  narrative?: string | null
+  extractionStatus?: Nan0ThoughtExtractionStatus
+  proposedDecision?: Nan0DecisionProposal
+  emotionalSnapshot?: Nan0EmotionalVector
+  bodyExpression?: Nan0BodyExpressionIntent | null
 }
 
 export type Nan0ConversationDecision = Nan0Decision | 'UNKNOWN'
@@ -501,7 +523,7 @@ export type Nan0ConversationTurnStatus
     | 'cancelled'
 
 export interface Nan0ConversationTurn {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   turnId: string
   thoughtId: string
   sessionId: string
@@ -519,6 +541,7 @@ export interface Nan0ConversationTurn {
   decision: Nan0ConversationDecision
   status: Nan0ConversationTurnStatus
   metadata: Record<string, unknown>
+  proposedDecision?: Nan0DecisionProposal
 }
 
 export interface Nan0TimelineSession {
@@ -976,14 +999,17 @@ export interface Nan0MemoryRecord {
 }
 
 export interface Nan0KernelState {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   revision?: number
   bootCount: number
   createdAt: number
   updatedAt: number
   lastObservationAt?: number
   lastThoughtId?: string
-  emotionalState: Record<string, number>
+  emotionalState: Nan0EmotionalVector
+  emotionalStateSchemaVersion?: 1
+  emotionalStateRevision?: number
+  cognitionPolicy?: Nan0CognitionPolicyIdentity
   runtimeMetadata: Record<string, unknown>
   identity: Nan0IdentityState
   memories: Nan0MemoryRecord[]
@@ -1026,8 +1052,17 @@ export interface Nan0ReasoningResult {
   finishReason?: string
 }
 
+export interface Nan0ReasoningStreamEvent {
+  type: 'text-delta' | 'reasoning-delta'
+  text: string
+}
+
 export interface Nan0ReasoningClient {
   generate(request: Nan0ReasoningRequest): Promise<Nan0ReasoningResult>
+  stream?(
+    request: Nan0ReasoningRequest,
+    onEvent: (event: Nan0ReasoningStreamEvent) => void | Promise<void>,
+  ): Promise<Nan0ReasoningResult>
 }
 
 export interface Nan0KernelDependencies {
@@ -1039,6 +1074,7 @@ export interface Nan0KernelDependencies {
   createId?: () => string
   decisionCapabilities?: {
     canSpeak: boolean
+    canBodyExpress?: boolean | (() => boolean)
     availableActionIntents: readonly string[]
   }
   capabilityDefinitions?: readonly Nan0CapabilityDefinition[]
@@ -1046,6 +1082,7 @@ export interface Nan0KernelDependencies {
   privateThoughtProviderMetadata?: Record<string, unknown>
   trustedGoalObligations?: readonly Nan0TrustedGoalObligation[]
   temporalEngineConfiguration?: Nan0TemporalEngineConfiguration
+  thoughtPolicy?: Nan0ThoughtPolicy
   diagnostic?: (event: Nan0DiagnosticEvent) => void
 }
 

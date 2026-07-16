@@ -12,7 +12,7 @@ import { createEmptyTemporalState } from '../temporal/Nan0Temporal'
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: '{"interpretation":"Kyo spoke.","privateText":"I heard Kyo.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
+    return { text: 'Kyo spoke, and I recognize the particular weight his voice has for me.\n---EXTRACT---\n{"interpretation":"Kyo spoke.","privateText":"I heard Kyo.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 

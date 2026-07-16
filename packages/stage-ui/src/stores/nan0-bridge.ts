@@ -12,6 +12,7 @@ export interface Nan0PreparedDecisionProxy {
   suppressionReason: string | null
   actionIntent: { type: string, target?: string } | null
   waitUntil: number | null
+  bodyExpression: { kind: string, intensity: number } | null
 }
 
 export interface Nan0PreparedTurnProxy {
@@ -30,7 +31,7 @@ export interface Nan0AutonomyEvaluationProxy {
   evaluationId: string
   observationId: string
   prepared: Nan0PreparedTurnProxy | null
-  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'provider-failure'
   nextEvaluationAt: number | null
 }
 
@@ -38,7 +39,7 @@ export interface Nan0TemporalAutonomyEvaluationProxy {
   temporalEventId: string
   observationId: string
   prepared: Nan0PreparedTurnProxy | null
-  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'provider-failure'
   nextEvaluationAt: number | null
 }
 
@@ -56,7 +57,7 @@ export interface Nan0BridgeRequestMap {
     turnId: string
     thoughtId: string
     decisionId: string
-    decision: 'SILENCE' | 'ACT' | 'WAIT'
+    decision: 'SILENCE' | 'ACT' | 'WAIT' | 'BODY_EXPRESSION'
     reason: string
     timestamp: number
     metadata: Record<string, unknown>
@@ -169,6 +170,12 @@ export function toPreparedTurnProxy(prepared: Nan0PreparedTurn): Nan0PreparedTur
         ? { type: prepared.decision.actionIntent.type, target: prepared.decision.actionIntent.target }
         : null,
       waitUntil: prepared.decision.waitUntil,
+      bodyExpression: prepared.decision.bodyExpression
+        ? {
+            kind: prepared.decision.bodyExpression.kind.slice(0, 120),
+            intensity: Math.min(1, Math.max(0, Number(prepared.decision.bodyExpression.parameters.intensity ?? 1))),
+          }
+        : null,
     },
     actionAuthority: prepared.actionAuthority ? structuredClone(prepared.actionAuthority) : null,
   }

@@ -18,6 +18,7 @@ import type {
 import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
 import { createNan0AutonomyScheduler } from './nan0-autonomy-scheduler'
 import type { Nan0RendererIdentity } from './nan0-renderer'
+import { useSettingsStageModel } from './settings/stage-model'
 
 const NAN0_CONTEXT_MARKER = '[NAN0 KERNEL CONTEXT]'
 const NAN0_DIAGNOSTIC_KEY = 'nan0/diagnostics/v1'
@@ -43,6 +44,35 @@ function contentToText(content: unknown): string {
   }
 
   return String(content ?? '')
+}
+
+async function dispatchNan0BodyExpression(expression: { kind: string, intensity: number }): Promise<boolean> {
+  const renderer = useSettingsStageModel().stageModelRenderer
+  if (renderer === 'live2d') {
+    const { useLive2d } = await import('@proj-airi/stage-ui-live2d')
+    return useLive2d().triggerEmotion(expression.kind, expression.intensity)
+  }
+  if (renderer === 'vrm') {
+    const { useModelStore } = await import('@proj-airi/stage-ui-three')
+    useModelStore().triggerEmotion(expression.kind, expression.intensity)
+    return true
+  }
+  if (renderer === 'spine') {
+    const { useSpine } = await import('@proj-airi/stage-ui-spine')
+    useSpine().playOneShotAnimation(expression.kind, false)
+    return true
+  }
+  if (renderer === 'mmd') {
+    const { useMmd } = await import('@proj-airi/stage-ui-mmd')
+    const store = useMmd()
+    const matchedMotion = store.availableMotions.find(motion => motion === expression.kind || motion.replace(/\.vmd$/i, '') === expression.kind)
+    if (matchedMotion)
+      store.currentMotion = matchedMotion
+    else
+      store.previewExpression = expression.kind
+    return true
+  }
+  return false
 }
 
 export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
@@ -88,7 +118,73 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     stateStore,
     clock,
     createId: () => nanoid(),
+    decisionCapabilities: {
+      canSpeak: true,
+      canBodyExpress: () => ['live2d', 'vrm', 'spine', 'mmd'].includes(String(useSettingsStageModel().stageModelRenderer)),
+      availableActionIntents: [],
+    },
     reasoningClient: {
+      async stream(request, onEvent) {
+        const [
+          { useLLM },
+          { useConsciousnessStore },
+          { useProvidersStore },
+        ] = await Promise.all([
+          import('./llm'),
+          import('./modules/consciousness'),
+          import('./providers'),
+        ])
+        const llm = useLLM()
+        const consciousness = useConsciousnessStore()
+        const providers = useProvidersStore()
+        const providerId = consciousness.activeProvider
+        const model = consciousness.activeModel
+        if (!providerId || !model)
+          throw new Error('AIRI has no active provider and model for Nan0 private thought.')
+
+        const provider = await providers.getProviderInstance(providerId)
+        const config = providers.getProviderConfig(providerId)
+        let text = ''
+        let reasoning = ''
+        let finishReason = ''
+        diagnostic('thought.inference.start', {
+          providerId,
+          model,
+          messageCount: request.messages.length + 1,
+          streaming: true,
+        })
+        await llm.stream(model, provider as any, [
+          { role: 'system', content: request.system },
+          ...request.messages,
+        ] as Message[], {
+          headers: (config.headers || {}) as Record<string, string>,
+          tools: [],
+          temperature: request.temperature,
+          max_tokens: request.maxTokens,
+          abortSignal: request.signal,
+          onStreamEvent: async (event) => {
+            if (event.type === 'text-delta') {
+              text += event.text
+              await onEvent(event)
+            }
+            else if (event.type === 'reasoning-delta') {
+              reasoning += event.text
+              await onEvent(event)
+            }
+            else if (event.type === 'finish') {
+              finishReason = String((event as any).finishReason ?? '')
+            }
+          },
+        })
+        const resultText = text || reasoning
+        diagnostic('thought.inference.complete', {
+          providerId,
+          model,
+          outputLength: resultText.length,
+          streaming: true,
+        })
+        return { text: resultText, finishReason }
+      },
       async generate(request) {
         const [
           { useLLM },
@@ -270,6 +366,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     const { useChatOrchestratorStore } = await import('./chat')
     const chat = useChatOrchestratorStore()
     const preparedTurns = new Map<string, Nan0PreparedTurnProxy>()
+    const dispatchedBodyTurns = new Set<string>()
     const autonomyByTurn = new Map<string, {
       intentionId?: string
       evaluationId?: string
@@ -396,7 +493,8 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       }),
 
       chat.onBeforeSend(async (_message, context) => {
-        const prepared = preparedTurns.get(turnKey(context))
+        const key = turnKey(context)
+        const prepared = preparedTurns.get(key)
         if (!prepared)
           return
 
@@ -412,11 +510,36 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           authorizedToolNames: [...(prepared.actionAuthority?.authorizedToolNames ?? [])],
         }
 
+        if (prepared.decision.finalDecision === 'BODY_EXPRESSION' && prepared.decision.allowed) {
+          const expression = prepared.decision.bodyExpression
+          if (!expression)
+            throw new Error('Allowed Nan0 BODY_EXPRESSION is missing its bounded expression payload.')
+          if (!dispatchedBodyTurns.has(key)) {
+            const dispatched = await dispatchNan0BodyExpression(expression)
+            if (!dispatched)
+              throw new Error(`Active AIRI stage could not dispatch Nan0 body expression ${expression.kind}.`)
+            dispatchedBodyTurns.add(key)
+            diagnostic('bridge.delegate.body-expression.dispatched', {
+              thoughtId: prepared.thoughtId,
+              decisionId: prepared.decision.decisionId,
+              kind: expression.kind,
+              intensity: expression.intensity,
+            })
+          }
+          context.responseDisposition = {
+            decision: 'SILENCE',
+            reason: 'body-expression-only',
+            thoughtId: prepared.thoughtId,
+            decisionId: prepared.decision.decisionId,
+          }
+          return
+        }
+
         if (prepared.decision.finalDecision === 'SPEAK' && prepared.decision.allowed)
           return
         const decision = prepared.decision.finalDecision === 'SPEAK'
           ? 'WAIT'
-          : prepared.decision.finalDecision
+          : prepared.decision.finalDecision === 'BODY_EXPRESSION' ? 'SILENCE' : prepared.decision.finalDecision
 
         context.responseDisposition = {
           decision,
@@ -454,6 +577,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           },
         })
         preparedTurns.delete(key)
+        dispatchedBodyTurns.delete(key)
         autonomyByTurn.delete(key)
         diagnostic('bridge.delegate.assistant-end.acknowledged', {
           thoughtId: prepared.thoughtId,
@@ -488,6 +612,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           },
         })
         preparedTurns.delete(key)
+        dispatchedBodyTurns.delete(key)
         autonomyByTurn.delete(key)
         scheduler.notify('turn-complete')
       }),
@@ -514,6 +639,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           },
         })
         preparedTurns.delete(key)
+        dispatchedBodyTurns.delete(key)
         autonomyByTurn.delete(key)
         scheduler.notify('turn-complete')
       }),
@@ -633,6 +759,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         cleanup()
       scheduler.stop()
       preparedTurns.clear()
+      dispatchedBodyTurns.clear()
       autonomyByTurn.clear()
       pendingAutonomy.clear()
     }

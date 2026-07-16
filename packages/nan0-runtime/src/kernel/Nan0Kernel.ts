@@ -48,6 +48,7 @@ import {
   timelineEvents,
 } from '../timeline/SessionTimeline'
 import { createFailedNan0Thought, generateNan0Thought, mergeNan0Thoughts } from '../thought/Nan0ThoughtEngine'
+import { cognitionPolicyIdentity, NAN0_DEFAULT_THOUGHT_POLICY } from '../thought/Nan0ThoughtPolicy'
 import { evaluateNan0Decision, mergeNan0Decisions, outwardDirectiveForDecision } from '../decision/Nan0DecisionEngine'
 import { evaluateNan0Goals, goalContext, linkGoalConflict, mergeNan0Goals, transitionNan0Goal } from '../goals/Nan0Goals'
 import { mergeActionIntents, mergeComputationAttempts, privateThoughtTimeoutPolicy } from '../lifecycle/Nan0Lifecycle'
@@ -101,7 +102,7 @@ export interface Nan0AutonomyEvaluationResult {
   evaluationId: string
   observationId: string
   prepared: Nan0PreparedTurn | null
-  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'provider-failure'
   nextEvaluationAt: number | null
 }
 
@@ -114,7 +115,7 @@ export interface Nan0TemporalAutonomyEvaluationResult {
   temporalEventId: string
   observationId: string
   prepared: Nan0PreparedTurn | null
-  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure'
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'provider-failure'
   nextEvaluationAt: number | null
 }
 
@@ -130,9 +131,13 @@ interface Nan0PrepareTurnOptions {
   hostReady?: boolean
 }
 
-function defaultInitialState(now: number, clock: import('../types').Nan0Clock): Nan0KernelState {
+function defaultInitialState(
+  now: number,
+  clock: import('../types').Nan0Clock,
+  thoughtPolicy = NAN0_DEFAULT_THOUGHT_POLICY,
+): Nan0KernelState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 0,
     bootCount: 0,
     createdAt: now,
@@ -143,6 +148,9 @@ function defaultInitialState(now: number, clock: import('../types').Nan0Clock): 
       irritation: 0.15,
       curiosity: 0.55,
     },
+    emotionalStateSchemaVersion: 1,
+    emotionalStateRevision: 0,
+    cognitionPolicy: cognitionPolicyIdentity(thoughtPolicy, now),
     runtimeMetadata: {},
     identity: createDefaultIdentityState(),
     memories: [],
@@ -217,7 +225,7 @@ export class Nan0Kernel {
     this.processId = dependencies.processId ?? crypto.randomUUID()
     this.capabilities = new Nan0CapabilityRegistry(dependencies.capabilityDefinitions)
     this.state = dependencies.createInitialState?.()
-      ?? defaultInitialState(this.now(), this.clock)
+      ?? defaultInitialState(this.now(), this.clock, dependencies.thoughtPolicy)
   }
 
   get isBooted(): boolean {
@@ -623,8 +631,9 @@ export class Nan0Kernel {
     const timeoutPolicy = privateThoughtTimeoutPolicy(this.dependencies.privateThoughtTimeoutMs)
     const computationStartedAt = this.now()
     const computationStartedMonotonicAt = this.clock.monotonicNow()
+    const thoughtPolicy = this.dependencies.thoughtPolicy ?? NAN0_DEFAULT_THOUGHT_POLICY
     const activeComputation = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       requestId,
       computationType: 'private-thought' as const,
       turnId,
@@ -638,7 +647,14 @@ export class Nan0Kernel {
       elapsedMonotonicMs: null,
       failureReason: null,
       providerMetadata: safeProviderMetadata(this.dependencies.privateThoughtProviderMetadata),
-      metadata: { observationId: canonicalObservation.id },
+      cognitionPhase: 'narrative' as const,
+      partialNarrativeLength: 0,
+      metadata: {
+        observationId: canonicalObservation.id,
+        policyId: thoughtPolicy.policyId,
+        policyVersion: thoughtPolicy.policyVersion,
+        cognitionFormat: thoughtPolicy.narrativeEnabled ? 'narrative-first' : 'legacy-structured',
+      },
     }
     this.state = {
       ...this.state,
@@ -658,6 +674,8 @@ export class Nan0Kernel {
     this.activeComputationRequestIds.add(requestId)
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined
     let timedOut = false
+    let persistedProgressLength = 0
+    let persistedProgressPhase: 'narrative' | 'extraction' = 'narrative'
     const thoughtInput = {
       thoughtId,
       turnId,
@@ -672,7 +690,41 @@ export class Nan0Kernel {
       relationship: structuredClone(relationshipContext),
       reasoningClient: this.dependencies.reasoningClient,
       createdAt: this.now(),
+      policy: thoughtPolicy,
       signal: controller.signal,
+      onStreamProgress: async (progress: { attempt: number, phase: 'narrative' | 'extraction', partialNarrativeLength: number }) => {
+        const phaseChanged = progress.phase !== persistedProgressPhase
+        if (!phaseChanged && progress.partialNarrativeLength - persistedProgressLength < 128)
+          return
+        const progressAt = this.now()
+        const streamingComputation = {
+          ...activeComputation,
+          status: 'streaming' as const,
+          cognitionPhase: progress.phase,
+          partialNarrativeLength: progress.partialNarrativeLength,
+          metadata: {
+            ...activeComputation.metadata,
+            attempt: progress.attempt,
+            progressUpdatedAt: progressAt,
+          },
+        }
+        this.state = {
+          ...this.state,
+          computations: mergeComputationAttempts(this.state.computations, [streamingComputation]),
+          updatedAt: progressAt,
+        }
+        this.state = await this.dependencies.stateStore.save(this.state)
+        persistedProgressLength = progress.partialNarrativeLength
+        persistedProgressPhase = progress.phase
+        this.diagnostic('thought.computation.progress', {
+          requestId,
+          turnId,
+          thoughtId,
+          phase: progress.phase,
+          partialNarrativeLength: progress.partialNarrativeLength,
+          attempt: progress.attempt,
+        })
+      },
     }
     let thought: Nan0Thought
     try {
@@ -718,13 +770,24 @@ export class Nan0Kernel {
     const computationFinishedMonotonicAt = this.clock.monotonicNow()
     const terminalComputation = {
       ...activeComputation,
-      status: timedOut ? 'timed-out' as const : thought.status === 'generated' ? 'completed' as const : 'failed' as const,
+      status: timedOut
+        ? 'timed-out' as const
+        : thought.status === 'generated'
+          ? 'completed' as const
+          : thought.status === 'interrupted' ? 'interrupted' as const : 'failed' as const,
       finishedAt: computationFinishedAt,
       finishedMonotonicAt: computationFinishedMonotonicAt,
       elapsedMonotonicMs: this.clock.elapsedMonotonic(computationStartedMonotonicAt, computationFinishedMonotonicAt),
-      failureReason: thought.status === 'failed'
-        ? (timedOut ? 'thought.computation-timeout' : String(thought.metadata.error ?? 'thought.generation-failed'))
+      cognitionPhase: 'complete' as const,
+      partialNarrativeLength: thought.narrative?.length ?? 0,
+      failureReason: thought.status === 'failed' || thought.status === 'interrupted'
+        ? (timedOut ? 'thought.computation-timeout' : String(thought.metadata.error ?? `thought.${thought.status}`))
         : null,
+      metadata: {
+        ...activeComputation.metadata,
+        extractionStatus: thought.extractionStatus,
+        narrativeAvailable: thought.narrative != null,
+      },
     }
     this.state = {
       ...this.state,
@@ -767,6 +830,9 @@ export class Nan0Kernel {
       existingDecisions: this.state.decisions,
       capabilities: {
         canSpeak: this.dependencies.decisionCapabilities?.canSpeak ?? true,
+        canBodyExpress: typeof this.dependencies.decisionCapabilities?.canBodyExpress === 'function'
+          ? this.dependencies.decisionCapabilities.canBodyExpress()
+          : this.dependencies.decisionCapabilities?.canBodyExpress ?? false,
         availableActionIntents: availableCapabilityIds,
         validateActionIntent: intent => this.capabilities.validate(
           intent.type,
@@ -792,6 +858,8 @@ export class Nan0Kernel {
         : undefined,
       minimumSpeakAttention: options.autonomous ? 0.25 : undefined,
       policy: options.autonomous ? 'nan0-autonomous-decision-v1' : undefined,
+      thoughtPolicy,
+      relationship: relationshipContext,
     })
     const preparedTurnIndex = this.state.turns.findIndex(item => item.turnId === turnId)
     const turnsWithDecision = [...this.state.turns]
@@ -816,6 +884,7 @@ export class Nan0Kernel {
       relationship: relationshipContext,
       continuityThreadId: continuityResult.thread.threadId,
       trustedObligations: this.dependencies.trustedGoalObligations,
+      thoughtPolicy,
       createGoalId: this.createId,
       now: this.now(),
     })
@@ -828,6 +897,7 @@ export class Nan0Kernel {
       existing: this.state.pendingIntentions,
       now: this.now(),
       createId: this.createId,
+      thoughtPolicy,
     })
     let actionIntent: Nan0ActionIntentRecord | null = null
     let actionAuthority: Nan0ActionAuthority | null = null
@@ -1210,7 +1280,7 @@ export class Nan0Kernel {
     turnId: string
     thoughtId: string
     decisionId?: string
-    decision: 'ACT' | 'WAIT'
+    decision: 'ACT' | 'WAIT' | 'BODY_EXPRESSION'
     reason?: string
     timestamp?: number
     metadata?: Record<string, unknown>
@@ -1224,7 +1294,7 @@ export class Nan0Kernel {
       metadata: input.metadata,
       status: 'completed',
       decision: input.decision,
-      eventType: input.decision === 'ACT' ? 'act-deferred' : 'wait',
+      eventType: input.decision === 'ACT' ? 'act-deferred' : input.decision === 'BODY_EXPRESSION' ? 'body-expression' : 'wait',
       actorId: 'nan0',
     })
   }
@@ -1378,7 +1448,7 @@ export class Nan0Kernel {
       const outcome = prepared.thought.status === 'failed'
         ? 'provider-failure' as const
         : prepared.decision.finalDecision
-      if (outcome === 'SPEAK' && prepared.decision.allowed) {
+      if ((outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION') && prepared.decision.allowed) {
         results.push({
           intentionId: evaluating.intentionId,
           evaluationId,
@@ -1389,8 +1459,8 @@ export class Nan0Kernel {
         })
         break
       }
-      if (outcome === 'SPEAK')
-        throw new Error(`Autonomous SPEAK decision ${prepared.decision.decisionId} was not allowed.`)
+      if (outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION')
+        throw new Error(`Autonomous ${outcome} decision ${prepared.decision.decisionId} was not allowed.`)
 
       if (outcome === 'SILENCE') {
         await this.recordSilenceDecision({
@@ -1592,7 +1662,7 @@ export class Nan0Kernel {
       const outcome = prepared.thought.status === 'failed'
         ? 'provider-failure' as const
         : prepared.decision.finalDecision
-      if (outcome === 'SPEAK' && prepared.decision.allowed) {
+      if ((outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION') && prepared.decision.allowed) {
         results.push({
           temporalEventId: evaluating.temporalEventId,
           observationId,
@@ -1602,8 +1672,8 @@ export class Nan0Kernel {
         })
         break
       }
-      if (outcome === 'SPEAK')
-        throw new Error(`Autonomous temporal SPEAK decision ${prepared.decision.decisionId} was not allowed.`)
+      if (outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION')
+        throw new Error(`Autonomous temporal ${outcome} decision ${prepared.decision.decisionId} was not allowed.`)
 
       if (outcome === 'SILENCE') {
         await this.recordSilenceDecision({
@@ -1956,8 +2026,8 @@ export class Nan0Kernel {
     timestamp?: number
     metadata?: Record<string, unknown>
     status: 'failed' | 'silent' | 'completed'
-    decision: 'UNKNOWN' | 'SILENCE' | 'ACT' | 'WAIT'
-    eventType: 'turn-failed' | 'silence' | 'act-deferred' | 'wait'
+    decision: 'UNKNOWN' | 'SILENCE' | 'ACT' | 'WAIT' | 'BODY_EXPRESSION'
+    eventType: 'turn-failed' | 'silence' | 'act-deferred' | 'wait' | 'body-expression'
     actorId: 'unknown' | 'nan0'
   }): Promise<Nan0ConversationTurn> {
     this.assertBooted()
@@ -2218,6 +2288,8 @@ Respond only with Nan0's outward expression. Do not output JSON, labels, analysi
     this.state = {
       ...this.state,
       emotionalState: next,
+      emotionalStateSchemaVersion: 1,
+      emotionalStateRevision: (this.state.emotionalStateRevision ?? 0) + 1,
     }
   }
 

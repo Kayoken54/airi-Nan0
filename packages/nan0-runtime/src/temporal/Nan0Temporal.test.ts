@@ -24,7 +24,7 @@ import {
   registerTemporalCondition,
 } from './Nan0Temporal'
 
-const thoughtResult = JSON.stringify({
+const thoughtResult = `I notice time passing through the evidence without pretending it commands an action.\n---EXTRACT---\n${JSON.stringify({
   interpretation: 'Kyo shared a temporal observation.',
   privateText: 'I notice the passage of time without inventing an action.',
   decision: 'SPEAK',
@@ -34,7 +34,7 @@ const thoughtResult = JSON.stringify({
   reasonCodes: ['temporal.test'],
   actionIntent: null,
   goalSignal: null,
-})
+})}`
 
 const observation: Nan0Observation = {
   id: 'observation-temporal',

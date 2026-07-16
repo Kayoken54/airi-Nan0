@@ -8,7 +8,7 @@ import { Nan0Kernel } from './Nan0Kernel'
 const hour = 3_600_000
 
 function thought(decision: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT'): string {
-  return JSON.stringify({
+  return `The temporal fact arrives as evidence, and I decide what it means to me before expression.\n---EXTRACT---\n${JSON.stringify({
     interpretation: 'A factual temporal condition crossed a persisted boundary.',
     privateText: 'I can privately decide whether this temporal fact deserves expression.',
     decision,
@@ -20,7 +20,7 @@ function thought(decision: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT'): string {
     waitUntil: null,
     goalSignal: null,
     intentionSignal: null,
-  })
+  })}`
 }
 
 function harness(input: { response?: string, client?: Nan0ReasoningClient, timeout?: number } = {}) {
@@ -141,4 +141,3 @@ describe('Nan0 temporal autonomy integration', () => {
     expect(subject.kernel.getTemporalState().engine.sleep).toMatchObject({ status: 'sleeping', sleepId: 'sleep-1', expectedWakeAt: 6 * hour - 60_000 })
   })
 })
-

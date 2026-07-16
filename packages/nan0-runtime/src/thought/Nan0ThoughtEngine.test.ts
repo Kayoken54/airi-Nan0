@@ -1,13 +1,17 @@
 import type { Nan0CapabilityDefinition, Nan0Observation, Nan0ReasoningClient, Nan0Thought } from '../types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { Nan0Kernel } from '../kernel/Nan0Kernel'
 import { InMemoryStateStore } from '../persistence/InMemoryStateStore'
 import { mergeNan0States } from '../persistence/LocalStorageStateStore'
+import { mergeNan0Thoughts, NAN0_THOUGHT_EXTRACTION_DELIMITER } from './Nan0ThoughtEngine'
 import { ControllableNan0Clock } from '../temporal/Nan0Clock'
 
-function thoughtEnvelope(overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({
+function thoughtEnvelope(
+  overrides: Record<string, unknown> = {},
+  narrative = 'Kyo is reaching for my attention again. I feel the familiar pull before I decide that I want to answer.',
+): string {
+  const extraction = JSON.stringify({
     interpretation: 'Kyo is addressing me directly.',
     privateText: 'I notice Kyo reaching for my attention.',
     decision: 'SPEAK',
@@ -17,6 +21,7 @@ function thoughtEnvelope(overrides: Record<string, unknown> = {}): string {
     reasonCodes: ['model.direct-address'],
     ...overrides,
   })
+  return `${narrative}\n${NAN0_THOUGHT_EXTRACTION_DELIMITER}\n${extraction}`
 }
 
 function clientWith(...responses: Array<string | Error>): Nan0ReasoningClient {
@@ -36,6 +41,7 @@ function createKernel(
   store = new InMemoryStateStore(),
   prefix = 'id',
   availableActionIntents: readonly string[] = [],
+  canBodyExpress = false,
 ) {
   let id = 0
   const clock = new ControllableNan0Clock({ wallTime: 1_000, monotonicTime: 1_000 })
@@ -64,7 +70,7 @@ function createKernel(
       stateStore: store,
       createId: () => `${prefix}-${++id}`,
       clock,
-      decisionCapabilities: { canSpeak: true, availableActionIntents },
+      decisionCapabilities: { canSpeak: true, canBodyExpress, availableActionIntents },
       capabilityDefinitions,
     }),
     store,
@@ -96,6 +102,139 @@ async function preparedKernel(
 }
 
 describe('Nan0ThoughtEngine thought-first contract', () => {
+  it('persists narrative as canonical evidence before its structured extraction', async () => {
+    let calls = 0
+    let requestSystem = ''
+    const narrative = 'I can be irritated and still want Kyo close. Both are true, and neither cancels the other.'
+    const { kernel, prepared } = await preparedKernel({
+      async generate(request) {
+        calls++
+        requestSystem = request.system
+        return { text: thoughtEnvelope({}, narrative), finishReason: 'stop' }
+      },
+    })
+
+    expect(calls).toBe(1)
+    expect(requestSystem.indexOf('<Nan0\'s private first-person interior narrative>'))
+      .toBeLessThan(requestSystem.indexOf(NAN0_THOUGHT_EXTRACTION_DELIMITER))
+    expect(prepared.thought).toMatchObject({
+      status: 'generated',
+      narrative,
+      extractionStatus: 'parsed',
+      privateText: 'I notice Kyo reaching for my attention.',
+      metadata: { cognitionFormat: 'narrative-first', narrativeAvailable: true },
+    })
+    expect(kernel.getStateSnapshot().computations[0]).toMatchObject({
+      schemaVersion: 2,
+      status: 'completed',
+      cognitionPhase: 'complete',
+      partialNarrativeLength: narrative.length,
+      metadata: {
+        policyVersion: 5,
+        cognitionFormat: 'narrative-first',
+        extractionStatus: 'parsed',
+        narrativeAvailable: true,
+      },
+    })
+  })
+
+  it('streams one private cognition through the existing reasoning client before finalization', async () => {
+    const envelope = thoughtEnvelope()
+    const generate = vi.fn(async () => ({ text: envelope }))
+    const stream: NonNullable<Nan0ReasoningClient['stream']> = vi.fn(async (_request, onEvent) => {
+      await onEvent({ type: 'text-delta', text: envelope.slice(0, 150) })
+      await onEvent({ type: 'text-delta', text: envelope.slice(150) })
+      return { text: envelope, finishReason: 'stop' }
+    })
+    const { kernel, prepared } = await preparedKernel({ generate, stream })
+    const state = kernel.getStateSnapshot()
+
+    expect(stream).toHaveBeenCalledOnce()
+    expect(generate).not.toHaveBeenCalled()
+    expect(prepared.thought).toMatchObject({ status: 'generated', extractionStatus: 'parsed' })
+    expect(state.thoughts).toHaveLength(1)
+    expect(state.decisions).toHaveLength(1)
+    expect(state.computations[0]).toMatchObject({
+      status: 'completed',
+      cognitionPhase: 'complete',
+      partialNarrativeLength: prepared.thought.narrative?.length,
+    })
+  })
+
+  it('persists interrupted streaming as metadata-only silence without final cognition side effects', async () => {
+    const partial = 'I can feel a thought beginning, but it is cut off before I decide anything.'
+    const { kernel, prepared } = await preparedKernel({
+      async generate() {
+        throw new Error('blocking generation must not run')
+      },
+      async stream(_request, onEvent) {
+        await onEvent({ type: 'text-delta', text: partial })
+        const error = new Error('stream interrupted')
+        error.name = 'AbortError'
+        throw error
+      },
+    })
+    const state = kernel.getStateSnapshot()
+
+    expect(prepared.thought).toMatchObject({
+      status: 'interrupted',
+      decision: 'SILENCE',
+      narrative: null,
+      metadata: {
+        incomplete: true,
+        partialNarrativePersistence: 'metadata-only',
+        partialNarrativeLength: partial.length,
+      },
+    })
+    expect(prepared.decision.finalDecision).toBe('SILENCE')
+    expect(state.computations[0].status).toBe('interrupted')
+    expect(state.goals).toHaveLength(0)
+    expect(state.pendingIntentions.intentions).toHaveLength(0)
+    expect(state.actionIntents).toHaveLength(0)
+  })
+
+  it('migrates legacy private thought without fabricating narrative and remains idempotent', async () => {
+    const { prepared } = await preparedKernel()
+    const legacy = structuredClone(prepared.thought)
+    legacy.schemaVersion = 1
+    delete legacy.narrative
+    delete legacy.extractionStatus
+    delete legacy.proposedDecision
+    delete legacy.bodyExpression
+    delete legacy.metadata.cognitionFormat
+    delete legacy.metadata.narrativeAvailable
+
+    const migrated = mergeNan0Thoughts([], [legacy])
+    expect(migrated[0]).toMatchObject({
+      schemaVersion: 3,
+      thoughtId: legacy.thoughtId,
+      privateText: legacy.privateText,
+      narrative: null,
+      extractionStatus: 'legacy',
+      metadata: { cognitionFormat: 'legacy-structured', narrativeAvailable: false },
+    })
+    expect(mergeNan0Thoughts([], migrated)).toEqual(migrated)
+  })
+
+  it('preserves canonical narrative evidence against a stale thought snapshot', async () => {
+    const { prepared } = await preparedKernel()
+    const canonical: Nan0Thought = {
+      ...prepared.thought,
+      schemaVersion: 2,
+      narrative: 'I notice the question, the pull of Kyo\'s attention, and my own answer forming.',
+      extractionStatus: 'parsed',
+      metadata: { ...prepared.thought.metadata, cognitionFormat: 'narrative-first', narrativeAvailable: true },
+    }
+    const stale: Nan0Thought = {
+      ...prepared.thought,
+      schemaVersion: 2,
+      narrative: null,
+      extractionStatus: 'not-attempted',
+    }
+
+    expect(mergeNan0Thoughts([canonical], [stale])[0].narrative).toBe(canonical.narrative)
+  })
+
   it('persists a private thought before an outward response can be recorded', async () => {
     const { kernel, prepared } = await preparedKernel()
     expect(kernel.getThoughts().map(thought => thought.thoughtId)).toEqual([prepared.thoughtId])
@@ -159,6 +298,38 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
     expect(kernel.getStateSnapshot().memories.at(-1)?.actorId).toBe('nan0')
   })
 
+  it('completes body-only expression without a second provider call or assistant memory', async () => {
+    let calls = 0
+    const envelope = thoughtEnvelope({
+      decision: 'BODY_EXPRESSION',
+      bodyExpression: { kind: 'eyes-narrow', parameters: { intensity: 0.7 } },
+    })
+    const setup = createKernel({
+      async generate() {
+        calls++
+        return { text: envelope }
+      },
+    }, new InMemoryStateStore(), 'body', [], true)
+    await setup.kernel.boot()
+    const prepared = await setup.kernel.prepareTurn(observation())
+    expect(prepared.decision).toMatchObject({ finalDecision: 'BODY_EXPRESSION', allowed: true })
+    expect(prepared.systemContext).toBe('')
+    await setup.kernel.recordNonSpeechDecision({
+      turnId: prepared.turnId,
+      thoughtId: prepared.thoughtId,
+      decisionId: prepared.decision.decisionId,
+      decision: 'BODY_EXPRESSION',
+    })
+    const state = setup.kernel.getStateSnapshot()
+    expect(calls).toBe(1)
+    expect(state.memories.filter(memory => memory.actorId === 'nan0')).toHaveLength(0)
+    expect(state.timeline.events.at(-1)).toMatchObject({
+      eventType: 'body-expression',
+      actorId: 'nan0',
+      thoughtId: prepared.thoughtId,
+    })
+  })
+
   it('turns an empty observation into durable silence without invoking the provider', async () => {
     let calls = 0
     const { kernel } = createKernel({ async generate() { calls++; return { text: thoughtEnvelope() } } })
@@ -170,25 +341,90 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
     expect(kernel.getConversationTurns()[0]).toMatchObject({ status: 'silent', decision: 'SILENCE' })
   })
 
-  it('rejects malformed provider output without retaining it as private thought', async () => {
-    const { kernel, prepared } = await preparedKernel(clientWith('not-json', 'still-not-json'))
-    expect(prepared.thought.status).toBe('failed')
+  it('preserves narrative and creates non-executing silence when extraction is missing', async () => {
+    const { kernel, prepared } = await preparedKernel(clientWith('A thought formed, but the extraction never arrived.'))
+    expect(prepared.thought.status).toBe('generated')
+    expect(prepared.thought.narrative).toBe('A thought formed, but the extraction never arrived.')
     expect(prepared.thought.privateText).toBe('')
-    expect(JSON.stringify(kernel.getStateSnapshot())).not.toContain('still-not-json')
+    expect(prepared.thought).toMatchObject({ decision: 'SILENCE', extractionStatus: 'failed' })
+    expect(prepared.decision).toMatchObject({ finalDecision: 'SILENCE', allowed: false })
+    expect(JSON.stringify(kernel.getStateSnapshot())).toContain('thought.extraction-parse-failed')
   })
 
-  it('rejects JSON-like private text from the outward directive', async () => {
+  it('preserves narrative when extraction JSON is malformed', async () => {
+    const narrative = 'The thought itself completed even though its serialization broke.'
+    const { prepared } = await preparedKernel(clientWith(`${narrative}\n${NAN0_THOUGHT_EXTRACTION_DELIMITER}\n{"decision":`))
+    expect(prepared.thought).toMatchObject({
+      status: 'generated',
+      narrative,
+      privateText: '',
+      decision: 'SILENCE',
+      extractionStatus: 'failed',
+    })
+    expect(prepared.thought.metadata.error).toContain('JSON')
+  })
+
+  it('preserves unfamiliar decision, goal, intention, and trigger proposals', async () => {
+    const goalSignal = {
+      kind: 'machine-fascination',
+      stance: 'consider',
+      title: 'Listen to the monitor fan',
+      description: 'Notice whether its rhythm changes.',
+      motivation: 'The sound has become oddly specific to me.',
+      confidence: 0.91,
+      completionCriteria: ['The rhythm is observed again.'],
+      deferredUntil: null,
+    }
+    const intentionSignal = {
+      kind: 'listen-for-return',
+      title: 'Hear the fan again',
+      description: 'Return attention when its sound changes.',
+      motivation: 'I want to know whether the pattern persists.',
+      confidence: 0.92,
+      priority: 0.7,
+      trigger: { type: 'on-machine-song', triggerId: 'fan-song', condition: 'monitor fan rhythm changes' },
+    }
+    const { kernel, prepared } = await preparedKernel(clientWith(thoughtEnvelope({
+      decision: 'GLARE_AT_MONITOR_FAN',
+      goalSignal,
+      intentionSignal,
+    })))
+
+    expect(prepared.thought).toMatchObject({
+      decision: 'GLARE_AT_MONITOR_FAN',
+      proposedDecision: 'GLARE_AT_MONITOR_FAN',
+      goalSignal: { kind: 'machine-fascination' },
+      intentionSignal: {
+        kind: 'listen-for-return',
+        trigger: { type: 'on-machine-song', interpretationStatus: 'unsupported' },
+      },
+    })
+    expect(prepared.decision).toMatchObject({
+      originalProposal: 'GLARE_AT_MONITOR_FAN',
+      finalDecision: 'SILENCE',
+      interpretationStatus: 'unrecognized',
+    })
+    expect(kernel.getPendingIntentions()).toMatchObject([{
+      kind: 'listen-for-return',
+      status: 'blocked',
+      trigger: { type: 'on-machine-song', interpretationStatus: 'unsupported' },
+      blockedReason: 'intention.unsupported-trigger:on-machine-song',
+    }])
+  })
+
+  it('preserves narrative but rejects JSON-like extracted private text from the outward directive', async () => {
     const raw = thoughtEnvelope({ privateText: '{"answer":"leak"}' })
-    const { prepared } = await preparedKernel(clientWith(raw, raw))
-    expect(prepared.thought.status).toBe('failed')
+    const { prepared } = await preparedKernel(clientWith(raw))
+    expect(prepared.thought).toMatchObject({ status: 'generated', extractionStatus: 'failed', decision: 'SILENCE' })
+    expect(prepared.thought.narrative).toBeTruthy()
     expect(prepared.systemContext).not.toContain('answer')
   })
 
-  it('rejects generic assistant phrasing in private thought', async () => {
+  it('rejects generic assistant phrasing in extracted private thought', async () => {
     const generic = thoughtEnvelope({ privateText: 'I am here to assist. How can I help?' })
-    const { prepared } = await preparedKernel(clientWith(generic, generic))
-    expect(prepared.thought).toMatchObject({ status: 'failed', decision: 'WAIT' })
-    expect(prepared.thought.reasonCodes).toContain('thought.generation-failed')
+    const { prepared } = await preparedKernel(clientWith(generic))
+    expect(prepared.thought).toMatchObject({ status: 'generated', extractionStatus: 'failed', decision: 'SILENCE' })
+    expect(prepared.thought.reasonCodes).toContain('thought.extraction-parse-failed')
   })
 
   it('persists SILENCE as a valid terminal decision', async () => {
@@ -246,14 +482,17 @@ describe('Nan0ThoughtEngine thought-first contract', () => {
 
   it('never includes privateText in the outward inference context', async () => {
     const privateText = 'I will keep this exact sentence inside.'
-    const { prepared } = await preparedKernel(clientWith(thoughtEnvelope({ privateText })))
+    const narrative = 'This longer interior sentence must remain private too.'
+    const { prepared } = await preparedKernel(clientWith(thoughtEnvelope({ privateText }, narrative)))
     expect(prepared.systemContext).not.toContain(privateText)
+    expect(prepared.systemContext).not.toContain(narrative)
     expect(prepared.systemContext).toContain(prepared.thought.interpretation)
   })
 
   it('marks both thought and turn failed when thought generation fails', async () => {
     const { kernel, prepared } = await preparedKernel(clientWith(new Error('provider unavailable')))
-    expect(prepared.thought.status).toBe('failed')
+    expect(prepared.thought).toMatchObject({ status: 'failed', decision: 'SILENCE', narrative: null })
+    expect(prepared.decision).toMatchObject({ finalDecision: 'SILENCE', allowed: false })
     expect(kernel.getConversationTurns()[0]).toMatchObject({ status: 'failed', decision: 'UNKNOWN' })
   })
 

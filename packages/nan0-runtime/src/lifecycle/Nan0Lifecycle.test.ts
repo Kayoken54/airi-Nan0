@@ -18,7 +18,7 @@ const observation: Nan0Observation = {
 }
 
 function successThought() {
-  return JSON.stringify({
+  return `I can feel the response forming while the computation remains bounded.\n---EXTRACT---\n${JSON.stringify({
     interpretation: 'Kyo expects a bounded response.',
     privateText: 'I will decide without leaking this thought.',
     decision: 'SPEAK',
@@ -29,7 +29,7 @@ function successThought() {
     actionIntent: null,
     waitUntil: null,
     goalSignal: null,
-  })
+  })}`
 }
 
 function kernel(client: Nan0ReasoningClient, store = new InMemoryStateStore(), timeout = 10) {
@@ -80,14 +80,16 @@ function longLivedAction(overrides: Partial<Nan0ActionIntentRecord> = {}): Nan0A
 describe('bounded Nan0 computation lifecycle', () => {
   it('aborts stalled private thought and terminalizes without speech, goal, or action', async () => {
     const aborted = vi.fn()
-    const subject = kernel(hangingClient(aborted))
+    const generate = vi.fn(hangingClient(aborted).generate)
+    const subject = kernel({ generate })
     await subject.boot()
     const prepared = await subject.prepareTurn(observation)
     const state = subject.getStateSnapshot()
 
     expect(aborted).toHaveBeenCalledOnce()
+    expect(generate).toHaveBeenCalledOnce()
     expect(prepared.thought.status).toBe('failed')
-    expect(prepared.decision.finalDecision).toBe('WAIT')
+    expect(prepared.decision.finalDecision).toBe('SILENCE')
     expect(state.computations).toHaveLength(1)
     expect(state.computations[0]).toMatchObject({
       status: 'timed-out',
@@ -189,7 +191,38 @@ describe('bounded Nan0 computation lifecycle', () => {
       providerMetadata: {},
       metadata: {},
     }
-    expect(mergeComputationAttempts([timedOut], [timedOut])).toEqual([timedOut])
+    expect(mergeComputationAttempts([timedOut], [timedOut])).toEqual([{
+      ...timedOut,
+      schemaVersion: 2,
+      cognitionPhase: 'complete',
+      partialNarrativeLength: 0,
+    }])
+  })
+
+  it('keeps streamed progress monotonic and never lets stale progress replace a terminal computation', () => {
+    const active = {
+      schemaVersion: 2 as const,
+      requestId: 'request-stream',
+      computationType: 'private-thought' as const,
+      turnId: 'turn-stream',
+      thoughtId: 'thought-stream',
+      policy: privateThoughtTimeoutPolicy(),
+      status: 'active' as const,
+      startedAt: 1,
+      finishedAt: null,
+      failureReason: null,
+      providerMetadata: {},
+      metadata: {},
+      cognitionPhase: 'narrative' as const,
+      partialNarrativeLength: 0,
+    }
+    const streaming = { ...active, status: 'streaming' as const, partialNarrativeLength: 160 }
+    const stale = { ...streaming, partialNarrativeLength: 80 }
+    const completed = { ...streaming, status: 'completed' as const, cognitionPhase: 'complete' as const, finishedAt: 5 }
+
+    expect(mergeComputationAttempts([active], [streaming])[0]).toMatchObject({ status: 'streaming', partialNarrativeLength: 160 })
+    expect(mergeComputationAttempts([streaming], [stale])[0].partialNarrativeLength).toBe(160)
+    expect(mergeComputationAttempts([completed], [streaming])[0].status).toBe('completed')
   })
 
   it('permits durable deadlines far beyond private computation timeout', () => {

@@ -28,7 +28,7 @@ import {
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: '{"interpretation":"This interaction matters.","privateText":"I have my own reaction to this.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
+    return { text: 'This interaction lands inside the relationship I already carry, and I have my own reaction to it.\n---EXTRACT---\n{"interpretation":"This interaction matters.","privateText":"I have my own reaction to this.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 

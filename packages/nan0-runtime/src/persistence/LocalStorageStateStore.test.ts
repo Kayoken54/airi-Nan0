@@ -160,7 +160,15 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     await staleWriter.save(staleSnapshot)
 
     const reloaded = await currentWriter.load()
-    expect(reloaded?.decisions).toEqual([decision()])
+    expect(reloaded?.decisions).toHaveLength(1)
+    expect(reloaded?.decisions[0]).toMatchObject({
+      ...decision(),
+      schemaVersion: 3,
+      originalProposal: 'SPEAK',
+      interpretationStatus: 'known',
+      dynamicThreshold: 0.35,
+      thresholdInputs: { baseline: 0.35 },
+    })
   })
 
   it('prevents a stale renderer from removing a completed turn or its timeline output', async () => {
@@ -316,11 +324,60 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
     delete legacy.pendingIntentions
     storage.setItem('nan0-test', JSON.stringify(legacy))
 
-    const reloaded = await new LocalStorageStateStore('nan0-test', { storage }).load()
+    const store = new LocalStorageStateStore('nan0-test', { storage })
+    const reloaded = await store.load()
     expect(reloaded?.computations).toEqual([])
     expect(reloaded?.actionIntents).toEqual([])
-    expect(reloaded?.pendingIntentions).toEqual({ schemaVersion: 1, revision: 0, intentions: [] })
+    expect(reloaded?.schemaVersion).toBe(2)
+    expect(reloaded?.cognitionPolicy).toMatchObject({
+      policyId: 'nan0.cognition.constitutional-default',
+      policyVersion: 5,
+      authority: 'kernel-default',
+    })
+    expect(reloaded?.pendingIntentions).toEqual({ schemaVersion: 3, revision: 0, intentions: [] })
     expect(reloaded?.temporal).toMatchObject({ schemaVersion: 1, conditions: [], detectedClockAdjustments: [] })
+    const resaved = await store.save(reloaded!)
+    expect(resaved.schemaVersion).toBe(2)
+    expect(JSON.parse(storage.getItem('nan0-test')!).schemaVersion).toBe(2)
+  })
+
+  it('prevents a stale emotional snapshot from deleting a newer dimension', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const stale = await currentWriter.save(state([], {
+      emotionalState: { curiosity: 0.4 },
+      emotionalStateRevision: 0,
+    }))
+
+    await currentWriter.save({
+      ...stale,
+      emotionalState: { ...stale.emotionalState, wonder: 0.85 },
+      emotionalStateRevision: 1,
+    })
+    await staleWriter.save(stale)
+
+    expect((await currentWriter.load())?.emotionalState).toEqual({ curiosity: 0.4, wonder: 0.85 })
+    expect((await currentWriter.load())?.emotionalStateRevision).toBe(1)
+  })
+
+  it('persists policy identity and rejects stale policy identity rollback', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const stale = await currentWriter.save(state([]))
+    const currentPolicy = {
+      ...stale.cognitionPolicy!,
+      policyVersion: 6,
+      revision: 2,
+      activatedAt: 20,
+      metadata: { migrationTest: true },
+    }
+
+    await currentWriter.save({ ...stale, cognitionPolicy: currentPolicy })
+    await staleWriter.save(stale)
+
+    expect((await currentWriter.load())?.cognitionPolicy).toEqual(currentPolicy)
   })
 
   it('prevents a stale writer from deleting a newer durable action intent', async () => {

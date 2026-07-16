@@ -30,13 +30,25 @@ export function mergeComputationAttempts(
 ): Nan0ComputationAttempt[] {
   const records = new Map<string, Nan0ComputationAttempt>()
   for (const record of [...(persisted ?? []), ...(candidate ?? [])]) {
-    if (record?.schemaVersion !== 1 || !record.requestId)
+    if ((record?.schemaVersion !== 1 && record?.schemaVersion !== 2) || !record.requestId)
       continue
+    const normalized: Nan0ComputationAttempt = {
+      ...structuredClone(record),
+      schemaVersion: 2,
+      cognitionPhase: record.cognitionPhase ?? (computationTerminal.has(record.status) ? 'complete' : 'queued'),
+      partialNarrativeLength: Math.max(0, Math.floor(record.partialNarrativeLength ?? 0)),
+    }
     const existing = records.get(record.requestId)
+    const existingProgress = Math.max(0, existing?.partialNarrativeLength ?? 0)
+    const normalizedProgress = Math.max(0, normalized.partialNarrativeLength ?? 0)
     if (!existing
-      || (!computationTerminal.has(existing.status) && computationTerminal.has(record.status))
-      || (existing.status === record.status && (record.finishedAt ?? 0) > (existing.finishedAt ?? 0))) {
-      records.set(record.requestId, structuredClone(record))
+      || (!computationTerminal.has(existing.status) && computationTerminal.has(normalized.status))
+      || (!computationTerminal.has(existing.status)
+        && !computationTerminal.has(normalized.status)
+        && (existing.status === 'active' && normalized.status === 'streaming'
+          || normalizedProgress > existingProgress))
+      || (existing.status === normalized.status && (normalized.finishedAt ?? 0) > (existing.finishedAt ?? 0))) {
+      records.set(record.requestId, normalized)
     }
   }
   return [...records.values()].sort((a, b) => a.startedAt - b.startedAt || a.requestId.localeCompare(b.requestId))

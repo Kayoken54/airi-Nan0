@@ -87,7 +87,12 @@ export function normalizeConversationTurns(turns: Nan0ConversationTurn[] | undef
     if (!current || turnStatusRank(turn) > turnStatusRank(current)
       || (turnStatusRank(turn) === turnStatusRank(current)
         && (turn.completedAt ?? 0) > (current.completedAt ?? 0))) {
-      turnById.set(turn.turnId, { ...turn, schemaVersion: 1 })
+      turnById.set(turn.turnId, {
+        ...turn,
+        schemaVersion: 2,
+        proposedDecision: turn.proposedDecision
+          ?? (typeof turn.metadata?.proposedDecision === 'string' ? turn.metadata.proposedDecision : undefined),
+      })
     }
   }
 

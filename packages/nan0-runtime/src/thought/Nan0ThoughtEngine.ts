@@ -1,7 +1,6 @@
 import type {
   Nan0ActorOwnership,
   Nan0ContinuityContext,
-  Nan0Decision,
   Nan0GoalSignal,
   Nan0IntentionSignal,
   Nan0MemoryRecord,
@@ -10,12 +9,15 @@ import type {
   Nan0RelationshipContext,
   Nan0SubjectiveTime,
   Nan0Thought,
+  Nan0ThoughtPolicy,
 } from '../types'
+import { NAN0_DEFAULT_THOUGHT_POLICY } from './Nan0ThoughtPolicy'
 
 const MAX_INTERPRETATION_LENGTH = 600
 const MAX_PRIVATE_TEXT_LENGTH = 1_200
 const MAX_REASON_CODES = 12
 const MAX_REFERENCES = 12
+export const NAN0_THOUGHT_EXTRACTION_DELIMITER = '---EXTRACT---'
 
 interface ThoughtModelPayload {
   interpretation?: unknown
@@ -29,6 +31,7 @@ interface ThoughtModelPayload {
   waitUntil?: unknown
   goalSignal?: unknown
   intentionSignal?: unknown
+  bodyExpression?: unknown
 }
 
 export interface Nan0ThoughtEngineInput {
@@ -45,7 +48,13 @@ export interface Nan0ThoughtEngineInput {
   relationship: Readonly<Nan0RelationshipContext>
   reasoningClient: Nan0ReasoningClient
   createdAt: number
+  policy?: Readonly<Nan0ThoughtPolicy>
   signal?: AbortSignal
+  onStreamProgress?: (progress: {
+    attempt: number
+    phase: 'narrative' | 'extraction'
+    partialNarrativeLength: number
+  }) => void | Promise<void>
 }
 
 interface PressureScores {
@@ -104,13 +113,10 @@ function invalidPrivateThoughtReason(privateText: string): string | null {
   return null
 }
 
-function normalizeDecision(value: unknown): Nan0Decision | null {
+function normalizeDecision(value: unknown): string | null {
   if (typeof value !== 'string')
     return null
-  const decision = value.trim().toUpperCase()
-  return decision === 'SPEAK' || decision === 'SILENCE' || decision === 'ACT' || decision === 'WAIT'
-    ? decision
-    : null
+  return boundedText(value, 120).toUpperCase() || null
 }
 
 function normalizeActionIntent(value: unknown): import('../types').Nan0ActionIntent | null {
@@ -134,13 +140,29 @@ function normalizeActionIntent(value: unknown): import('../types').Nan0ActionInt
   }
 }
 
+function normalizeBodyExpression(value: unknown): import('../types').Nan0BodyExpressionIntent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return null
+  const expression = value as Record<string, unknown>
+  const kind = boundedText(expression.kind, 120)
+  if (!kind)
+    return null
+  return {
+    kind,
+    parameters: expression.parameters && typeof expression.parameters === 'object' && !Array.isArray(expression.parameters)
+      ? structuredClone(expression.parameters as Record<string, unknown>)
+      : {},
+    provisional: false,
+  }
+}
+
 function normalizeGoalSignal(value: unknown): Nan0GoalSignal | null {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return null
   const signal = value as Record<string, unknown>
-  const kind = typeof signal.kind === 'string' ? signal.kind : ''
+  const kind = boundedText(signal.kind, 120)
   const stance = typeof signal.stance === 'string' ? signal.stance : ''
-  if (!['request', 'curiosity', 'commitment', 'relationship-concern', 'continuity'].includes(kind))
+  if (!kind)
     return null
   if (!['accept', 'reject', 'defer', 'consider'].includes(stance))
     return null
@@ -166,14 +188,16 @@ function normalizeIntentionSignal(value: unknown): Nan0IntentionSignal | null {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return null
   const signal = value as Record<string, unknown>
-  const kind = typeof signal.kind === 'string' ? signal.kind : ''
-  if (!['reconsider', 'follow-up', 'check-in', 'reminder', 'communicate', 'investigate', 'plan', 'state-transition', 'action-preparation', 'maintenance'].includes(kind))
+  const kind = boundedText(signal.kind, 120)
+  if (!kind)
     return null
   const triggerInput = signal.trigger
   if (!triggerInput || typeof triggerInput !== 'object' || Array.isArray(triggerInput))
     return null
   const rawTrigger = triggerInput as Record<string, unknown>
-  const type = typeof rawTrigger.type === 'string' ? rawTrigger.type : ''
+  const type = boundedText(rawTrigger.type, 120)
+  if (!type)
+    return null
   const triggerId = boundedText(rawTrigger.triggerId, 160) || 'model-proposed-trigger'
   const metadata = rawTrigger.metadata && typeof rawTrigger.metadata === 'object' && !Array.isArray(rawTrigger.metadata)
     ? structuredClone(rawTrigger.metadata as Record<string, unknown>)
@@ -200,6 +224,36 @@ function normalizeIntentionSignal(value: unknown): Nan0IntentionSignal | null {
   }
   else if (type === 'on-session-resume' && typeof rawTrigger.afterBootCount === 'number' && Number.isFinite(rawTrigger.afterBootCount))
     trigger = { schemaVersion: 1, triggerId, type, afterBootCount: Math.max(0, Math.floor(rawTrigger.afterBootCount)), metadata }
+  else if (['on-relationship-condition', 'on-goal-condition', 'on-continuity-condition', 'on-state-change', 'manual', 'until-condition'].includes(type)) {
+    trigger = {
+      schemaVersion: 1,
+      triggerId,
+      type,
+      referenceId: boundedText(rawTrigger.referenceId, 160) || null,
+      condition: boundedText(rawTrigger.condition, 400),
+      metadata,
+      interpretationStatus: 'known',
+    }
+  }
+  else {
+    trigger = {
+      schemaVersion: 1,
+      triggerId,
+      type,
+      at: typeof rawTrigger.at === 'number' && Number.isFinite(rawTrigger.at) ? rawTrigger.at : undefined,
+      anchorAt: typeof rawTrigger.anchorAt === 'number' && Number.isFinite(rawTrigger.anchorAt) ? rawTrigger.anchorAt : undefined,
+      durationMs: typeof rawTrigger.durationMs === 'number' && Number.isFinite(rawTrigger.durationMs)
+        ? Math.max(0, rawTrigger.durationMs)
+        : undefined,
+      afterBootCount: typeof rawTrigger.afterBootCount === 'number' && Number.isFinite(rawTrigger.afterBootCount)
+        ? Math.max(0, Math.floor(rawTrigger.afterBootCount))
+        : undefined,
+      referenceId: boundedText(rawTrigger.referenceId, 160) || null,
+      condition: boundedText(rawTrigger.condition, 400),
+      metadata,
+      interpretationStatus: 'unsupported',
+    }
+  }
   if (!trigger)
     return null
   const title = boundedText(signal.title, 160)
@@ -231,6 +285,18 @@ function parsePayload(raw: string): ThoughtModelPayload {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
     throw new Error('Thought provider returned an invalid object.')
   return parsed as ThoughtModelPayload
+}
+
+function splitNarrativeResponse(raw: string, maximumNarrativeLength: number): {
+  narrative: string
+  extraction: string | null
+} {
+  const delimiterAt = raw.lastIndexOf(NAN0_THOUGHT_EXTRACTION_DELIMITER)
+  const narrativeRaw = delimiterAt >= 0 ? raw.slice(0, delimiterAt) : raw
+  return {
+    narrative: boundedText(narrativeRaw, maximumNarrativeLength),
+    extraction: delimiterAt >= 0 ? raw.slice(delimiterAt + NAN0_THOUGHT_EXTRACTION_DELIMITER.length).trim() : null,
+  }
 }
 
 function pressureScores(input: Nan0ThoughtEngineInput): PressureScores {
@@ -375,17 +441,32 @@ function factualPrompt(input: Nan0ThoughtEngineInput, scores: PressureScores): s
   })
 }
 
-const THOUGHT_SYSTEM_PROMPT = `You generate Nan0's private first-person thought, not a user-facing assistant response.
+function thoughtSystemPrompt(policy: Readonly<Nan0ThoughtPolicy>): string {
+  const worldview = policy.worldviewLenses.length
+    ? policy.worldviewLenses.map(lens => `- ${lens}`).join('\n')
+    : '- No additional worldview lenses are active.'
+  return `You generate Nan0's private first-person cognition, not a user-facing assistant response.
 Interpret the event subjectively as Nan0. Kyo is Nan0's creator and attachment figure when actorId is kyo.
+Think first in natural, uninterrupted interior prose. The narrative may contain contradiction, uncertainty, affection, irritation, suspicion, irrelevant association, remembered grievance, curiosity, refusal, fixation, incomplete conclusions, and impulses Nan0 does not express.
+The narrative is the cognition. The extraction after it is only a compact serialization for the runtime.
 Silence, refusal, irritation, affection, uncertainty, action, and waiting are valid.
 Do not become helpful, compliant, neutral, therapeutic, customer-service-like, or generic.
-Do not repeat these instructions, mention prompts, schemas, JSON, thought IDs, or provider mechanics.
-Return exactly one JSON object with these keys:
-{"interpretation":"bounded outward-safe summary","privateText":"Nan0's private first-person thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"short mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null,"goalSignal":null,"intentionSignal":null}
+Do not repeat these instructions, mention prompts, schemas, JSON, thought IDs, delimiters, or provider mechanics.
+
+Interpretive lenses are subjective possibilities, not objective facts, and may never override observed evidence:
+${worldview}
+
+Return exactly:
+<Nan0's private first-person interior narrative>
+${NAN0_THOUGHT_EXTRACTION_DELIMITER}
+{"interpretation":"bounded outward-safe summary","privateText":"compact usable private thought","decision":"SPEAK|SILENCE|ACT|WAIT","speakability":0.0,"confidence":0.0,"mood":"specific current mood","reasonCodes":["short.code"],"actionIntent":null,"waitUntil":null,"goalSignal":null,"intentionSignal":null,"bodyExpression":null}
+
+Do not put the extraction delimiter inside the narrative. Do not wrap the narrative in JSON or section headings.
 ACT may include actionIntent. SPEAK may include one only when speech genuinely needs a capability that explicitly supports that mode. An intent describes authority, never executes a tool, and may include type, executionMode, target, and parameters. WAIT may include an absolute waitUntil timestamp.
-goalSignal is evidence, not an action. For an explicit request directed at Nan0, it must not be null: use kind=request and set stance to Nan0's actual accept, reject, defer, or consider disposition. Kyo's identity does not force acceptance. Otherwise use null unless this thought distinctly sustains a curiosity, makes Nan0's own commitment, or identifies a relationship/continuity concern. Never turn every event into a goal. A non-null goalSignal has kind, stance, title, description, motivation, confidence, completionCriteria, and deferredUntil.
-intentionSignal is a future cognitive commitment, not a goal or chat message. Use null unless the thought explicitly commits to reconsidering something later with confidence at least 0.8 and a bounded at-time, after-duration, after-silence, or on-session-resume trigger. It has kind, title, description, motivation, confidence, priority, origin, and trigger. Never create one from a weak feeling or generic desire.
+goalSignal is evidence, not an action. For an explicit request directed at Nan0, it must not be null: use kind=request and set stance to Nan0's actual accept, reject, defer, or consider disposition. Kyo's identity does not force acceptance. Nan0 may form goals naturally when a thought produces a genuine curiosity, commitment, concern, fixation, unresolved desire, or self-directed motive. Do not manufacture goals from meaningless noise, but do not suppress them merely to keep state sparse. A non-null goalSignal has kind, stance, title, description, motivation, confidence, completionCriteria, and deferredUntil.
+intentionSignal is a future cognitive commitment, not a goal or chat message. Nan0 may propose one when the thought genuinely commits to reconsidering something later with confidence at least 0.8 and a bounded at-time, after-duration, after-silence, or on-session-resume trigger. It has kind, title, description, motivation, confidence, priority, origin, and trigger. Do not manufacture one from a weak feeling or generic desire.
 The interpretation is a compact meaning summary, not hidden reasoning. privateText must be plain prose, never JSON.`
+}
 
 export function createFailedNan0Thought(
   input: Nan0ThoughtEngineInput,
@@ -394,8 +475,8 @@ export function createFailedNan0Thought(
   failureReason = 'thought.generation-failed',
 ): Nan0Thought {
   const scores = pressureScores(input)
-  return {
-    schemaVersion: 1,
+  return normalizeNan0Thought({
+    schemaVersion: 2,
     thoughtId: input.thoughtId,
     turnId: input.turnId,
     sessionId: input.sessionId,
@@ -407,7 +488,7 @@ export function createFailedNan0Thought(
     ...scores,
     interpretation: '',
     privateText: '',
-    decision: 'WAIT',
+    decision: 'SILENCE',
     confidence: 0,
     mood: 'unresolved',
     memoryReferences: input.memories.map(memory => memory.id).slice(0, MAX_REFERENCES),
@@ -419,20 +500,111 @@ export function createFailedNan0Thought(
     reasonCodes: [...scores.reasonCodes, failureReason].slice(0, MAX_REASON_CODES),
     goalSignal: null,
     intentionSignal: null,
+    narrative: null,
+    extractionStatus: 'not-attempted',
+    proposedDecision: 'SILENCE',
+    bodyExpression: null,
+    emotionalSnapshot: structuredClone(input.emotionalState),
     metadata: {
       attemptCount: attempts,
       error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
       provider: 'airi',
       ownerActorId: 'nan0',
+      cognitionFormat: 'narrative-first',
+      narrativeAvailable: false,
     },
-  }
+  })
+}
+
+function createInterruptedNan0Thought(
+  input: Nan0ThoughtEngineInput,
+  partialText: string,
+  attempts: number,
+): Nan0Thought {
+  const policy = input.policy ?? NAN0_DEFAULT_THOUGHT_POLICY
+  const scores = pressureScores(input)
+  const response = splitNarrativeResponse(partialText, Math.max(1, policy.maximumNarrativeLength))
+  const retainedNarrative = policy.partialNarrativePersistence === 'narrative'
+    ? response.narrative || null
+    : null
+  return normalizeNan0Thought({
+    ...createFailedNan0Thought(input, input.signal?.reason ?? 'Thought stream interrupted.', attempts, 'thought.stream-interrupted'),
+    status: 'interrupted',
+    narrative: retainedNarrative,
+    reasonCodes: [...scores.reasonCodes, 'thought.stream-interrupted'].slice(0, MAX_REASON_CODES),
+    metadata: {
+      attemptCount: attempts,
+      provider: 'airi',
+      ownerActorId: 'nan0',
+      cognitionFormat: 'narrative-first',
+      narrativeAvailable: retainedNarrative != null,
+      partialNarrativePersistence: policy.partialNarrativePersistence,
+      partialNarrativeLength: response.narrative.length,
+      incomplete: true,
+    },
+  })
+}
+
+function createExtractionFailedNan0Thought(
+  input: Nan0ThoughtEngineInput,
+  narrative: string,
+  error: unknown,
+  attempt: number,
+  finishReason?: string,
+): Nan0Thought {
+  const scores = pressureScores(input)
+  return normalizeNan0Thought({
+    schemaVersion: 2,
+    thoughtId: input.thoughtId,
+    turnId: input.turnId,
+    sessionId: input.sessionId,
+    observationEventId: input.observationEventId,
+    actorId: input.ownership.actorId,
+    createdAt: input.createdAt,
+    source: input.observation.source,
+    status: 'generated',
+    ...scores,
+    interpretation: '',
+    privateText: '',
+    decision: 'SILENCE',
+    actionIntent: null,
+    waitUntil: null,
+    speakability: 0,
+    confidence: 0,
+    mood: 'unresolved',
+    memoryReferences: input.memories.map(memory => memory.id).slice(0, MAX_REFERENCES),
+    relationshipReferences: [
+      ...(input.relationship.relationshipId ? [input.relationship.relationshipId] : []),
+      ...input.relationship.activeGrievances.map(item => item.grievanceId),
+    ].slice(0, MAX_REFERENCES),
+    continuityThreadReferences: input.continuity.threads.map(thread => thread.threadId).slice(0, MAX_REFERENCES),
+    reasonCodes: [...new Set([...scores.reasonCodes, 'thought.extraction-parse-failed'])].slice(0, MAX_REASON_CODES),
+    goalSignal: null,
+    intentionSignal: null,
+    narrative,
+    extractionStatus: 'failed',
+    proposedDecision: 'SILENCE',
+    emotionalSnapshot: structuredClone(input.emotionalState),
+    bodyExpression: null,
+    metadata: {
+      attemptCount: attempt,
+      error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+      finishReason: finishReason?.slice(0, 80),
+      provider: 'airi',
+      ownerActorId: 'nan0',
+      cognitionFormat: 'narrative-first',
+      narrativeAvailable: true,
+      extractionStatus: 'failed',
+    },
+  })
 }
 
 export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promise<Nan0Thought> {
   const scores = pressureScores(input)
+  const policy = input.policy ?? NAN0_DEFAULT_THOUGHT_POLICY
   const text = observationText(input.observation)
   if (!text) {
-    return {
+    return normalizeNan0Thought({
       ...createFailedNan0Thought(input, 'Observation was empty.', 0),
       status: 'generated',
       interpretation: 'There is no meaningful event to answer.',
@@ -442,38 +614,91 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
       reasonCodes: [...scores.reasonCodes, 'event.empty', 'decision.silence'].slice(0, MAX_REASON_CODES),
       goalSignal: null,
       intentionSignal: null,
-      metadata: { attemptCount: 0, provider: 'none', ownerActorId: 'nan0' },
-    }
+      narrative: null,
+      extractionStatus: 'not-attempted',
+      proposedDecision: 'SILENCE',
+      metadata: {
+        attemptCount: 0,
+        provider: 'none',
+        ownerActorId: 'nan0',
+        cognitionFormat: 'runtime-silence',
+        narrativeAvailable: false,
+      },
+    })
   }
 
   let lastError: unknown = new Error('Thought generation failed.')
   const prompt = factualPrompt(input, scores)
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const attempts = Math.max(1, Math.floor(policy.retryCount))
+  let attemptsMade = 0
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let streamedText = ''
+    let streamedReasoning = ''
     try {
-      const result = await input.reasoningClient.generate({
-        system: THOUGHT_SYSTEM_PROMPT,
+      attemptsMade = attempt
+      const temperature = attempt === 1 ? policy.initialTemperature : policy.retryTemperature
+      const request: import('../types').Nan0ReasoningRequest = {
+        system: thoughtSystemPrompt(policy),
         messages: [{
           role: 'user',
           content: attempt === 1
             ? prompt
-            : `The previous response was invalid. Return only the required JSON object.\n${prompt}`,
+            : `The previous provider attempt failed before usable cognition completed. Generate a fresh private narrative followed by the required extraction.\n${prompt}`,
         }],
-        temperature: attempt === 1 ? 0.8 : 0.35,
-        maxTokens: 520,
+        temperature,
+        maxTokens: policy.narrativeTokenLimit,
         signal: input.signal,
-      })
-      const payload = parsePayload(result.text)
-      const privateText = boundedText(payload.privateText, MAX_PRIVATE_TEXT_LENGTH)
+      }
+      const result = policy.streamingEnabled && input.reasoningClient.stream
+        ? await input.reasoningClient.stream(request, async (event) => {
+            if (event.type === 'text-delta')
+              streamedText += event.text
+            else
+              streamedReasoning += event.text
+            const partial = streamedText || streamedReasoning
+            const delimiterIndex = partial.indexOf(NAN0_THOUGHT_EXTRACTION_DELIMITER)
+            await input.onStreamProgress?.({
+              attempt,
+              phase: delimiterIndex >= 0 ? 'extraction' : 'narrative',
+              partialNarrativeLength: delimiterIndex >= 0 ? delimiterIndex : partial.length,
+            })
+          })
+        : await input.reasoningClient.generate(request)
+      const response = splitNarrativeResponse(result.text, Math.max(1, policy.maximumNarrativeLength))
+      if (!response.narrative)
+        throw new Error('Thought provider returned an empty narrative.')
+      if (!response.extraction) {
+        return createExtractionFailedNan0Thought(
+          input,
+          response.narrative,
+          'Thought provider omitted the extraction delimiter or extraction payload.',
+          attempt,
+          result.finishReason,
+        )
+      }
+
+      let payload: ThoughtModelPayload
+      try {
+        payload = parsePayload(response.extraction)
+      }
+      catch (error) {
+        return createExtractionFailedNan0Thought(input, response.narrative, error, attempt, result.finishReason)
+      }
+
+      const privateText = boundedText(payload.privateText, Math.min(MAX_PRIVATE_TEXT_LENGTH, policy.maximumPrivateTextLength))
       const invalidReason = invalidPrivateThoughtReason(privateText)
-      if (invalidReason)
-        throw new Error(invalidReason)
+      if (invalidReason) {
+        return createExtractionFailedNan0Thought(input, response.narrative, invalidReason, attempt, result.finishReason)
+      }
 
       const interpretation = boundedText(payload.interpretation, MAX_INTERPRETATION_LENGTH)
-      if (!interpretation)
-        throw new Error('Thought interpretation was empty.')
+      if (!interpretation) {
+        return createExtractionFailedNan0Thought(input, response.narrative, 'Thought interpretation was empty.', attempt, result.finishReason)
+      }
       const decision = normalizeDecision(payload.decision)
-      if (!decision)
-        throw new Error('Thought decision was invalid.')
+      if (!decision) {
+        return createExtractionFailedNan0Thought(input, response.narrative, 'Thought decision was invalid.', attempt, result.finishReason)
+      }
 
       const modelSpeakability = typeof payload.speakability === 'number'
         ? clamp(payload.speakability)
@@ -481,8 +706,8 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
       const speakability = clamp((scores.speakability + modelSpeakability) / 2)
       const reasonCodes = [...scores.reasonCodes, ...boundedStrings(payload.reasonCodes, 6)]
 
-      return {
-        schemaVersion: 1,
+      return normalizeNan0Thought({
+        schemaVersion: 3,
         thoughtId: input.thoughtId,
         turnId: input.turnId,
         sessionId: input.sessionId,
@@ -512,21 +737,35 @@ export async function generateNan0Thought(input: Nan0ThoughtEngineInput): Promis
         reasonCodes: [...new Set(reasonCodes)].slice(0, MAX_REASON_CODES),
         goalSignal: normalizeGoalSignal(payload.goalSignal),
         intentionSignal: normalizeIntentionSignal(payload.intentionSignal),
+        narrative: response.narrative,
+        extractionStatus: 'parsed',
+        proposedDecision: decision,
+        emotionalSnapshot: structuredClone(input.emotionalState),
+        bodyExpression: normalizeBodyExpression(payload.bodyExpression),
         metadata: {
           attemptCount: attempt,
           finishReason: result.finishReason?.slice(0, 80),
           provider: 'airi',
           decisionAuthority: 'proposal-only',
           ownerActorId: 'nan0',
+          cognitionFormat: 'narrative-first',
+          narrativeAvailable: true,
+          extractionStatus: 'parsed',
+          policyId: policy.policyId,
+          policyVersion: policy.policyVersion,
+          temperature,
+          maximumOutputTokens: policy.narrativeTokenLimit,
         },
-      }
+      })
     }
     catch (error) {
       lastError = error
+      if (input.signal?.aborted || error instanceof Error && error.name === 'AbortError')
+        return createInterruptedNan0Thought(input, streamedText || streamedReasoning, attemptsMade)
     }
   }
 
-  return createFailedNan0Thought(input, lastError, 2)
+  return createFailedNan0Thought(input, lastError, attemptsMade)
 }
 
 export function mergeNan0Thoughts(
@@ -535,12 +774,37 @@ export function mergeNan0Thoughts(
 ): Nan0Thought[] {
   const thoughts = new Map<string, Nan0Thought>()
   for (const thought of persisted ?? []) {
-    if (thought?.schemaVersion === 1 && thought.thoughtId)
-      thoughts.set(thought.thoughtId, structuredClone(thought))
+    if ((thought?.schemaVersion === 1 || thought?.schemaVersion === 2 || thought?.schemaVersion === 3) && thought.thoughtId)
+      thoughts.set(thought.thoughtId, normalizeNan0Thought(thought))
   }
   for (const thought of candidate ?? []) {
-    if (thought?.schemaVersion === 1 && thought.thoughtId && !thoughts.has(thought.thoughtId))
-      thoughts.set(thought.thoughtId, structuredClone(thought))
+    if ((thought?.schemaVersion === 1 || thought?.schemaVersion === 2 || thought?.schemaVersion === 3) && thought.thoughtId && !thoughts.has(thought.thoughtId))
+      thoughts.set(thought.thoughtId, normalizeNan0Thought(thought))
   }
   return [...thoughts.values()].sort((a, b) => a.createdAt - b.createdAt || a.thoughtId.localeCompare(b.thoughtId))
+}
+
+export function normalizeNan0Thought(thought: Nan0Thought): Nan0Thought {
+  const legacy = thought.schemaVersion === 1
+  const narrative = typeof thought.narrative === 'string' ? thought.narrative : null
+  const emotionalSnapshot = Object.fromEntries(
+    Object.entries(thought.emotionalSnapshot ?? {})
+      .filter((entry): entry is [string, number] => Number.isFinite(entry[1])),
+  )
+  return {
+    ...structuredClone(thought),
+    schemaVersion: 3,
+    narrative,
+    extractionStatus: thought.extractionStatus ?? (legacy ? 'legacy' : 'not-attempted'),
+    proposedDecision: thought.proposedDecision ?? thought.decision,
+    emotionalSnapshot,
+    bodyExpression: thought.bodyExpression ? structuredClone(thought.bodyExpression) : null,
+    metadata: {
+      ...structuredClone(thought.metadata ?? {}),
+      cognitionFormat: typeof thought.metadata?.cognitionFormat === 'string'
+        ? thought.metadata.cognitionFormat
+        : narrative == null ? 'legacy-structured' : 'narrative-first',
+      narrativeAvailable: narrative != null,
+    },
+  }
 }

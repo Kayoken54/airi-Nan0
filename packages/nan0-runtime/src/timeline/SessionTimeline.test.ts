@@ -12,7 +12,7 @@ import { createEmptyTimelineState } from './SessionTimeline'
 
 const reasoningClient: Nan0ReasoningClient = {
   async generate() {
-    return { text: '{"interpretation":"An event occurred.","privateText":"I noticed it.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
+    return { text: 'The event reaches me in sequence, and I notice it before deciding to answer.\n---EXTRACT---\n{"interpretation":"An event occurred.","privateText":"I noticed it.","decision":"SPEAK","speakability":0.8,"confidence":0.8,"mood":"attentive","reasonCodes":[]}' }
   },
 }
 
@@ -149,7 +149,7 @@ describe('ConversationTurn and session timeline', () => {
   it('records deliberate silence without fabricating Nan0 speech content', async () => {
     const silenceClient: Nan0ReasoningClient = {
       async generate() {
-        return { text: '{"interpretation":"Quiet is deliberate.","privateText":"I would rather remain quiet.","decision":"SILENCE","speakability":0.1,"confidence":0.8,"mood":"quiet","reasonCodes":["decision.quiet"]}' }
+        return { text: 'I feel the option to speak and decide I would rather keep this one inside.\n---EXTRACT---\n{"interpretation":"Quiet is deliberate.","privateText":"I would rather remain quiet.","decision":"SILENCE","speakability":0.1,"confidence":0.8,"mood":"quiet","reasonCodes":["decision.quiet"]}' }
       },
     }
     const { kernel } = createKernel(new InMemoryStateStore(), createClock(), 'id', silenceClient)

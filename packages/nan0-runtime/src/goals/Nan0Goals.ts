@@ -8,8 +8,10 @@ import type {
   Nan0GoalStatus,
   Nan0RelationshipContext,
   Nan0Thought,
+  Nan0ThoughtPolicy,
   Nan0TrustedGoalObligation,
 } from '../types'
+import { NAN0_DEFAULT_THOUGHT_POLICY } from '../thought/Nan0ThoughtPolicy'
 
 const MAX_GOAL_TEXT = 400
 const MAX_REFERENCES = 24
@@ -27,6 +29,7 @@ export interface Nan0GoalFormationInput {
   relationship: Readonly<Nan0RelationshipContext>
   continuityThreadId: string
   trustedObligations?: readonly Nan0TrustedGoalObligation[]
+  thoughtPolicy?: Readonly<Nan0ThoughtPolicy>
   createGoalId: () => string
   now: number
 }
@@ -128,7 +131,7 @@ function originFor(
     return 'curiosity'
   if (signal.kind === 'commitment')
     return 'self-generated'
-  return null
+  return 'self-generated'
 }
 
 function originActorId(origin: Nan0GoalOrigin, ownership: Readonly<Nan0ActorOwnership>): string {
@@ -142,6 +145,8 @@ function statusFor(
   signal: Nan0GoalSignal,
   supportCount: number,
   averageConfidence: number,
+  stronglyGrounded: boolean,
+  policy: Readonly<Nan0ThoughtPolicy>,
 ): Nan0GoalStatus | null {
   if (origin === 'kyo-requested' || origin === 'external-request') {
     if (signal.stance === 'reject')
@@ -155,12 +160,12 @@ function statusFor(
   if (signal.stance === 'defer')
     return 'deferred'
   if (origin === 'curiosity') {
-    if (supportCount < 2)
+    if (supportCount < 2 && !stronglyGrounded)
       return null
-    return supportCount >= 3 && averageConfidence >= 0.75 ? 'active' : 'candidate'
+    return supportCount >= policy.goalProposalPolicy.activationSupportCount && averageConfidence >= 0.75 ? 'active' : 'candidate'
   }
   if (origin === 'self-generated')
-    return signal.confidence >= 0.85 || supportCount >= 2 && averageConfidence >= 0.75
+    return stronglyGrounded || signal.confidence >= 0.85 || supportCount >= 2 && averageConfidence >= 0.75
       ? (supportCount >= 2 ? 'active' : 'candidate')
       : null
   if (origin === 'relationship-derived' || origin === 'continuity-derived') {
@@ -172,6 +177,7 @@ function statusFor(
 }
 
 function goalFromEvidence(input: Nan0GoalFormationInput, signal: Nan0GoalSignal, origin: Nan0GoalOrigin): Nan0Goal | null {
+  const policy = input.thoughtPolicy ?? NAN0_DEFAULT_THOUGHT_POLICY
   const actorId = originActorId(origin, input.ownership)
   if ((origin === 'self-generated' || origin === 'curiosity') && copiedFromObservation(signal, input.observationText))
     return null
@@ -180,14 +186,17 @@ function goalFromEvidence(input: Nan0GoalFormationInput, signal: Nan0GoalSignal,
   const relatedThoughts = input.allThoughts
     .map(thought => ({ thought, signal: supportedSignal(thought) }))
     .filter(item => item.signal?.kind === signal.kind
-      && item.signal.confidence >= (origin === 'curiosity' ? 0.65 : 0.6)
+      && item.signal.confidence >= (origin === 'curiosity' ? policy.goalProposalPolicy.repeatedSupportConfidence : 0.6)
       && (formationKey(origin, item.signal.title, actorId) === key || sameDirection(item.signal.title, signal.title)))
   const distinctThoughts = new Map(relatedThoughts.map(item => [item.thought.thoughtId, item]))
   const supports = [...distinctThoughts.values()]
   const confidence = supports.length
     ? supports.reduce((sum, item) => sum + item.signal!.confidence, 0) / supports.length
     : signal.confidence
-  const status = statusFor(origin, signal, supports.length, confidence)
+  const stronglyGrounded = signal.confidence >= policy.goalProposalPolicy.strongCandidateConfidence
+    && input.thought.goalPressure >= policy.goalProposalPolicy.strongCandidateGoalPressure
+    && Boolean(signal.description)
+  const status = statusFor(origin, signal, supports.length, confidence, stronglyGrounded, policy)
   if (!status)
     return null
 
@@ -240,10 +249,13 @@ function goalFromEvidence(input: Nan0GoalFormationInput, signal: Nan0GoalSignal,
       ...existing?.metadata,
       ownerActorId: 'nan0',
       signalKind: signal.kind,
+      signalKindInterpretation: ['request', 'relationship-concern', 'continuity', 'curiosity', 'commitment'].includes(signal.kind)
+        ? 'known'
+        : 'unrecognized',
       formationKey: key,
       evidenceCount: supportingThoughtIds.length,
       formationRule: origin === 'curiosity'
-        ? 'curiosity-repeated-support-v1'
+        ? stronglyGrounded && supports.length < 2 ? 'curiosity-strong-grounded-v1' : 'curiosity-repeated-support-v1'
         : origin === 'self-generated'
           ? 'nan0-commitment-v1'
           : `${origin}-v1`,
@@ -311,7 +323,8 @@ export function evaluateNan0Goals(input: Nan0GoalFormationInput): Nan0Goal[] {
 export function normalizeNan0Goal(goal: Nan0Goal): Nan0Goal {
   return {
     ...goal,
-    schemaVersion: 1,
+    schemaVersion: 3,
+    kind: bounded(goal.kind ?? goal.metadata?.signalKind ?? goal.origin, 120),
     title: bounded(goal.title, 160),
     description: bounded(goal.description),
     motivation: bounded(goal.motivation),
@@ -364,7 +377,7 @@ export function mergeNan0Goals(
   const goals = new Map<string, Nan0Goal>()
   const formationKeys = new Map<string, string>()
   for (const raw of [...(persisted ?? []), ...(candidate ?? [])]) {
-    if (raw?.schemaVersion !== 1 || !raw.goalId)
+    if ((raw?.schemaVersion !== 1 && raw?.schemaVersion !== 2 && raw?.schemaVersion !== 3) || !raw.goalId)
       continue
     const goal = normalizeNan0Goal(raw)
     const key = bounded(goal.metadata.formationKey, 240)

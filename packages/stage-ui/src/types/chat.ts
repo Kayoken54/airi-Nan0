@@ -88,7 +88,7 @@ export interface ChatStreamEventContext {
   }
   nan0ToolAuthority?: {
     schemaVersion: 1
-    finalDecision: 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT'
+    finalDecision: 'SPEAK' | 'SILENCE' | 'ACT' | 'WAIT' | 'BODY_EXPRESSION'
     thoughtId: string
     decisionId: string
     turnId: string

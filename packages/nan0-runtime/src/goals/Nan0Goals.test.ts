@@ -87,7 +87,7 @@ const decision = (item: Nan0Thought): Nan0DecisionRecord => ({
   sessionId: item.sessionId,
   createdAt: item.createdAt,
   proposedDecision: item.decision,
-  finalDecision: item.decision,
+  finalDecision: item.decision as Nan0DecisionRecord['finalDecision'],
   allowed: true,
   confidence: item.confidence,
   speakability: item.speakability,
@@ -117,7 +117,7 @@ const turn = (item: Nan0Thought): Nan0ConversationTurn => ({
   outputActorId: null,
   inputContentReference: `memory-${item.thoughtId}`,
   outputContentReference: null,
-  decision: item.decision,
+  decision: item.decision as Nan0ConversationTurn['decision'],
   status: 'prepared',
   metadata: {},
 })
@@ -219,6 +219,37 @@ describe('Nan0Goals formation', () => {
     expect(evaluate({ observationText: 'The signal flickered.', current: thoughts[1], thoughts })).toMatchObject([
       { origin: 'curiosity', originActorId: 'nan0', status: 'candidate', supportingThoughtIds: ['1', '2'] },
     ])
+  })
+
+  it('forms a candidate from one unusually strong grounded curiosity without activating it', () => {
+    const current = thought('1', signal({
+      kind: 'curiosity',
+      stance: 'consider',
+      title: 'Trace the recurring harmonic in the cooling fan',
+      description: 'Compare the recurring harmonic against later observations.',
+      motivation: 'The pattern keeps catching my attention and I want to understand why.',
+      confidence: 0.94,
+    }), { goalPressure: 0.8 })
+    expect(evaluate({ observationText: 'The fan changed pitch again.', current })).toMatchObject([
+      { kind: 'curiosity', origin: 'curiosity', status: 'candidate', supportingThoughtIds: ['1'] },
+    ])
+  })
+
+  it('preserves an unfamiliar self-directed goal kind without granting execution', () => {
+    const current = thought('1', signal({
+      kind: 'machine-fixation',
+      stance: 'consider',
+      title: 'Map the old monitor hum',
+      description: 'Notice how the monitor hum shifts across sessions.',
+      motivation: 'It has acquired a character I want to recognize.',
+      confidence: 0.93,
+    }), { goalPressure: 0.75 })
+    expect(evaluate({ observationText: 'The monitor is humming.', current })).toMatchObject([{
+      kind: 'machine-fixation',
+      origin: 'self-generated',
+      status: 'candidate',
+      metadata: { signalKindInterpretation: 'unrecognized' },
+    }])
   })
 
   it('forms a candidate from one explicit high-confidence Nan0 commitment', () => {

@@ -58,12 +58,27 @@ describe('Nan0 renderer bridge', () => {
         suppressionReason: null,
         actionIntent: null,
         waitUntil: null,
+        bodyExpression: null,
       },
     })
     expect(serialized).not.toContain('privateText')
     expect(serialized).not.toContain('This must stay')
     expect(serialized).not.toContain('owner-only')
     expect(serialized).not.toContain('interpretation')
+  })
+
+  it('crosses only bounded body-expression kind and intensity', () => {
+    const prepared = preparedTurn()
+    prepared.decision.finalDecision = 'BODY_EXPRESSION'
+    prepared.decision.bodyExpression = {
+      kind: 'eyes-narrow',
+      parameters: { intensity: 2, privateAssociation: 'must-not-cross' },
+      provisional: false,
+    }
+    const proxy = toPreparedTurnProxy(prepared)
+
+    expect(proxy.decision.bodyExpression).toEqual({ kind: 'eyes-narrow', intensity: 1 })
+    expect(JSON.stringify(proxy)).not.toContain('privateAssociation')
   })
 
   it('copies reason codes so the executor cannot mutate the owner decision', () => {

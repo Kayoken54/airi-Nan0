@@ -12,7 +12,7 @@ import { ControllableNan0Clock } from '../temporal/Nan0Clock'
 import { Nan0Kernel } from './Nan0Kernel'
 
 function modelThought(decision: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT', overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({
+  return `The due intention returns to my attention, and I reconsider it as my own thought.\n---EXTRACT---\n${JSON.stringify({
     interpretation: 'A due intention deserves a bounded private reconsideration.',
     privateText: 'I can decide whether this still deserves expression.',
     decision,
@@ -25,7 +25,7 @@ function modelThought(decision: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT', overrides:
     goalSignal: null,
     intentionSignal: null,
     ...overrides,
-  })
+  })}`
 }
 
 function pending(at: number, overrides: Partial<Nan0PendingIntention> = {}): Nan0PendingIntention {

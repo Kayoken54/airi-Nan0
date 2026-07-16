@@ -353,9 +353,9 @@ function pendingIntentionDueAt(intention: Nan0PendingIntention): number | null {
   if (intention.dueAt != null)
     return intention.dueAt
   if (intention.trigger.type === 'at-time')
-    return intention.trigger.at
+    return intention.trigger.at ?? null
   if (intention.trigger.type === 'after-duration')
-    return intention.trigger.anchorAt + intention.trigger.durationMs
+    return (intention.trigger.anchorAt ?? 0) + (intention.trigger.durationMs ?? 0)
   return null
 }
 

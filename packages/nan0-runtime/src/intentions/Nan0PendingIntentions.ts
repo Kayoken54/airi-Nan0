@@ -11,7 +11,9 @@ import type {
   Nan0PendingIntentionStatus,
   Nan0TemporalState,
   Nan0Thought,
+  Nan0ThoughtPolicy,
 } from '../types'
+import { NAN0_DEFAULT_THOUGHT_POLICY } from '../thought/Nan0ThoughtPolicy'
 
 const TERMINAL_STATUSES = new Set<Nan0PendingIntentionStatus>([
   'completed',
@@ -41,6 +43,7 @@ export interface Nan0PendingIntentionFormationInput {
   existing: Readonly<Nan0PendingIntentionState>
   now: number
   createId: () => string
+  thoughtPolicy?: Readonly<Nan0ThoughtPolicy>
 }
 
 function clamp(value: unknown, min = 0, max = 1): number {
@@ -75,6 +78,7 @@ function finiteTime(value: unknown): number | null {
 }
 
 function normalizeTrigger(trigger: Nan0IntentionTrigger, fallbackAt: number): Nan0IntentionTrigger {
+  const type = bounded(trigger?.type, 120) || 'manual'
   const base = {
     schemaVersion: 1 as const,
     triggerId: bounded(trigger?.triggerId, 160) || `trigger_${fallbackAt}`,
@@ -82,30 +86,33 @@ function normalizeTrigger(trigger: Nan0IntentionTrigger, fallbackAt: number): Na
       ? structuredClone(trigger.metadata)
       : {},
   }
-  switch (trigger?.type) {
+  switch (type) {
     case 'at-time':
-      return { ...base, type: 'at-time', at: finiteTime(trigger.at) ?? fallbackAt }
+      return { ...base, type, at: finiteTime(trigger.at) ?? fallbackAt, interpretationStatus: 'known' }
     case 'after-duration':
       return {
         ...base,
-        type: 'after-duration',
+        type,
         anchorAt: finiteTime(trigger.anchorAt) ?? fallbackAt,
         durationMs: Math.max(0, finiteTime(trigger.durationMs) ?? 0),
+        interpretationStatus: 'known',
       }
     case 'after-silence':
       return {
         ...base,
-        type: 'after-silence',
+        type,
         anchor: trigger.anchor === 'nan0-expression' || trigger.anchor === 'any-interaction'
           ? trigger.anchor
           : 'kyo-interaction',
         durationMs: Math.max(0, finiteTime(trigger.durationMs) ?? 0),
+        interpretationStatus: 'known',
       }
     case 'on-session-resume':
       return {
         ...base,
-        type: 'on-session-resume',
+        type,
         afterBootCount: Math.max(0, Math.floor(finiteTime(trigger.afterBootCount) ?? 0)),
+        interpretationStatus: 'known',
       }
     case 'on-relationship-condition':
     case 'on-goal-condition':
@@ -115,17 +122,29 @@ function normalizeTrigger(trigger: Nan0IntentionTrigger, fallbackAt: number): Na
     case 'until-condition':
       return {
         ...base,
-        type: trigger.type,
+        type,
         referenceId: bounded(trigger.referenceId, 160) || null,
         condition: bounded(trigger.condition, 400),
+        interpretationStatus: 'known',
       }
     default:
-      return { ...base, type: 'manual', referenceId: null, condition: 'unsupported-trigger' }
+      return {
+        ...base,
+        type,
+        at: finiteTime(trigger?.at) ?? undefined,
+        anchorAt: finiteTime(trigger?.anchorAt) ?? undefined,
+        durationMs: finiteTime(trigger?.durationMs) == null ? undefined : Math.max(0, finiteTime(trigger.durationMs)!),
+        afterBootCount: finiteTime(trigger?.afterBootCount) == null ? undefined : Math.max(0, Math.floor(finiteTime(trigger.afterBootCount)!)),
+        referenceId: bounded(trigger?.referenceId, 160) || null,
+        condition: bounded(trigger?.condition, 400),
+        interpretationStatus: 'unsupported',
+        metadata: { ...base.metadata, unsupportedTriggerType: type },
+      }
   }
 }
 
 export function createEmptyPendingIntentionState(): Nan0PendingIntentionState {
-  return { schemaVersion: 1, revision: 0, intentions: [] }
+  return { schemaVersion: 3, revision: 0, intentions: [] }
 }
 
 export function normalizePendingIntention(
@@ -135,7 +154,7 @@ export function normalizePendingIntention(
   const createdAt = finiteTime(intention?.createdAt) ?? fallbackAt
   const status = intention?.status ?? 'pending'
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     intentionId: bounded(intention?.intentionId, 180),
     createdAt,
     updatedAt: Math.max(createdAt, finiteTime(intention?.updatedAt) ?? createdAt),
@@ -185,7 +204,7 @@ export function normalizePendingIntentionState(
       byId.set(intention.intentionId, intention)
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     revision: Math.max(0, Math.floor(state?.revision ?? 0)),
     intentions: [...byId.values()].sort((a, b) => a.createdAt - b.createdAt || a.intentionId.localeCompare(b.intentionId)),
   }
@@ -240,13 +259,13 @@ export function mergePendingIntentionStates(
     byId.set(intention.intentionId, existing ? mergeIntention(existing, intention) : intention)
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     revision: Math.max(left.revision, right.revision) + 1,
     intentions: [...byId.values()].sort((a, b) => a.createdAt - b.createdAt || a.intentionId.localeCompare(b.intentionId)),
   }
 }
 
-function silenceAnchor(temporal: Readonly<Nan0TemporalState>, trigger: Extract<Nan0IntentionTrigger, { type: 'after-silence' }>): number {
+function silenceAnchor(temporal: Readonly<Nan0TemporalState>, trigger: Readonly<Nan0IntentionTrigger>): number {
   if (trigger.anchor === 'kyo-interaction')
     return temporal.lastKyoInteractionAt ?? temporal.lastBootAt ?? temporal.lastObservedWallTime
   if (trigger.anchor === 'nan0-expression')
@@ -265,11 +284,11 @@ export function effectiveIntentionDueAt(
 ): number | null {
   let triggerAt: number | null = null
   if (intention.trigger.type === 'at-time')
-    triggerAt = intention.trigger.at
+    triggerAt = finiteTime(intention.trigger.at)
   else if (intention.trigger.type === 'after-duration')
-    triggerAt = intention.trigger.anchorAt + intention.trigger.durationMs
+    triggerAt = (finiteTime(intention.trigger.anchorAt) ?? 0) + (finiteTime(intention.trigger.durationMs) ?? 0)
   else if (intention.trigger.type === 'after-silence')
-    triggerAt = silenceAnchor(temporal, intention.trigger) + intention.trigger.durationMs
+    triggerAt = silenceAnchor(temporal, intention.trigger) + (finiteTime(intention.trigger.durationMs) ?? 0)
   const lowerBound = Math.max(intention.earliestAt ?? 0, intention.cooldownUntil ?? 0)
   return triggerAt == null ? null : Math.max(triggerAt, intention.dueAt ?? 0, lowerBound)
 }
@@ -307,7 +326,7 @@ export function eligiblePendingIntentions(input: {
       continue
 
     if (intention.trigger.type === 'on-session-resume') {
-      if (input.reason !== 'session-resume' || input.bootCount <= intention.trigger.afterBootCount)
+      if (input.reason !== 'session-resume' || input.bootCount <= (finiteTime(intention.trigger.afterBootCount) ?? 0))
         continue
       const evidenceKey = `resume:${input.bootCount}`
       if (intention.lastTriggerEvidenceKey === evidenceKey)
@@ -316,7 +335,7 @@ export function eligiblePendingIntentions(input: {
         intention,
         dueAt: input.now,
         evidenceKey,
-        wakeReason: `AIRI resumed after boot ${intention.trigger.afterBootCount}.`,
+        wakeReason: `AIRI resumed after boot ${finiteTime(intention.trigger.afterBootCount) ?? 0}.`,
         source: 'internal:session-resume',
       })
       continue
@@ -392,7 +411,7 @@ export function settleIntentionEvaluation(input: {
   state: Readonly<Nan0PendingIntentionState>
   intentionId: string
   at: number
-  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'provider-failure' | 'delivery-deferred'
+  outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'provider-failure' | 'delivery-deferred'
   thoughtId?: string | null
   decisionId?: string | null
   turnId?: string | null
@@ -409,7 +428,7 @@ export function settleIntentionEvaluation(input: {
       const maxAttempts = Math.max(1, Number(intention.metadata.maxAttempts ?? DEFAULT_MAX_ATTEMPTS))
       let status: Nan0PendingIntentionStatus = intention.status
       let cooldownUntil = intention.cooldownUntil
-      if (input.outcome === 'SPEAK' || input.outcome === 'ACT')
+      if (input.outcome === 'SPEAK' || input.outcome === 'ACT' || input.outcome === 'BODY_EXPRESSION')
         status = 'completed'
       else if (input.outcome === 'SILENCE')
         status = intention.metadata.preserveAfterSilence === true ? 'deferred' : 'completed'
@@ -461,11 +480,12 @@ function formationKey(origin: Nan0PendingIntentionOrigin, title: string, trigger
 }
 
 function signalFromInput(input: Nan0PendingIntentionFormationInput): Nan0IntentionSignal | null {
-  if (input.thought.intentionSignal && input.thought.intentionSignal.confidence >= 0.8)
+  const minimumConfidence = (input.thoughtPolicy ?? NAN0_DEFAULT_THOUGHT_POLICY).intentionProposalPolicy.minimumConfidence
+  if (input.thought.intentionSignal && input.thought.intentionSignal.confidence >= minimumConfidence)
     return input.thought.intentionSignal
   const goalSignal = input.thought.goalSignal
   if (goalSignal?.deferredUntil != null
-    && goalSignal.confidence >= 0.8
+    && goalSignal.confidence >= minimumConfidence
     && goalSignal.stance !== 'reject') {
     return {
       kind: goalSignal.kind === 'request' ? 'follow-up' : 'reconsider',
@@ -483,7 +503,7 @@ function signalFromInput(input: Nan0PendingIntentionFormationInput): Nan0Intenti
       },
     }
   }
-  if (input.goal?.deferredUntil != null && input.goal.confidence >= 0.8) {
+  if (input.goal?.deferredUntil != null && input.goal.confidence >= minimumConfidence) {
     return {
       kind: 'reconsider',
       title: input.goal.title,
@@ -505,19 +525,18 @@ function signalFromInput(input: Nan0PendingIntentionFormationInput): Nan0Intenti
 }
 
 export function formPendingIntentions(input: Nan0PendingIntentionFormationInput): Nan0PendingIntentionState {
+  const minimumConfidence = (input.thoughtPolicy ?? NAN0_DEFAULT_THOUGHT_POLICY).intentionProposalPolicy.minimumConfidence
   const state = normalizePendingIntentionState(input.existing, input.now)
   if (input.thought.status !== 'generated' || input.decision.finalDecision === 'ACT')
     return state
   const signal = signalFromInput(input)
-  if (!signal || signal.confidence < 0.8 || !bounded(signal.title))
+  if (!signal || signal.confidence < minimumConfidence || !bounded(signal.title))
     return state
   const trigger = normalizeTrigger(signal.trigger, input.now)
   const supported = trigger.type === 'at-time'
     || trigger.type === 'after-duration'
     || trigger.type === 'after-silence'
     || trigger.type === 'on-session-resume'
-  if (!supported)
-    return state
   const origin: Nan0PendingIntentionOrigin = input.goal
     ? 'goal-derived'
     : input.ownership.actorId === 'kyo' && input.thought.goalSignal?.kind === 'request'
@@ -533,9 +552,9 @@ export function formPendingIntentions(input: Nan0PendingIntentionFormationInput)
   if (state.intentions.some(item => item.metadata.formationKey === key))
     return state
   const dueAt = trigger.type === 'at-time'
-    ? trigger.at
+    ? finiteTime(trigger.at)
     : trigger.type === 'after-duration'
-      ? trigger.anchorAt + trigger.durationMs
+      ? (finiteTime(trigger.anchorAt) ?? input.now) + (finiteTime(trigger.durationMs) ?? 0)
       : null
   const intention: Nan0PendingIntention = normalizePendingIntention({
     schemaVersion: 1,
@@ -545,7 +564,7 @@ export function formPendingIntentions(input: Nan0PendingIntentionFormationInput)
     ownerActorId: 'nan0',
     origin,
     originActorId,
-    status: 'pending',
+    status: supported ? 'pending' : 'blocked',
     kind: signal.kind,
     title: signal.title,
     description: signal.description,
@@ -566,7 +585,7 @@ export function formPendingIntentions(input: Nan0PendingIntentionFormationInput)
     evaluationCount: 0,
     attemptCount: 0,
     cooldownUntil: null,
-    blockedReason: null,
+    blockedReason: supported ? null : `intention.unsupported-trigger:${trigger.type}`,
     resolution: null,
     lastEvaluationId: null,
     lastWakeObservationId: null,
@@ -576,10 +595,11 @@ export function formPendingIntentions(input: Nan0PendingIntentionFormationInput)
       formationThoughtId: input.thought.thoughtId,
       formationDecisionId: input.decision.decisionId,
       maxAttempts: DEFAULT_MAX_ATTEMPTS,
+      triggerInterpretationStatus: supported ? 'known' : 'unsupported',
     },
   }, input.now)
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     revision: state.revision + 1,
     intentions: [...state.intentions, intention],
   }
