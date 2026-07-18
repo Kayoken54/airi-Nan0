@@ -5,10 +5,9 @@ export type Nan0ObservationSource =
   | 'vision'
   | 'system'
   | 'temporal'
-  | 'internal:intention'
-  | 'internal:temporal'
-  | 'internal:session-resume'
-  | 'internal:state-change'
+  | `internal:${string}`
+  | `system:${string}`
+  | `bridge:${string}`
 
 export interface Nan0Observation {
   id: string
@@ -29,12 +28,48 @@ export type Nan0InternalObservationSource = Extract<
 export interface Nan0InternalObservation extends Nan0Observation {
   source: Nan0InternalObservationSource
   actorId: 'nan0'
-  intentionId: string | null
-  temporalEventId: string | null
-  relatedGoalId: string | null
-  triggerType: Nan0IntentionTrigger['type'] | 'temporal-event'
-  wakeReason: string
+  intentionId?: string | null
+  temporalEventId?: string | null
+  relatedGoalId?: string | null
+  triggerType?: Nan0IntentionTrigger['type'] | 'temporal-event' | 'metabolism-event'
+  wakeReason?: string
+  references?: string[]
+  priority?: number
+  provenance?: Nan0InternalObservationProvenance
+}
+
+export interface Nan0InternalObservationProvenance {
+  schemaVersion: 1
+  ownerActorId: 'nan0'
+  producer: 'heartbeat' | 'emotion' | 'goal' | 'attention' | 'prediction' | 'temporal' | 'system' | 'action'
+  sourceId: string
+  evidenceKey: string
   references: string[]
+}
+
+export type Nan0InternalObservationStatus = 'queued' | 'focused' | 'handled' | 'discarded'
+
+export interface Nan0InternalObservationRecord {
+  schemaVersion: 1
+  observation: Nan0InternalObservation
+  priority: number
+  dedupeKey: string
+  streamType: Nan0AttentionStreamType
+  status: Nan0InternalObservationStatus
+  enqueuedAt: number
+  focusedAt: number | null
+  handledAt: number | null
+  thoughtId: string | null
+  decisionId: string | null
+  outcome: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0InternalObservationQueueState {
+  schemaVersion: 1
+  revision: number
+  capacity: number
+  records: Nan0InternalObservationRecord[]
 }
 
 export type Nan0ActorKind = 'kyo' | 'nan0' | 'external' | 'unknown'
@@ -84,6 +119,192 @@ export interface Nan0BodyExpressionIntent {
 
 export interface Nan0EmotionalVector {
   [key: string]: number
+}
+
+export interface Nan0EmotionalEvent {
+  schemaVersion: 1
+  eventId: string
+  targetEmotion: string
+  delta: number
+  cause: string
+  sourceId: string
+  actorId: string | null
+  at: number
+  decayHalfLifeMs: number
+  provenance: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0MoodProfile {
+  primary: string
+  secondary: string | null
+  valence: number
+  arousal: number
+}
+
+export interface Nan0EmotionalHistory {
+  schemaVersion: 1
+  revision: number
+  events: Nan0EmotionalEvent[]
+  lastDecayedAt: number
+  lastComputedMood: string
+  lastComputedAt: number
+}
+
+export interface Nan0EmotionalInterpretationModifier {
+  valenceShift: number
+  trustShift: number
+  engagementShift: number
+  isSignificant: boolean
+}
+
+export interface Nan0EmotionalDecisionShift {
+  speakabilityShift: number
+  attentionShift: number
+  demandsExpression: boolean
+  demandsSilence: boolean
+  preferredStyle: 'direct' | 'sarcastic' | 'terse' | 'elaborate' | 'silent'
+}
+
+export type Nan0AttentionStreamType
+  = | 'user-input'
+    | 'internal:heartbeat'
+    | 'internal:temporal'
+    | 'internal:goal'
+    | 'internal:emotional'
+    | 'internal:prediction'
+    | 'system:event'
+    | 'bridge:action'
+
+export interface Nan0AttentionStream {
+  streamId: string
+  streamType: Nan0AttentionStreamType
+  basePriority: number
+  queuedObservationIds: string[]
+  lastActivityAt: number
+  canInterrupt: boolean
+  requiresSustainedFocus: boolean
+}
+
+export interface Nan0AttentionFocus {
+  streamId: string
+  observationId: string
+  startedAt: number
+  priority: number
+  canBeInterrupted: boolean
+  interruptedAt: number | null
+}
+
+export interface Nan0AttentionState {
+  schemaVersion: 1
+  revision: number
+  currentFocus: Nan0AttentionFocus | null
+  interruptedFocus: Nan0AttentionFocus | null
+  streams: Record<string, Nan0AttentionStream>
+  history: Array<{
+    observationId: string
+    streamId: string
+    focusedAt: number
+    completedAt: number
+    durationMs: number
+    priority: number
+    outcome: string
+  }>
+  currentTopic: string | null
+  distractionScore: number
+  focusDepth: number
+}
+
+export interface Nan0SerializablePattern {
+  source: string
+  flags: string
+}
+
+export type Nan0ExpectationStatus = 'active' | 'confirmed' | 'violated' | 'expired' | 'abandoned'
+
+export interface Nan0Expectation {
+  schemaVersion: 1
+  expectationId: string
+  type: 'actor-behavior' | 'emotional-response' | 'system-state' | 'temporal-sequence' | 'goal-outcome' | 'conversation-flow' | 'pattern-continuation'
+  description: string
+  status: Nan0ExpectationStatus
+  actorId: string | null
+  expectedOutcome: string
+  confirmationPattern: Nan0SerializablePattern | null
+  violationPattern: Nan0SerializablePattern | null
+  formedFromObservationId: string
+  formedFromPatternId: string | null
+  formedAt: number
+  expectedBy: number | null
+  expiresAt: number | null
+  confidence: number
+  priorConfirmations: number
+  priorViolations: number
+  relatedGoalIds: string[]
+  evidenceObservationIds: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface Nan0Belief {
+  schemaVersion: 1
+  beliefId: string
+  description: string
+  subject: string
+  predicate: string
+  actorId: string | null
+  confidence: number
+  uncertainty: number
+  confirmingEvidence: number
+  violatingEvidence: number
+  formedAt: number
+  lastUpdatedAt: number
+  formedFromPatternId: string | null
+  evidenceObservationIds: string[]
+  status: 'active' | 'abandoned'
+}
+
+export interface Nan0DetectedPattern {
+  schemaVersion: 1
+  patternId: string
+  patternType: 'sequence' | 'causal' | 'absence'
+  actorId: string | null
+  antecedent: string
+  consequent: string
+  occurrences: number
+  confidence: number
+  detectedAt: number
+  lastOccurrenceAt: number
+  evidenceObservationIds: string[]
+  isActive: boolean
+}
+
+export interface Nan0AttendedObservationSummary {
+  observationId: string
+  actorId: string | null
+  source: Nan0ObservationSource
+  signature: string
+  content: string
+  attendedAt: number
+}
+
+export interface Nan0PredictionState {
+  schemaVersion: 1
+  revision: number
+  expectations: Nan0Expectation[]
+  beliefs: Nan0Belief[]
+  patterns: Nan0DetectedPattern[]
+  recentAttended: Nan0AttendedObservationSummary[]
+  recentSurprises: Array<{
+    surpriseId: string
+    at: number
+    expectationId: string
+    magnitude: number
+    emotion: string
+    observationId: string | null
+  }>
+  totalPredictions: number
+  correctPredictions: number
+  lastPatternScanAt: number
 }
 
 export interface Nan0CognitionPolicyIdentity {
@@ -604,7 +825,7 @@ export interface Nan0ClockAdjustment {
   metadata: Record<string, unknown>
 }
 
-export type Nan0TemporalConditionOwner = 'intention' | 'action' | 'job' | 'sleep' | 'cooldown' | 'condition'
+export type Nan0TemporalConditionOwner = 'intention' | 'action' | 'job' | 'sleep' | 'cooldown' | 'condition' | 'goal' | 'expectation'
 export type Nan0TemporalConditionStatus = 'pending' | 'eligible' | 'satisfied' | 'cancelled'
 
 export interface Nan0TemporalCondition {
@@ -624,6 +845,7 @@ export type Nan0LocalPhase = 'late-night' | 'morning' | 'daytime' | 'evening' | 
 export type Nan0TemporalEventType
   = | 'phase-changed'
     | 'absence-threshold'
+    | 'absence-returned'
     | 'intention-due'
     | 'intention-overdue'
     | 'cooldown-ended'
@@ -639,6 +861,18 @@ export type Nan0TemporalEventType
     | 'state-duration'
     | 'anniversary'
     | 'maintenance-due'
+    | 'waiting-overdue'
+    | 'promise-overdue'
+    | 'promise-kept'
+    | 'promise-broken'
+    | 'rhythm-detected'
+    | 'rhythm-broken'
+    | 'milestone-passed'
+    | 'idle-deepening'
+    | 'goal-deadline-approach'
+    | 'goal-deadline-passed'
+    | 'expectation-overdue'
+    | 'self-reflection-time'
 
 export type Nan0TemporalEventSeverity = 'informational' | 'notable' | 'significant' | 'critical'
 export type Nan0TemporalEventStatus = 'recorded' | 'eligible' | 'evaluating' | 'handled' | 'suppressed'
@@ -680,6 +914,76 @@ export interface Nan0TemporalAbsenceState {
   crossedThresholdIds: string[]
 }
 
+export interface Nan0LivedAbsenceRecord {
+  intervalId: string
+  actorId: 'kyo'
+  leftAt: number
+  returnedAt: number | null
+  lastWordsMemoryId: string | null
+  crossedThresholdIds: string[]
+  returnEventEmitted: boolean
+}
+
+export interface Nan0WaitingState {
+  waitId: string
+  description: string
+  startedAt: number
+  expectedAt: number
+  sourceType: 'goal' | 'expectation' | 'promise' | 'actor-return'
+  sourceId: string
+  sustainingEmotion: string
+  status: 'active' | 'completed' | 'abandoned'
+  crossedThresholdIds: string[]
+  provenance: string[]
+}
+
+export interface Nan0TrackedPromise {
+  promiseId: string
+  actorId: 'kyo'
+  description: string
+  madeAt: number
+  dueAt: number
+  sourceObservationId: string
+  sourceMemoryId: string | null
+  status: 'active' | 'fulfilled' | 'broken' | 'expired'
+  fulfilledAt: number | null
+  brokenAt: number | null
+  crossedThresholdIds: string[]
+}
+
+export interface Nan0DetectedRhythm {
+  rhythmId: string
+  actorId: string
+  eventType: string
+  typicalHour: number
+  typicalDay: number | null
+  consistencyScore: number
+  evidenceEventIds: string[]
+  lastOccurrenceAt: number
+  expectedNextAt: number
+  missedOccurrences: number
+  isActive: boolean
+  announced: boolean
+  brokenEventEmitted: boolean
+}
+
+export interface Nan0TemporalTrackingState {
+  schemaVersion: 1
+  revision: number
+  absenceHistory: Nan0LivedAbsenceRecord[]
+  waitingStates: Nan0WaitingState[]
+  trackedPromises: Nan0TrackedPromise[]
+  detectedRhythms: Nan0DetectedRhythm[]
+  emittedEvidenceKeys: string[]
+  emotionallyAppliedEvidenceKeys: string[]
+  crossedIdleThresholdIds: string[]
+  crossedMilestoneIds: string[]
+  crossedGoalDeadlineKeys: string[]
+  lastExternalInputAt: number | null
+  lastRhythmCheckAt: number | null
+  lastReflectionAt: number | null
+}
+
 export interface Nan0TemporalSleepCompatibilityState {
   status: 'awake' | 'sleeping'
   sleepId: string | null
@@ -700,6 +1004,7 @@ export interface Nan0TemporalEngineState {
   nextEvaluationAt: number | null
   absence: Nan0TemporalAbsenceState
   sleep: Nan0TemporalSleepCompatibilityState
+  lived?: Nan0TemporalTrackingState
   events: Nan0TemporalEvent[]
   metadata: Record<string, unknown>
 }
@@ -761,6 +1066,19 @@ export interface Nan0SubjectiveTime {
   sinceSessionStartMs: number | null
   sinceLastKyoInteractionMs: number | null
   sinceLastNan0ExpressionMs: number | null
+}
+
+export interface Nan0HeartbeatRuntimeState {
+  schemaVersion: 1
+  revision: number
+  tickCount: number
+  lastTickAt: number | null
+  nextTickAt: number | null
+  lastExternalInputAt: number | null
+  lastKyoInteractionAt: number | null
+  consecutiveSilentTicks: number
+  pressureScore: number
+  presence: 'idle' | 'thinking' | 'bored' | 'waiting' | 'absent'
 }
 
 export type Nan0ContinuityThreadStatus
@@ -1009,6 +1327,11 @@ export interface Nan0KernelState {
   emotionalState: Nan0EmotionalVector
   emotionalStateSchemaVersion?: 1
   emotionalStateRevision?: number
+  emotionalHistory?: Nan0EmotionalHistory
+  attention?: Nan0AttentionState
+  prediction?: Nan0PredictionState
+  internalObservations?: Nan0InternalObservationQueueState
+  heartbeat?: Nan0HeartbeatRuntimeState
   cognitionPolicy?: Nan0CognitionPolicyIdentity
   runtimeMetadata: Record<string, unknown>
   identity: Nan0IdentityState

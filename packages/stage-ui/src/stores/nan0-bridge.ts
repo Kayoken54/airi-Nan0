@@ -1,4 +1,4 @@
-import type { Nan0ActionAuthority, Nan0AutonomyEvaluationBatch, Nan0Decision, Nan0Observation, Nan0PreparedTurn, Nan0TemporalAutonomyEvaluationBatch } from '@proj-airi/nan0-runtime'
+import type { Nan0ActionAuthority, Nan0AutonomyEvaluationBatch, Nan0Decision, Nan0MetabolismEvaluationResult, Nan0Observation, Nan0PreparedTurn, Nan0TemporalAutonomyEvaluationBatch } from '@proj-airi/nan0-runtime'
 
 export interface Nan0PreparedDecisionProxy {
   decisionId: string
@@ -80,6 +80,15 @@ export interface Nan0BridgeRequestMap {
     hostReady: boolean
     sessionId?: string
   }
+  evaluateMetabolism: {
+    reason: 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual' | 'external-input'
+    hostReady: boolean
+    sessionId?: string
+  }
+  notifyInput: {
+    at: number
+    actorId?: string
+  }
   deferAutonomy: {
     intentionId: string
     turnId: string
@@ -102,6 +111,13 @@ export interface Nan0BridgeResponseMap {
   fail: { persisted: boolean }
   evaluateAutonomy: { evaluations: Nan0AutonomyEvaluationProxy[], nextEvaluationAt: number | null }
   evaluateTemporalAutonomy: { evaluations: Nan0TemporalAutonomyEvaluationProxy[], nextEvaluationAt: number | null }
+  evaluateMetabolism: {
+    observationId: string | null
+    prepared: Nan0PreparedTurnProxy | null
+    outcome: Nan0MetabolismEvaluationResult['outcome']
+    nextEvaluationAt: number | null
+  }
+  notifyInput: { persisted: boolean }
   deferAutonomy: { persisted: boolean }
   deferTemporalAutonomy: { persisted: boolean }
 }
@@ -205,6 +221,15 @@ export function toTemporalAutonomyEvaluationProxy(batch: Nan0TemporalAutonomyEva
       outcome: evaluation.outcome,
       nextEvaluationAt: evaluation.nextEvaluationAt,
     })),
+  }
+}
+
+export function toMetabolismEvaluationProxy(result: Nan0MetabolismEvaluationResult): Nan0BridgeResponseMap['evaluateMetabolism'] {
+  return {
+    observationId: result.observationId,
+    prepared: result.prepared ? toPreparedTurnProxy(result.prepared) : null,
+    outcome: result.outcome,
+    nextEvaluationAt: result.nextEvaluationAt,
   }
 }
 

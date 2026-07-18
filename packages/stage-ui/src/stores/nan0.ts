@@ -5,6 +5,7 @@ import {
   LocalStorageStateStore,
   Nan0Kernel,
   SystemNan0Clock,
+  createNan0HeartbeatEngine,
 } from '@proj-airi/nan0-runtime'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -15,9 +16,9 @@ import type {
   Nan0BridgeRequestMap,
   Nan0PreparedTurnProxy,
 } from './nan0-bridge'
-import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
-import { createNan0AutonomyScheduler } from './nan0-autonomy-scheduler'
+import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toMetabolismEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
 import type { Nan0RendererIdentity } from './nan0-renderer'
+import { setNan0InputPresenceHandler } from './nan0-input-presence'
 import { useSettingsStageModel } from './settings/stage-model'
 
 const NAN0_CONTEXT_MARKER = '[NAN0 KERNEL CONTEXT]'
@@ -330,6 +331,14 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           const batch = await kernel.evaluateTemporalAutonomy(payload as Nan0BridgeRequestMap['evaluateTemporalAutonomy'])
           return toTemporalAutonomyEvaluationProxy(batch)
         }
+        case 'evaluateMetabolism': {
+          const result = await kernel.evaluateMetabolism(payload as Nan0BridgeRequestMap['evaluateMetabolism'])
+          return toMetabolismEvaluationProxy(result)
+        }
+        case 'notifyInput': {
+          await kernel.notifyExternalInputPresence(payload as Nan0BridgeRequestMap['notifyInput'])
+          return { persisted: true }
+        }
         case 'deferAutonomy': {
           await kernel.deferAutonomousExpression(payload as Nan0BridgeRequestMap['deferAutonomy'])
           return { persisted: true }
@@ -371,14 +380,16 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       intentionId?: string
       evaluationId?: string
       temporalEventId?: string
-      source: 'internal:intention' | 'internal:temporal'
+      internalObservationId?: string
+      source: `internal:${string}`
     }>()
     const pendingAutonomy = new Map<string, {
       prepared: Nan0PreparedTurnProxy
       intentionId?: string
       evaluationId?: string
       temporalEventId?: string
-      source: 'internal:intention' | 'internal:temporal'
+      internalObservationId?: string
+      source: `internal:${string}`
     }>()
 
     function turnKey(context: { message: { id?: string } }): string {
@@ -400,6 +411,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             intentionId: autonomous.intentionId,
             evaluationId: autonomous.evaluationId,
             temporalEventId: autonomous.temporalEventId,
+            internalObservationId: autonomous.internalObservationId,
             source: autonomous.source,
           })
           lastThoughtId.value = autonomous.prepared.thoughtId
@@ -574,6 +586,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             intentionId: autonomy?.intentionId,
             evaluationId: autonomy?.evaluationId,
             temporalEventId: autonomy?.temporalEventId,
+            internalObservationId: autonomy?.internalObservationId,
           },
         })
         preparedTurns.delete(key)
@@ -609,6 +622,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             intentionId: autonomy?.intentionId,
             evaluationId: autonomy?.evaluationId,
             temporalEventId: autonomy?.temporalEventId,
+            internalObservationId: autonomy?.internalObservationId,
           },
         })
         preparedTurns.delete(key)
@@ -636,6 +650,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             intentionId: autonomy?.intentionId,
             evaluationId: autonomy?.evaluationId,
             temporalEventId: autonomy?.temporalEventId,
+            internalObservationId: autonomy?.internalObservationId,
           },
         })
         preparedTurns.delete(key)
@@ -645,59 +660,65 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       }),
     ]
 
-    const scheduler = createNan0AutonomyScheduler({
+    const scheduler = createNan0HeartbeatEngine({
       isHostReady: () => !chat.sending,
+      baseIntervalMs: 30_000,
+      minimumIntervalMs: 10_000,
+      maximumIntervalMs: 60_000,
+      jitterRatio: 0.2,
+      diagnostic,
       async evaluate(reason) {
-        const temporalResponse = await requestNan0Owner(renderer.instanceId, 'evaluateTemporalAutonomy', {
+        const metabolism = await requestNan0Owner(renderer.instanceId, 'evaluateMetabolism', {
           reason,
           hostReady: !chat.sending,
         })
-        let temporalSpeakStarted = false
-        for (const evaluation of temporalResponse.evaluations) {
-          if (!evaluation.prepared)
-            continue
-          temporalSpeakStarted = true
+        if (metabolism.outcome === 'skipped')
+          return { nextEvaluationAt: metabolism.nextEvaluationAt }
+        if (metabolism.prepared) {
+          const prepared = metabolism.prepared
           if (chat.sending) {
-            await requestNan0Owner(renderer.instanceId, 'deferTemporalAutonomy', {
-              temporalEventId: evaluation.temporalEventId,
-              turnId: evaluation.prepared.turnId,
-              thoughtId: evaluation.prepared.thoughtId,
-              reason: 'autonomy.host-became-busy',
+            await requestNan0Owner(renderer.instanceId, 'fail', {
+              turnId: prepared.turnId,
+              thoughtId: prepared.thoughtId,
+              error: 'metabolism.host-became-busy',
+              timestamp: Date.now(),
+              metadata: { internalObservationId: metabolism.observationId, failureLayer: 'autonomous-expression-handoff' },
             })
-            continue
+            return { nextEvaluationAt: metabolism.nextEvaluationAt }
           }
-          const correlationId = `temporal_autonomy_${nanoid()}`
+          const correlationId = `metabolism_${nanoid()}`
+          const source = 'internal:heartbeat' as const
           pendingAutonomy.set(correlationId, {
-            prepared: evaluation.prepared,
-            temporalEventId: evaluation.temporalEventId,
-            source: 'internal:temporal',
+            prepared,
+            internalObservationId: metabolism.observationId ?? undefined,
+            source,
           })
           try {
             await chat.ingest('', {
               triggerOnly: true,
               metadata: {
                 nan0AutonomyCorrelationId: correlationId,
-                temporalEventId: evaluation.temporalEventId,
+                internalObservationId: metabolism.observationId,
                 actorId: 'nan0',
-                source: 'internal:temporal',
+                source,
               },
-            }, evaluation.prepared.sessionId)
+            }, prepared.sessionId)
           }
           catch (error) {
             pendingAutonomy.delete(correlationId)
-            await requestNan0Owner(renderer.instanceId, 'deferTemporalAutonomy', {
-              temporalEventId: evaluation.temporalEventId,
-              turnId: evaluation.prepared.turnId,
-              thoughtId: evaluation.prepared.thoughtId,
-              reason: error instanceof Error ? error.message : 'temporal-autonomy.expression-handoff-failed',
+            await requestNan0Owner(renderer.instanceId, 'fail', {
+              turnId: prepared.turnId,
+              thoughtId: prepared.thoughtId,
+              error: error instanceof Error ? error.message : 'metabolism.expression-handoff-failed',
+              timestamp: Date.now(),
+              metadata: { internalObservationId: metabolism.observationId, failureLayer: 'autonomous-expression-handoff' },
             })
           }
+          return { nextEvaluationAt: metabolism.nextEvaluationAt }
         }
-        if (temporalSpeakStarted)
-          return { nextEvaluationAt: temporalResponse.nextEvaluationAt }
 
         const response = await requestNan0Owner(renderer.instanceId, 'evaluateAutonomy', {
-          reason,
+          reason: reason === 'external-input' ? 'state-change' : reason,
           hostReady: !chat.sending,
           limit: 2,
         })
@@ -742,7 +763,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             })
           }
         }
-        const nextEvaluationAt = [temporalResponse.nextEvaluationAt, response.nextEvaluationAt]
+        const nextEvaluationAt = [metabolism.nextEvaluationAt, response.nextEvaluationAt]
           .filter((candidate): candidate is number => candidate != null)
           .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null)
         return { nextEvaluationAt }
@@ -751,6 +772,13 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         error: error instanceof Error ? error.message : String(error),
       }),
     })
+    cleanups.push(setNan0InputPresenceHandler((input) => {
+      void requestNan0Owner(renderer.instanceId, 'notifyInput', input)
+        .then(() => scheduler.notify('external-input'))
+        .catch(error => diagnostic('heartbeat.input-notification.failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }))
+    }))
     scheduler.start()
 
     activeInstallationCleanup?.()

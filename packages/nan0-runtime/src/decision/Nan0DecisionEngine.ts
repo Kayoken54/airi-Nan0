@@ -3,6 +3,7 @@ import type {
   Nan0Decision,
   Nan0DecisionConstraintResult,
   Nan0DecisionRecord,
+  Nan0EmotionalDecisionShift,
   Nan0RelationshipContext,
   Nan0Thought,
   Nan0ThoughtPolicy,
@@ -36,6 +37,7 @@ export interface Nan0DecisionEngineInput {
   policy?: string
   thoughtPolicy?: Readonly<Nan0ThoughtPolicy>
   relationship?: Readonly<Nan0RelationshipContext>
+  emotionalShift?: Readonly<Nan0EmotionalDecisionShift>
 }
 
 function clamp(value: number, min = 0, max = 1): number {
@@ -129,6 +131,9 @@ function dynamicSpeakabilityThreshold(input: Nan0DecisionEngineInput): {
     : 0
   inputs['information.penalty'] = lowInformationPenalty
   threshold += lowInformationPenalty
+  const emotionalMetabolismShift = finite(input.emotionalShift?.speakabilityShift)
+  inputs['emotion.metabolism-shift'] = emotionalMetabolismShift
+  threshold += emotionalMetabolismShift
   return { threshold: clamp(threshold, 0.05, 0.95), inputs }
 }
 
@@ -268,7 +273,7 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
       allowed = false
       suppressionReason = 'decision.below-speakability-threshold'
     }
-    else if (input.minimumSpeakAttention != null && thought.attentionScore < input.minimumSpeakAttention) {
+    else if (input.minimumSpeakAttention != null && thought.attentionScore < clamp(input.minimumSpeakAttention + finite(input.emotionalShift?.attentionShift), 0.05, 0.95)) {
       finalDecision = 'SILENCE'
       allowed = false
       suppressionReason = 'decision.below-autonomous-relevance-threshold'
@@ -350,6 +355,9 @@ export function evaluateNan0Decision(input: Nan0DecisionEngineInput): Nan0Decisi
       source: thought.source,
       actorId: thought.actorId,
       moodMismatch: moodMismatch(thought),
+      emotionalStylePreference: input.emotionalShift?.preferredStyle,
+      emotionalExpressionDemand: input.emotionalShift?.demandsExpression ?? false,
+      emotionalSilenceDemand: input.emotionalShift?.demandsSilence ?? false,
     },
   })
 }

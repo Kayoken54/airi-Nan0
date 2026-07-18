@@ -4,6 +4,9 @@ import type {
   Nan0GoalSignal,
   Nan0IntentionSignal,
   Nan0MemoryRecord,
+  Nan0MoodProfile,
+  Nan0EmotionalInterpretationModifier,
+  Nan0EmotionalEvent,
   Nan0Observation,
   Nan0ReasoningClient,
   Nan0RelationshipContext,
@@ -42,6 +45,13 @@ export interface Nan0ThoughtEngineInput {
   observation: Nan0Observation
   ownership: Nan0ActorOwnership
   emotionalState: Readonly<Record<string, number>>
+  mood?: Readonly<Nan0MoodProfile>
+  interpretationModifier?: Readonly<Nan0EmotionalInterpretationModifier>
+  recentEmotionalEvents?: readonly Readonly<Nan0EmotionalEvent>[]
+  attentionContext?: string
+  predictionContext?: string
+  goalMetabolismContext?: string
+  temporalContext?: string
   subjectiveTime: Readonly<Nan0SubjectiveTime>
   memories: readonly Nan0MemoryRecord[]
   continuity: Readonly<Nan0ContinuityContext>
@@ -85,6 +95,17 @@ function boundedStrings(value: unknown, limit: number): string[] {
     .map(item => item.trim().slice(0, 80))
     .filter(Boolean))]
     .slice(0, limit)
+}
+
+function structuredFacts(value: string | undefined): unknown {
+  if (!value)
+    return null
+  try {
+    return JSON.parse(value)
+  }
+  catch {
+    return null
+  }
 }
 
 function observationText(observation: Nan0Observation): string {
@@ -434,6 +455,23 @@ function factualPrompt(input: Nan0ThoughtEngineInput, scores: PressureScores): s
     },
     subjectiveTime: input.subjectiveTime,
     emotionalState: input.emotionalState,
+    mood: input.mood,
+    subjectiveInterpretationModifier: input.interpretationModifier,
+    recentEmotionalConsequences: (input.recentEmotionalEvents ?? []).slice(-6).map(event => ({
+      eventId: event.eventId,
+      targetEmotion: event.targetEmotion,
+      delta: event.delta,
+      cause: event.cause,
+      actorId: event.actorId,
+      at: event.at,
+      provenance: event.provenance.slice(0, 6),
+    })),
+    metabolismContext: {
+      attention: structuredFacts(input.attentionContext),
+      prediction: structuredFacts(input.predictionContext),
+      goals: structuredFacts(input.goalMetabolismContext),
+      temporal: structuredFacts(input.temporalContext),
+    },
     pressureScores: scores,
     memories: memoryFacts,
     continuity: continuityFacts,

@@ -24,6 +24,15 @@ import { mergeActionIntents, mergeComputationAttempts } from '../lifecycle/Nan0L
 import { SystemNan0Clock } from '../temporal/Nan0Clock'
 import { mergeTemporalStates, normalizeTemporalState } from '../temporal/Nan0Temporal'
 import { mergeCognitionPolicyIdentity, normalizeCognitionPolicyIdentity } from '../thought/Nan0ThoughtPolicy'
+import { mergeEmotionalHistories, normalizeEmotionalHistory } from '../emotional/Nan0EmotionalDynamics'
+import {
+  mergeAttentionStates,
+  mergeInternalObservationQueues,
+  normalizeAttentionState,
+  normalizeInternalObservationQueue,
+} from '../attention/Nan0AttentionEngine'
+import { mergePredictionStates, normalizePredictionState } from '../prediction/Nan0PredictionEngine'
+import { mergeHeartbeatRuntimeStates, normalizeHeartbeatRuntimeState } from '../heartbeat/Nan0HeartbeatEngine'
 
 export interface Nan0StorageLike {
   getItem: (key: string) => string | null
@@ -73,6 +82,11 @@ export function mergeNan0States(
       emotionalState: emotionalVector(candidate.emotionalState),
       emotionalStateSchemaVersion: 1,
       emotionalStateRevision: Math.max(0, Math.floor(candidate.emotionalStateRevision ?? 0)),
+      emotionalHistory: normalizeEmotionalHistory(candidate.emotionalHistory, candidate.createdAt),
+      attention: normalizeAttentionState(candidate.attention, candidate.createdAt),
+      prediction: normalizePredictionState(candidate.prediction),
+      internalObservations: normalizeInternalObservationQueue(candidate.internalObservations),
+      heartbeat: normalizeHeartbeatRuntimeState(candidate.heartbeat),
       cognitionPolicy: normalizeCognitionPolicyIdentity(candidate.cognitionPolicy, candidate.createdAt),
       thoughts: mergeNan0Thoughts([], candidate.thoughts),
       decisions: mergeNan0Decisions([], candidate.decisions),
@@ -105,6 +119,11 @@ export function mergeNan0States(
     createdAt: Math.min(persisted.createdAt, candidate.createdAt),
     updatedAt: Math.max(persisted.updatedAt, candidate.updatedAt),
     ...mergeEmotionalState(persisted, candidate),
+    emotionalHistory: mergeEmotionalHistories(persisted.emotionalHistory, candidate.emotionalHistory, Math.min(persisted.createdAt, candidate.createdAt)),
+    attention: mergeAttentionStates(persisted.attention, candidate.attention, Math.min(persisted.createdAt, candidate.createdAt)),
+    prediction: mergePredictionStates(persisted.prediction, candidate.prediction),
+    internalObservations: mergeInternalObservationQueues(persisted.internalObservations, candidate.internalObservations),
+    heartbeat: mergeHeartbeatRuntimeStates(persisted.heartbeat, candidate.heartbeat),
     cognitionPolicy: mergeCognitionPolicyIdentity(
       persisted.cognitionPolicy,
       candidate.cognitionPolicy,
@@ -166,6 +185,11 @@ export class LocalStorageStateStore implements Nan0StateStore {
       emotionalState: emotionalVector(parsed.emotionalState),
       emotionalStateSchemaVersion: 1 as const,
       emotionalStateRevision: Math.max(0, Math.floor(parsed.emotionalStateRevision ?? 0)),
+      emotionalHistory: normalizeEmotionalHistory(parsed.emotionalHistory, parsed.createdAt),
+      attention: normalizeAttentionState(parsed.attention, parsed.createdAt),
+      prediction: normalizePredictionState(parsed.prediction),
+      internalObservations: normalizeInternalObservationQueue(parsed.internalObservations),
+      heartbeat: normalizeHeartbeatRuntimeState(parsed.heartbeat),
       cognitionPolicy: normalizeCognitionPolicyIdentity(parsed.cognitionPolicy, parsed.createdAt),
       thoughts: mergeNan0Thoughts([], parsed.thoughts),
       decisions: mergeNan0Decisions([], parsed.decisions),

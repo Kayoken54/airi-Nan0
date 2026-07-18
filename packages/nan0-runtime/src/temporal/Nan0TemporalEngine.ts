@@ -14,6 +14,11 @@ import type {
   Nan0TemporalPhaseDefinition,
   Nan0TemporalState,
 } from '../types'
+import {
+  createEmptyTemporalTrackingState,
+  mergeTemporalTrackingStates,
+  normalizeTemporalTrackingState,
+} from './Nan0TemporalEventGenerator'
 
 const DAY_MS = 86_400_000
 
@@ -141,6 +146,7 @@ export function createEmptyTemporalEngineState(): Nan0TemporalEngineState {
       wakeConditionId: null,
       metadata: {},
     },
+    lived: createEmptyTemporalTrackingState(),
     events: [],
     metadata: {},
   }
@@ -206,7 +212,8 @@ export function normalizeTemporalEngineState(
       ...(value?.sleep ?? {}),
       metadata: { ...(value?.sleep?.metadata ?? {}) },
     },
-    events: [...byEvidence.values()].sort((a, b) => a.createdAt - b.createdAt || a.temporalEventId.localeCompare(b.temporalEventId)),
+    lived: normalizeTemporalTrackingState(value?.lived),
+    events: [...byEvidence.values()].sort((a, b) => a.createdAt - b.createdAt || a.temporalEventId.localeCompare(b.temporalEventId)).slice(-320),
     metadata: { ...(value?.metadata ?? {}) },
   }
 }
@@ -255,7 +262,8 @@ export function mergeTemporalEngineStates(
     initializedAt: Math.max(left.initializedAt ?? 0, right.initializedAt ?? 0) || null,
     lastEvaluationAt: Math.max(left.lastEvaluationAt ?? 0, right.lastEvaluationAt ?? 0) || null,
     absence: structuredClone(absence),
-    events: [...byEvidence.values()].sort((a, b) => a.createdAt - b.createdAt || a.temporalEventId.localeCompare(b.temporalEventId)),
+    lived: mergeTemporalTrackingStates(left.lived, right.lived),
+    events: [...byEvidence.values()].sort((a, b) => a.createdAt - b.createdAt || a.temporalEventId.localeCompare(b.temporalEventId)).slice(-320),
     metadata: { ...secondary.metadata, ...primary.metadata },
   }
 }

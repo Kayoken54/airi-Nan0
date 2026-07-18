@@ -4,6 +4,7 @@ import type {
   Nan0Observation,
 } from '../types'
 import type { Nan0Kernel } from '../kernel/Nan0Kernel'
+import type { Nan0HeartbeatEngine } from '../heartbeat/Nan0HeartbeatEngine'
 
 export class Nan0HostAdapter {
   private unsubscribeHost: (() => void) | null = null
@@ -13,6 +14,7 @@ export class Nan0HostAdapter {
   constructor(
     private readonly kernel: Nan0Kernel,
     private readonly host: Nan0HostBindings,
+    private readonly heartbeat?: Nan0HeartbeatEngine,
   ) {}
 
   async start(): Promise<void> {
@@ -38,12 +40,14 @@ export class Nan0HostAdapter {
     )
 
     this.started = true
+    this.heartbeat?.start()
   }
 
   async stop(): Promise<void> {
     if (!this.started)
       return
 
+    this.heartbeat?.stop()
     this.unsubscribeHost?.()
     this.unsubscribeKernel?.()
     this.unsubscribeHost = null

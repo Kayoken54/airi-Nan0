@@ -7,6 +7,10 @@ import { createEmptyRelationshipState } from '../relationship/RelationshipMemory
 import { createEmptyTimelineState } from '../timeline/SessionTimeline'
 import { ControllableNan0Clock } from '../temporal/Nan0Clock'
 import { createEmptyTemporalState } from '../temporal/Nan0Temporal'
+import { createEmptyAttentionState, createEmptyInternalObservationQueue } from '../attention/Nan0AttentionEngine'
+import { createEmptyEmotionalHistory } from '../emotional/Nan0EmotionalDynamics'
+import { createEmptyPredictionState } from '../prediction/Nan0PredictionEngine'
+import { createEmptyHeartbeatRuntimeState } from '../heartbeat/Nan0HeartbeatEngine'
 import { LocalStorageStateStore } from './LocalStorageStateStore'
 
 class TestStorage {
@@ -499,5 +503,48 @@ describe('LocalStorageStateStore multi-renderer safety', () => {
       thoughtId: 'thought-1',
       decisionId: 'decision-1',
     })
+  })
+
+  it('reloads JSON-safe metabolism state and prevents stale writers from reopening handled observations', async () => {
+    const storage = new TestStorage()
+    const currentWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const staleWriter = new LocalStorageStateStore('nan0-test', { storage })
+    const stale = await currentWriter.save(state([]))
+    const attention = createEmptyAttentionState(1)
+    attention.revision = 2
+    attention.history.push({ observationId: 'internal-1', streamId: 'attention:internal:temporal', focusedAt: 2, completedAt: 3, durationMs: 1, priority: 0.8, outcome: 'SILENCE' })
+    const queue = createEmptyInternalObservationQueue()
+    queue.revision = 2
+    queue.records.push({
+      schemaVersion: 1,
+      observation: { id: 'internal-1', source: 'internal:temporal', actorId: 'nan0', content: 'threshold crossed', metadata: {}, timestamp: 2 },
+      priority: 0.8,
+      dedupeKey: 'temporal:once',
+      streamType: 'internal:temporal',
+      status: 'handled',
+      enqueuedAt: 2,
+      focusedAt: 2,
+      handledAt: 3,
+      thoughtId: 'thought-1',
+      decisionId: 'decision-1',
+      outcome: 'SILENCE',
+      metadata: {},
+    })
+    const emotionalHistory = createEmptyEmotionalHistory(1)
+    emotionalHistory.revision = 1
+    const prediction = createEmptyPredictionState()
+    prediction.revision = 1
+    const heartbeat = createEmptyHeartbeatRuntimeState()
+    heartbeat.revision = 1
+    heartbeat.tickCount = 2
+
+    await currentWriter.save(state([], { attention, internalObservations: queue, emotionalHistory, prediction, heartbeat }))
+    await staleWriter.save(stale)
+
+    const restarted = await new LocalStorageStateStore('nan0-test', { storage }).load()
+    expect(restarted?.internalObservations?.records[0]).toMatchObject({ status: 'handled', thoughtId: 'thought-1', decisionId: 'decision-1' })
+    expect(restarted?.attention?.history).toHaveLength(1)
+    expect(restarted?.heartbeat?.tickCount).toBe(2)
+    expect(() => JSON.parse(JSON.stringify(restarted))).not.toThrow()
   })
 })
