@@ -84,6 +84,7 @@ export interface Nan0BridgeRequestMap {
     reason: 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual' | 'external-input'
     hostReady: boolean
     sessionId?: string
+    heartbeatTickId?: string
   }
   notifyInput: {
     at: number
@@ -116,6 +117,7 @@ export interface Nan0BridgeResponseMap {
     prepared: Nan0PreparedTurnProxy | null
     outcome: Nan0MetabolismEvaluationResult['outcome']
     nextEvaluationAt: number | null
+    terminal: Nan0MetabolismEvaluationResult['terminal']
   }
   notifyInput: { persisted: boolean }
   deferAutonomy: { persisted: boolean }
@@ -230,6 +232,7 @@ export function toMetabolismEvaluationProxy(result: Nan0MetabolismEvaluationResu
     prepared: result.prepared ? toPreparedTurnProxy(result.prepared) : null,
     outcome: result.outcome,
     nextEvaluationAt: result.nextEvaluationAt,
+    terminal: structuredClone(result.terminal),
   }
 }
 

@@ -1339,6 +1339,9 @@ importers:
       '@proj-airi/lobe-icons':
         specifier: ^1.0.18
         version: 1.0.18
+      '@proj-airi/nan0-runtime':
+        specifier: workspace:^
+        version: link:../../packages/nan0-runtime
       '@proj-airi/server-runtime':
         specifier: workspace:^
         version: link:../../packages/server-runtime
@@ -2574,6 +2577,9 @@ importers:
       '@moeru/eventa':
         specifier: 'catalog:'
         version: 1.0.0-beta.10(patch_hash=202582ad335e20eb2238183adf33edbbfca9fbf30bdc046a1ddf4db6e95467f7)(electron@40.8.0)(h3@2.0.1-rc.14(crossws@0.4.4(srvx@0.11.8(patch_hash=c761d25a70e22a0925c88fe91a9dd1c3153dd341d8fd4f260166678156c4df2d))))(hono@4.12.2)
+      '@proj-airi/nan0-runtime':
+        specifier: workspace:^
+        version: link:../nan0-runtime
       '@valibot/to-json-schema':
         specifier: 1.0.0-rc.0
         version: 1.0.0-rc.0(valibot@1.2.0(typescript@5.9.3))

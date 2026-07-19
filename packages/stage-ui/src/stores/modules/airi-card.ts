@@ -1,5 +1,6 @@
 import type { Card, ccv3 } from '@proj-airi/ccc'
 
+import type { AiriCognitionConfig } from '../nan0-config'
 import type { VoiceProfile } from '../providers'
 
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
@@ -118,6 +119,8 @@ export interface CharacterGenerationConfig {
 
 export interface AiriExtension {
   modules: {
+    cognition?: AiriCognitionConfig
+
     consciousness: {
       provider: string // Example: "openai"
       model: string // Example: "gpt-4o"

@@ -23,6 +23,20 @@ pnpm --filter @proj-airi/nan0-runtime build
 pnpm dev:tamagotchi
 ```
 
+## Local observability
+
+Nan0 diagnostics are disabled by default. Set `NAN0_DEBUG=true` before starting the Electron app to enable the local observatory. Console and JSONL output default to enabled once debugging is on; individual controls are:
+
+```text
+NAN0_DEBUG_CONSOLE=true
+NAN0_DEBUG_JSONL=true
+NAN0_DEBUG_PRIVATE_THOUGHTS=false
+NAN0_DEBUG_VERBOSE=false
+NAN0_DEBUG_LOG_DIR=logs
+```
+
+Relative log directories resolve beneath Electron's user-data directory. JSONL files are named `nan0-kernel-YYYY-MM-DD.jsonl`. Private narrative text remains excluded unless `NAN0_DEBUG_PRIVATE_THOUGHTS=true`; diagnostics never enter chat, TTS, rendering, or memory.
+
 ## Host wiring
 
 Create an AIRI-specific `Nan0ReasoningClient` that calls the current xsAI generation path. Then create `CallbackHostBindings` and feed AIRI chat messages through `emitObservation()`.

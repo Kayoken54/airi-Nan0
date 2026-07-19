@@ -359,6 +359,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       composedMessage: [],
       input: options.input,
     }
+    const rawOutputGenerationId = `llm_${nanoid()}`
+    let fullOutputEmissionSequence = 0
 
     const isStaleGeneration = () => chatSession.getSessionGeneration(sessionId) !== generation
     const shouldAbort = () => isStaleGeneration()
@@ -1188,6 +1190,61 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
           }
         }
 
+        // Richard's host-owned generic first hop remains available for cards
+        // that explicitly select the non-Nan0 processor. Nan0 itself enters
+        // through the lifecycle hooks below so its persisted Thought/Decision
+        // contract is never replaced by a prompt parser in this generic store.
+        const cognitionConfig = activeCard.value?.extensions?.airi?.modules?.cognition
+        if (cognitionConfig?.enabled && cognitionConfig.processor === 'none' && bridgedSteps === 1) {
+          const firstHopProviderId = cognitionConfig.provider
+          const firstHopModelId = cognitionConfig.model
+
+          if (firstHopProviderId && firstHopModelId) {
+            chatLog('[Cognition] Executing generic 1st-hop pre-pass.', {
+              provider: firstHopProviderId,
+              model: firstHopModelId,
+            })
+
+            try {
+              const firstHopProvider = await providersStore.getProviderInstance(firstHopProviderId)
+              const firstHopConfig = providersStore.getProviderConfig(firstHopProviderId)
+              const firstHopResponse = await llmStore.generate(
+                firstHopModelId,
+                firstHopProvider as any,
+                [
+                  {
+                    role: 'system',
+                    content: cognitionConfig.outputGuidance || `[COGNITIVE PROCESSOR]
+Analyze the conversation history and latest user message. Produce a concise private monologue with emotional state, attention highlights, relevant memory cues, and immediate conversational direction. Return only the thought log.`,
+                  },
+                  ...newMessages.filter(message => message.role !== 'system'),
+                ] as Message[],
+                {
+                  headers: (firstHopConfig?.headers || {}) as Record<string, string>,
+                  temperature: 0.7,
+                },
+              )
+              const monologue = firstHopResponse.text?.trim()
+
+              if (monologue) {
+                const system = newMessages.slice(0, 1)
+                const afterSystem = newMessages.slice(1)
+                newMessages = [
+                  ...system,
+                  {
+                    role: 'system',
+                    content: `[INTERNAL MONOLOGUE & ATTENTION DIRECTIVE]\n${monologue}`,
+                  },
+                  ...afterSystem,
+                ]
+              }
+            }
+            catch (error) {
+              console.error('[Cognition] Generic 1st-hop pre-pass failed; continuing with AIRI output generation:', error)
+            }
+          }
+        }
+
         streamingMessageContext.composedMessage = newMessages as Message[]
 
         await hooks.emitAfterMessageComposedHooks(sendingMessage, streamingMessageContext)
@@ -1318,6 +1375,11 @@ You must now react to this outcome and provide a rich, narrative-driven climax r
                   type: 'full',
                   text: rawFullText,
                   sessionId,
+                  eventId: `${rawOutputGenerationId}:full:${++fullOutputEmissionSequence}`,
+                  generationId: rawOutputGenerationId,
+                  thoughtId: streamingMessageContext.nan0ToolAuthority?.thoughtId ?? null,
+                  decisionId: streamingMessageContext.nan0ToolAuthority?.decisionId ?? null,
+                  turnId: streamingMessageContext.nan0ToolAuthority?.turnId ?? null,
                 })
 
                 // Fallback for Dating Sim: if stream finishes, choices are empty, AND AA is disabled,

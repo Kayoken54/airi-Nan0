@@ -1,0 +1,167 @@
+[
+  {
+    "sourceId": "source_repo_nan0_documentation",
+    "path": "docs/{rosetta-stone.md,nan0-integration-feedback.md}",
+    "sourceType": "documentation",
+    "recordCount": 2,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Canonical architecture descriptions; eligible for factual documentation only."
+  },
+  {
+    "sourceId": "source_repo_kernel_architecture",
+    "path": "packages/nan0-runtime/src/{kernel,identity,timeline,continuity,relationship,emotional,attention,prediction,goals,intentions,temporal,heartbeat,thought,decision,capabilities}/",
+    "sourceType": "documentation",
+    "recordCount": 15,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Source modules are used only to verify public architecture facts and behavioral mechanisms."
+  },
+  {
+    "sourceId": "source_repo_runtime_tests",
+    "path": "packages/nan0-runtime/src/**/*.test.ts",
+    "sourceType": "test",
+    "recordCount": 24,
+    "containsPrivateThought": true,
+    "containsRelationshipState": true,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": false,
+    "reason": "Fixtures verify mechanisms but are not authentic public dialogue; only behavior-level derivation is permitted."
+  },
+  {
+    "sourceId": "source_repo_legacy_memory_sample",
+    "path": "packages/nan0-runtime/legacy-memory-sample.json",
+    "sourceType": "test",
+    "recordCount": 1,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": false,
+    "reason": "Migration scaffold, not authenticated Nan0 conversation history."
+  },
+  {
+    "sourceId": "source_local_nan0_conversation",
+    "path": "<electron-userData>/Local Storage/leveldb (Nan0 state; path redacted)",
+    "sourceType": "conversation",
+    "recordCount": 102,
+    "containsPrivateThought": true,
+    "containsRelationshipState": true,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Only completed Kyo/Nan0 outward pairs may be considered; every internal and sensitive field remains excluded."
+  },
+  {
+    "sourceId": "source_local_nan0_timeline",
+    "path": "<electron-userData>/Local Storage/leveldb (Nan0 timeline; path redacted)",
+    "sourceType": "timeline",
+    "recordCount": 212,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Eligible only for identifiers, public turn linkage, and non-sensitive behavioral facts."
+  },
+  {
+    "sourceId": "source_local_nan0_continuity",
+    "path": "<electron-userData>/Local Storage/leveldb (continuity subset; path redacted)",
+    "sourceType": "timeline",
+    "recordCount": 31,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": false,
+    "reason": "Raw summaries and unresolved-item state may contain private conversational context; continuity may be demonstrated only through approved outward dialogue."
+  },
+  {
+    "sourceId": "source_local_nan0_decisions",
+    "path": "<electron-userData>/Local Storage/leveldb (decision subset; path redacted)",
+    "sourceType": "diagnostic",
+    "recordCount": 56,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Eligible only for bounded outcome, allowed status, and non-sensitive reason codes."
+  },
+  {
+    "sourceId": "source_local_nan0_attention_goals_intentions",
+    "path": "<electron-userData>/Local Storage/leveldb (attention, goal, and intention subsets; path redacted)",
+    "sourceType": "diagnostic",
+    "recordCount": 23,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Eligible only as categorical runtime evidence without descriptions copied from private context."
+  },
+  {
+    "sourceId": "source_local_nan0_temporal_heartbeat",
+    "path": "<electron-userData>/Local Storage/leveldb (temporal and heartbeat subsets; path redacted)",
+    "sourceType": "diagnostic",
+    "recordCount": 69,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": true,
+    "reason": "Eligible only for safe event types, terminal outcomes, and bounded provenance."
+  },
+  {
+    "sourceId": "source_local_private_thoughts",
+    "path": "<electron-userData>/Local Storage/leveldb (private-thought subset; path redacted)",
+    "sourceType": "private-thought",
+    "recordCount": 67,
+    "containsPrivateThought": true,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": false,
+    "reason": "Private cognition is not public dialogue or collaboration training material."
+  },
+  {
+    "sourceId": "source_local_relationship_state",
+    "path": "<electron-userData>/Local Storage/leveldb (relationship subset; path redacted)",
+    "sourceType": "relationship",
+    "recordCount": 1,
+    "containsPrivateThought": false,
+    "containsRelationshipState": true,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": false,
+    "reason": "Contains private relational state and exact internal dimensions."
+  },
+  {
+    "sourceId": "source_local_journals",
+    "path": "<electron-userData>/{IndexedDB,File System} (path redacted)",
+    "sourceType": "journal",
+    "recordCount": 0,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": true,
+    "eligibleForPublicExtraction": false,
+    "reason": "Local journal stores were found but not opened or counted because no entry was individually approved for extraction."
+  },
+  {
+    "sourceId": "source_local_observatory_logs",
+    "path": "<electron-userData>/logs/nan0-kernel-*.jsonl (path redacted)",
+    "sourceType": "diagnostic",
+    "recordCount": 0,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": false,
+    "eligibleForPublicExtraction": false,
+    "reason": "No Nan0 Observatory JSONL files were present during extraction."
+  },
+  {
+    "sourceId": "source_explicit_discord_exports",
+    "path": "<repository-or-electron-userData>/explicit Discord exports (path redacted)",
+    "sourceType": "conversation",
+    "recordCount": 0,
+    "containsPrivateThought": false,
+    "containsRelationshipState": false,
+    "containsThirdPartyData": true,
+    "eligibleForPublicExtraction": false,
+    "reason": "No explicit exported Discord conversation involving Nan0 was found; live stores were not treated as consented exports."
+  }
+]

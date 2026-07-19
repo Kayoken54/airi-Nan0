@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "exportVersion": "0.1.0-candidate",
+  "createdAt": "2026-07-18T18:03:43Z",
+  "repository": {
+    "branch": "main",
+    "head": "6cfa8a26aff1b8165175fa1ff20e601ed2f45fc4"
+  },
+  "extraction": {
+    "scriptVersion": "1.0.0",
+    "localOnly": true,
+    "transmitted": false,
+    "finalApproval": false,
+    "reviewStatus": "manual-review-required",
+    "inventorySnapshotAt": "2026-07-18T17:54:32.737Z",
+    "safeEvidenceSnapshotAt": "2026-07-18T18:03:43Z",
+    "snapshotNote": "The Electron state remained live during extraction. The source inventory preserves the pre-extraction counts; later categorical evidence counts are recorded separately."
+  },
+  "provenanceClasses": [
+    "REAL_PUBLIC",
+    "SANITIZED_REAL",
+    "SYNTHETIC_DERIVED"
+  ],
+  "sources": [
+    { "sourceId": "source_repo_nan0_documentation" },
+    { "sourceId": "source_repo_kernel_architecture" },
+    { "sourceId": "source_repo_runtime_tests" },
+    { "sourceId": "source_repo_legacy_memory_sample" },
+    { "sourceId": "source_local_nan0_conversation" },
+    { "sourceId": "source_local_nan0_timeline" },
+    { "sourceId": "source_local_nan0_continuity" },
+    { "sourceId": "source_local_nan0_decisions" },
+    { "sourceId": "source_local_nan0_attention_goals_intentions" },
+    { "sourceId": "source_local_nan0_temporal_heartbeat" },
+    { "sourceId": "source_local_private_thoughts" },
+    { "sourceId": "source_local_relationship_state" },
+    { "sourceId": "source_local_journals" },
+    { "sourceId": "source_local_observatory_logs" },
+    { "sourceId": "source_explicit_discord_exports" }
+  ],
+  "snapshots": {
+    "preExtractionInventory": {
+      "conversationTurns": 102,
+      "timelineEvents": 212,
+      "continuityThreads": 31,
+      "decisions": 56,
+      "attentionGoalsIntentions": 23,
+      "temporalAndHeartbeat": 69,
+      "localPrivateThoughtRecords": 67,
+      "localRelationshipRecords": 1
+    },
+    "laterSafeEvidence": {
+      "conversationTurns": 105,
+      "timelineEvents": 219,
+      "decisions": 59,
+      "attentionHistoryEntries": 17,
+      "goals": 6,
+      "intentions": 4,
+      "temporalEvents": 56,
+      "internalObservationRecords": 14,
+      "heartbeatTicks": 13,
+      "predictionRecords": 0
+    }
+  },
+  "counts": {
+    "authenticOutwardPairsAutomaticallyScreenedAtCandidateSnapshot": 77,
+    "outwardCandidatesConsideredByCuration": 22,
+    "outwardCandidatesSelected": 6,
+    "outwardCandidatesRejected": 16,
+    "REAL_PUBLIC": 5,
+    "SANITIZED_REAL": 12,
+    "SYNTHETIC_DERIVED": 12,
+    "approvedCandidateRecords": 5,
+    "manualReviewRequiredRecords": 24,
+    "rejectionReviewEntries": 20,
+    "privateThoughtRecordsExcluded": 86,
+    "relationshipStateRecordsExcluded": 9,
+    "rejectedForDetectedSecretRisk": 0
+  },
+  "secretScan": {
+    "candidateRecordsScreened": 77,
+    "possibleSecretsFound": 0,
+    "recordsAutomaticallyRejectedForSecretRisk": 0,
+    "valuesPrinted": false
+  },
+  "behavioralCoverage": [
+    "abandoned-goal",
+    "affection",
+    "attachment",
+    "attention.competition",
+    "attention.selection",
+    "autonomous.expression",
+    "body-expression",
+    "continuity.resume",
+    "continuity-unresolved",
+    "correction",
+    "curiosity",
+    "dry-humor",
+    "goal.forming",
+    "intention.pending",
+    "mechanical-identity",
+    "memory.uncertain",
+    "mistaken-prediction",
+    "provenance-awareness",
+    "refusal",
+    "resumed-continuity",
+    "silence.chosen",
+    "silence.no-cognition",
+    "silence.suppressed",
+    "suspicion",
+    "temporal.absence",
+    "temporal.waiting",
+    "uncertainty"
+  ],
+  "files": [
+    { "path": "README.md", "kind": "documentation", "shareableAfterApproval": true },
+    { "path": "DATASET_CARD.md", "kind": "documentation", "shareableAfterApproval": true },
+    { "path": "ARCHITECTURE_OVERVIEW.md", "kind": "documentation", "shareableAfterApproval": true },
+    { "path": "USAGE_TERMS.md", "kind": "documentation", "shareableAfterApproval": true },
+    { "path": "EXCLUSIONS.md", "kind": "documentation", "shareableAfterApproval": true },
+    { "path": "provenance/source-inventory.json", "kind": "provenance", "shareableAfterApproval": true },
+    { "path": "provenance/extraction-manifest.json", "kind": "provenance", "shareableAfterApproval": true },
+    { "path": "datasets/public-dialogue.jsonl", "kind": "dataset", "recordCount": 3, "shareableAfterApproval": true },
+    { "path": "datasets/sanitized-dialogue.jsonl", "kind": "dataset", "recordCount": 3, "shareableAfterApproval": true },
+    { "path": "datasets/behavioral-examples.jsonl", "kind": "dataset", "recordCount": 11, "shareableAfterApproval": true },
+    { "path": "datasets/synthetic-derived.jsonl", "kind": "dataset", "recordCount": 12, "shareableAfterApproval": true },
+    { "path": "review/rejected-records.jsonl", "kind": "local-review", "recordCount": 20, "shareableAfterApproval": false },
+    { "path": "review/manual-review-required.jsonl", "kind": "local-review", "recordCount": 24, "shareableAfterApproval": false },
+    { "path": "review/sensitive-source-summary.json", "kind": "local-review", "shareableAfterApproval": false },
+    { "path": "review/LOCAL_REVIEW_ONLY.txt", "kind": "local-review-marker", "shareableAfterApproval": false },
+    { "path": "scripts/validate-export.mjs", "kind": "validator", "shareableAfterApproval": false }
+  ]
+}

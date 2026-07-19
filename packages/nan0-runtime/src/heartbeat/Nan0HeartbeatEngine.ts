@@ -1,11 +1,32 @@
+import type { Nan0HeartbeatTerminalResult } from '../diagnostics/Nan0KernelObservatory'
+
 export type Nan0HeartbeatWakeReason = 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual' | 'external-input'
+
+export interface Nan0HeartbeatEvaluationContext {
+  heartbeatTickId: string
+  tickNumber: number
+  startedAt: number
+}
 
 export interface Nan0HeartbeatEvaluationResult {
   nextEvaluationAt: number | null
+  result?: Nan0HeartbeatTerminalResult
+  sessionId?: string | null
+  observationId?: string | null
+  thoughtId?: string | null
+  decisionId?: string | null
+  turnId?: string | null
+  source?: string | null
+  provenance?: unknown
+  failureLayer?: string | null
+  reasonCodes?: string[]
+  observationCount?: number
+  queuedObservationCount?: number
+  mood?: string
 }
 
 export interface Nan0HeartbeatEngineOptions {
-  evaluate: (reason: Nan0HeartbeatWakeReason) => Promise<Nan0HeartbeatEvaluationResult>
+  evaluate: (reason: Nan0HeartbeatWakeReason, context: Nan0HeartbeatEvaluationContext) => Promise<Nan0HeartbeatEvaluationResult>
   isHostReady: () => boolean
   now?: () => number
   random?: () => number
@@ -17,6 +38,7 @@ export interface Nan0HeartbeatEngineOptions {
   clearTimeout?: typeof globalThis.clearTimeout
   onError?: (error: unknown) => void
   diagnostic?: (event: string, details: Record<string, unknown>) => void
+  createTickId?: () => string
 }
 
 export interface Nan0HeartbeatEngine {
@@ -114,6 +136,66 @@ export function createNan0HeartbeatEngine(options: Nan0HeartbeatEngineOptions): 
   let nextEvaluationAt: number | null = null
   let started = false
   let generation = 0
+  let tickNumber = 0
+  const completedTickIds = new Set<string>()
+
+  const diagnostic = (event: string, details: Record<string, unknown>): void => {
+    try {
+      options.diagnostic?.(event, details)
+    }
+    catch {
+      // Diagnostics are deliberately unable to alter scheduler behavior.
+    }
+  }
+
+  const nextTickContext = (): Nan0HeartbeatEvaluationContext => {
+    tickNumber += 1
+    return {
+      heartbeatTickId: `tick_${options.createTickId?.() ?? `${now()}-${tickNumber}`}`,
+      tickNumber,
+      startedAt: now(),
+    }
+  }
+
+  const completeTick = (
+    context: Nan0HeartbeatEvaluationContext,
+    reason: Nan0HeartbeatWakeReason,
+    result: Nan0HeartbeatEvaluationResult,
+  ): void => {
+    if (completedTickIds.has(context.heartbeatTickId))
+      return
+    completedTickIds.add(context.heartbeatTickId)
+    if (completedTickIds.size > 1_024)
+      completedTickIds.delete(completedTickIds.values().next().value!)
+    diagnostic('heartbeat.tick.completed', {
+      ...context,
+      reason,
+      result: result.result ?? 'NO_COGNITION',
+      nextEvaluationAt: result.nextEvaluationAt,
+      sessionId: result.sessionId ?? null,
+      observationId: result.observationId ?? null,
+      thoughtId: result.thoughtId ?? null,
+      decisionId: result.decisionId ?? null,
+      turnId: result.turnId ?? null,
+      source: result.source ?? null,
+      provenance: result.provenance ?? null,
+      failureLayer: result.failureLayer ?? null,
+      reasonCodes: result.reasonCodes ?? [],
+      observationCount: result.observationCount ?? (result.observationId ? 1 : 0),
+      queuedObservationCount: result.queuedObservationCount ?? 0,
+      mood: result.mood ?? 'unknown',
+      elapsedMs: Math.max(0, now() - context.startedAt),
+    })
+  }
+
+  const reportError = (error: unknown): void => {
+    try {
+      options.onError?.(error)
+    }
+    catch {
+      // Host error reporting must not alter scheduler completion.
+    }
+  }
 
   const cancelTimer = () => {
     if (timer != null)
@@ -155,23 +237,56 @@ export function createNan0HeartbeatEngine(options: Nan0HeartbeatEngineOptions): 
       queueReason(reason)
       return
     }
-    if (!options.isHostReady()) {
-      options.diagnostic?.('heartbeat.tick.skipped', { reason, cause: 'host-not-ready' })
-      schedule()
-      return
-    }
     if (!force && reason === 'interval' && nextEvaluationAt != null && now() < nextEvaluationAt) {
       schedule()
       return
     }
+    const context = nextTickContext()
+    diagnostic('heartbeat.tick.started', { ...context, reason, nextEvaluationAt })
+    let hostReady = false
+    try {
+      hostReady = options.isHostReady()
+    }
+    catch (error) {
+      completeTick(context, reason, {
+        nextEvaluationAt,
+        result: 'FAILURE_SILENCE',
+        failureLayer: 'host-readiness',
+        reasonCodes: ['heartbeat.host-readiness-failed'],
+      })
+      reportError(error)
+      schedule()
+      return
+    }
+    if (!hostReady) {
+      const result: Nan0HeartbeatEvaluationResult = {
+        nextEvaluationAt,
+        result: 'SUPPRESSED_SILENCE',
+        failureLayer: 'host-readiness',
+        reasonCodes: ['heartbeat.host-not-ready'],
+      }
+      diagnostic('heartbeat.tick.skipped', { ...context, reason, cause: 'host-not-ready' })
+      completeTick(context, reason, result)
+      schedule()
+      return
+    }
     const runGeneration = generation
-    options.diagnostic?.('heartbeat.tick', { reason, nextEvaluationAt })
-    evaluation = options.evaluate(reason)
+    evaluation = Promise.resolve()
+      .then(() => options.evaluate(reason, context))
       .then((result) => {
         if (started && runGeneration === generation)
           nextEvaluationAt = result.nextEvaluationAt
+        completeTick(context, reason, result)
       })
-      .catch(error => options.onError?.(error))
+      .catch((error) => {
+        completeTick(context, reason, {
+          nextEvaluationAt,
+          result: 'FAILURE_SILENCE',
+          failureLayer: 'heartbeat-evaluation',
+          reasonCodes: ['heartbeat.evaluation-failed'],
+        })
+        reportError(error)
+      })
       .finally(() => {
         evaluation = null
         if (!started || runGeneration !== generation)
@@ -191,7 +306,7 @@ export function createNan0HeartbeatEngine(options: Nan0HeartbeatEngineOptions): 
         return
       started = true
       generation += 1
-      options.diagnostic?.('heartbeat.started', { generation, baseIntervalMs, minimumIntervalMs, maximumIntervalMs })
+      diagnostic('heartbeat.started', { generation, baseIntervalMs, minimumIntervalMs, maximumIntervalMs })
       run('session-resume', true)
     },
     notify(reason) {
@@ -208,7 +323,7 @@ export function createNan0HeartbeatEngine(options: Nan0HeartbeatEngineOptions): 
       pendingReason = null
       nextEvaluationAt = null
       cancelTimer()
-      options.diagnostic?.('heartbeat.stopped', { generation })
+      diagnostic('heartbeat.stopped', { generation })
     },
     getNextEvaluationAt() {
       return nextEvaluationAt

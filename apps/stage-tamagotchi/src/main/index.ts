@@ -12,6 +12,7 @@ import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
+import { classifyNan0OutputDuplicate } from '@proj-airi/nan0-runtime'
 import { app, BrowserWindow, ipcMain, Notification, screen, session } from 'electron'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { isLinux } from 'std-env'
@@ -45,6 +46,7 @@ import { createServerChannelService, setupServerChannel } from './services/airi/
 import { setupDiscordService } from './services/airi/discord'
 import { createI18nService } from './services/airi/i18n'
 import { createMcpServersService, setupMcpStdioManager } from './services/airi/mcp-servers'
+import { createNan0DiagnosticsService } from './services/airi/nan0-diagnostics'
 import { setupPluginHost } from './services/airi/plugins'
 import { createMicToggleService } from './services/airi/shortcuts/mic-toggle'
 import { setupAutoUpdater } from './services/electron/auto-updater'
@@ -355,6 +357,7 @@ app.whenReady().then(async () => {
       const context = createContext(ipcMain).context
       createServerChannelService({ serverChannel: deps.serverChannel })
       createMcpServersService({ context, manager: deps.mcpStdioManager })
+      createNan0DiagnosticsService({ context })
       createI18nService({ context, window: deps.mainWindow, i18n: deps.i18n })
       createMicToggleService({ context, window: deps.mainWindow })
       createVisionService({ context })
@@ -1207,7 +1210,24 @@ app.whenReady().then(async () => {
         }
       })
 
-      ipcMain.on('llm-raw-output', (_, data: { type: 'delta' | 'full', text: string, sessionId: string }) => {
+      const previousLlmOutputBySession = new Map<string, {
+        eventId: string
+        generationId: string
+        sessionId: string
+        thoughtId?: string | null
+        decisionId?: string | null
+        turnId?: string | null
+      }>()
+      ipcMain.on('llm-raw-output', (_, data: {
+        type: 'delta' | 'full'
+        text: string
+        sessionId: string
+        eventId?: string
+        generationId?: string
+        thoughtId?: string | null
+        decisionId?: string | null
+        turnId?: string | null
+      }) => {
         const reset = '\x1B[0m'
         const cyan = '\x1B[36m'
         // const yellow = '\x1B[33m'
@@ -1220,7 +1240,22 @@ app.whenReady().then(async () => {
           */
         }
         else {
-          console.log(`${cyan}[LLM Final Output]${reset} Session: ${data.sessionId}`)
+          const identity = {
+            eventId: data.eventId ?? `legacy:${data.sessionId}:${Date.now()}`,
+            generationId: data.generationId ?? 'legacy-unidentified-generation',
+            sessionId: data.sessionId,
+            thoughtId: data.thoughtId ?? null,
+            decisionId: data.decisionId ?? null,
+            turnId: data.turnId ?? null,
+          }
+          const previous = previousLlmOutputBySession.get(data.sessionId)
+          const duplicateClassification = previous
+            ? classifyNan0OutputDuplicate(previous, identity)
+            : 'distinct-output'
+          previousLlmOutputBySession.set(data.sessionId, identity)
+          if (previousLlmOutputBySession.size > 64)
+            previousLlmOutputBySession.delete(previousLlmOutputBySession.keys().next().value!)
+          console.log(`${cyan}[LLM Final Output]${reset} Session: ${data.sessionId} Event: ${identity.eventId} Generation: ${identity.generationId} Diagnostic: ${duplicateClassification}`)
           console.log(`----------------------------------------`)
           console.log(data.text)
           console.log(`----------------------------------------`)

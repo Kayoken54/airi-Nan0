@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Card } from '@proj-airi/ccc'
 import type { AiriExtension } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import type { CognitionProcessorId } from '@proj-airi/stage-ui/stores/nan0-config'
 import type { SpeechCapabilitiesInfo } from '@proj-airi/stage-ui/stores/providers'
 
 import kebabcase from '@stdlib/string-base-kebabcase'
@@ -38,6 +39,7 @@ import ImageTagExtractorModal from './ImageTagExtractorModal.vue'
 import CardCreationTabActing from './tabs/CardCreationTabActing.vue'
 import CardCreationTabArtistry from './tabs/CardCreationTabArtistry.vue'
 import CardCreationTabBehavior from './tabs/CardCreationTabBehavior.vue'
+import CardCreationTabCognition from './tabs/CardCreationTabCognition.vue'
 import CardCreationTabGeneration from './tabs/CardCreationTabGeneration.vue'
 import CardCreationTabIdentity from './tabs/CardCreationTabIdentity.vue'
 import CardCreationTabModules from './tabs/CardCreationTabModules.vue'
@@ -119,6 +121,10 @@ const selectedSpeechModel = ref<string>('')
 const selectedSpeechVoiceId = ref<string>('')
 const selectedDisplayModelId = ref<string>('')
 const selectedActiveBackgroundId = ref<string>('none')
+const cognitivePipelineEnabled = ref(false)
+const firstHopProcessor = ref<CognitionProcessorId>('none')
+const selectedFirstHopProvider = ref<string>('')
+const selectedFirstHopModel = ref<string>('')
 const selectedArtistryProvider = ref<string>('')
 const selectedArtistryModel = ref<string>('')
 const selectedArtistryPromptPrefix = ref<string>('')
@@ -291,6 +297,17 @@ const artistryProviderOptions = computed(() => {
 // Computed: available consciousness models options
 const consciousnessModelOptions = computed(() => {
   const provider = selectedConsciousnessProvider.value || consciousnessProvider.value
+  if (!provider)
+    return []
+  const models = providersStore.getModelsForProvider(provider)
+  return models.map(model => ({
+    value: model.id,
+    label: model.name || model.id,
+  }))
+})
+
+const firstHopModelOptions = computed(() => {
+  const provider = selectedFirstHopProvider.value || consciousnessProvider.value
   if (!provider)
     return []
   const models = providersStore.getModelsForProvider(provider)
@@ -704,6 +721,7 @@ const tabs: Tab[] = [
   { id: 'generation', label: 'Generation', icon: 'i-solar:tuning-square-bold-duotone' },
   { id: 'acting', label: 'Acting', icon: 'i-solar:mask-happly-bold-duotone' },
   { id: 'modules', label: t('settings.pages.card.modules'), icon: 'i-solar:widget-4-bold-duotone' },
+  { id: 'cognition', label: t('settings.pages.card.creation.cognition.title'), icon: 'i-solar:cpu-bolt-bold-duotone' },
   { id: 'artistry', label: t('settings.pages.modules.artistry.title'), icon: 'i-solar:gallery-bold-duotone' },
   { id: 'proactivity', label: t('settings.pages.card.creation.proactivity', 'Proactivity'), icon: 'i-solar:heart-pulse-bold-duotone' },
   { id: 'tools', label: 'Tools', icon: 'i-solar:widget-bold-duotone' },
@@ -823,6 +841,12 @@ async function saveCard(card: Card): Promise<boolean> {
           consciousness: {
             provider: selectedConsciousnessProvider.value || consciousnessProvider.value,
             model: selectedConsciousnessModel.value || defaultConsciousnessModel.value,
+          },
+          cognition: {
+            enabled: cognitivePipelineEnabled.value,
+            processor: firstHopProcessor.value,
+            provider: selectedFirstHopProvider.value || consciousnessProvider.value,
+            model: selectedFirstHopModel.value,
           },
           speech: {
             provider: selectedSpeechProvider.value || speechProvider.value,
@@ -956,6 +980,10 @@ function initializeCard(): Card {
   selectedDisplayModelId.value = airiExt?.modules?.displayModelId || defaultDisplayModelId.value
   const activeBg = airiExt?.modules?.activeBackgroundId || (airiExt?.modules as any)?.preferredBackgroundId
   selectedActiveBackgroundId.value = !activeBg ? 'none' : activeBg
+  cognitivePipelineEnabled.value = airiExt?.modules?.cognition?.enabled ?? false
+  firstHopProcessor.value = airiExt?.modules?.cognition?.processor ?? 'none'
+  selectedFirstHopProvider.value = airiExt?.modules?.cognition?.provider || consciousnessProvider.value
+  selectedFirstHopModel.value = airiExt?.modules?.cognition?.model || ''
   selectedArtistryProvider.value = airiExt?.artistry?.provider || defaultArtistryProvider.value
   selectedArtistryModel.value = airiExt?.artistry?.model || ''
   selectedArtistryPromptPrefix.value = airiExt?.artistry?.promptPrefix || ''
@@ -1394,6 +1422,22 @@ function handleGeneratorSave(newValue: string) {
             :default-display-model-id-placeholder="getDefaultPlaceholder(defaultDisplayModelId)"
             :consciousness-provider-active="Boolean(consciousnessProvider)"
             :speech-provider-active="Boolean(speechProvider)"
+          />
+          <CardCreationTabCognition
+            v-else-if="activeTab === 'cognition'"
+            v-model:cognitive-pipeline-enabled="cognitivePipelineEnabled"
+            v-model:first-hop-processor="firstHopProcessor"
+            v-model:selected-first-hop-provider="selectedFirstHopProvider"
+            v-model:selected-first-hop-model="selectedFirstHopModel"
+            v-model:selected-consciousness-provider="selectedConsciousnessProvider"
+            v-model:selected-consciousness-model="selectedConsciousnessModel"
+            :consciousness-provider-options="consciousnessProviderOptions"
+            :consciousness-model-options="consciousnessModelOptions"
+            :first-hop-model-options="firstHopModelOptions"
+            :default-consciousness-model-placeholder="getDefaultPlaceholder(defaultConsciousnessModel)"
+            :default-first-hop-model-placeholder="getDefaultPlaceholder(defaultConsciousnessModel)"
+            :consciousness-provider-active="Boolean(consciousnessProvider)"
+            :first-hop-provider-active="Boolean(selectedFirstHopProvider || consciousnessProvider)"
           />
           <CardCreationTabArtistry
             v-else-if="activeTab === 'artistry'"

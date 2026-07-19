@@ -1,3 +1,5 @@
+import type { Nan0KernelObservatory } from './diagnostics/Nan0KernelObservatory'
+
 export type Nan0ObservationSource =
   | 'chat'
   | 'discord'
@@ -1407,6 +1409,7 @@ export interface Nan0KernelDependencies {
   temporalEngineConfiguration?: Nan0TemporalEngineConfiguration
   thoughtPolicy?: Nan0ThoughtPolicy
   diagnostic?: (event: Nan0DiagnosticEvent) => void
+  observatory?: Nan0KernelObservatory
 }
 
 export interface Nan0HostBindings {

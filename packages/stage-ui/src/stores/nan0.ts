@@ -1,28 +1,34 @@
 import type { Message } from '@xsai/shared-chat'
 
-import {
-  InMemoryStateStore,
-  LocalStorageStateStore,
-  Nan0Kernel,
-  SystemNan0Clock,
-  createNan0HeartbeatEngine,
-} from '@proj-airi/nan0-runtime'
-import { nanoid } from 'nanoid'
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
-
 import type {
   Nan0BridgeAction,
   Nan0BridgeRequestMap,
   Nan0PreparedTurnProxy,
 } from './nan0-bridge'
-import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toMetabolismEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
 import type { Nan0RendererIdentity } from './nan0-renderer'
+
+import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import {
+  classifyNan0DiagnosticResult,
+  createNan0HeartbeatEngine,
+  createNan0KernelObservatory,
+  InMemoryStateStore,
+  LocalStorageStateStore,
+  Nan0Kernel,
+  resolveNan0KernelObservatoryConfiguration,
+  SystemNan0Clock,
+} from '@proj-airi/nan0-runtime'
+import { nan0DiagnosticsAppend, nan0DiagnosticsGetConfiguration } from '@proj-airi/stage-shared'
+import { nanoid } from 'nanoid'
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+import { requestNan0Owner, setNan0OwnerHandler, toAutonomyEvaluationProxy, toMetabolismEvaluationProxy, toPreparedTurnProxy, toTemporalAutonomyEvaluationProxy } from './nan0-bridge'
+import { isNan0ProcessorEnabled, resolveNan0ReasoningRoute } from './nan0-config'
 import { setNan0InputPresenceHandler } from './nan0-input-presence'
 import { useSettingsStageModel } from './settings/stage-model'
 
 const NAN0_CONTEXT_MARKER = '[NAN0 KERNEL CONTEXT]'
-const NAN0_DIAGNOSTIC_KEY = 'nan0/diagnostics/v1'
 
 let activeInstallationCleanup: (() => void) | null = null
 
@@ -83,27 +89,47 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
   const lastError = ref<string | null>(null)
 
   let rendererIdentity: Nan0RendererIdentity | null = null
+  const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron)
+  const getDiagnosticConfiguration = isElectron ? useElectronEventaInvoke(nan0DiagnosticsGetConfiguration) : null
+  const appendDiagnostics = isElectron ? useElectronEventaInvoke(nan0DiagnosticsAppend) : null
+  const observatory = createNan0KernelObservatory({
+    configuration: resolveNan0KernelObservatoryConfiguration({}),
+    createId: nanoid,
+    sink: appendDiagnostics
+      ? {
+          async write(events) {
+            await appendDiagnostics({ events: events.map(event => structuredClone(event)) })
+          },
+        }
+      : undefined,
+  })
+  let configureObservatoryPromise: Promise<void> | null = null
+
+  function ensureObservatoryConfigured(): Promise<void> {
+    configureObservatoryPromise ??= (async () => {
+      if (!getDiagnosticConfiguration)
+        return
+      const configuration = await getDiagnosticConfiguration()
+      observatory.configure({
+        ...configuration,
+        // Electron main owns PowerShell output; avoid printing the same event in the renderer.
+        console: false,
+      })
+    })().catch((error) => {
+      console.warn('[Nan0 Observatory] Failed to read host diagnostic configuration:', error)
+    })
+    return configureObservatoryPromise
+  }
 
   function diagnostic(event: string, details: Record<string, unknown> = {}): void {
-    const entry = {
-      timestamp: Date.now(),
+    observatory.emit({
       event,
-      rendererInstanceId: rendererIdentity?.instanceId ?? 'unassigned',
-      rendererHash: rendererIdentity?.hash ?? 'unknown',
-      ...details,
-    }
-    console.info('[Nan0]', JSON.stringify(entry))
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-      try {
-        const previous = JSON.parse(window.localStorage.getItem(NAN0_DIAGNOSTIC_KEY) ?? '[]')
-        const diagnostics = Array.isArray(previous) ? previous.slice(-199) : []
-        diagnostics.push(entry)
-        window.localStorage.setItem(NAN0_DIAGNOSTIC_KEY, JSON.stringify(diagnostics))
-      }
-      catch (error) {
-        console.warn('[Nan0] Failed to retain development diagnostic:', error)
-      }
-    }
+      details: {
+        rendererInstanceId: rendererIdentity?.instanceId ?? 'unassigned',
+        rendererHash: rendererIdentity?.hash ?? 'unknown',
+        ...details,
+      },
+    })
   }
 
   const clock = new SystemNan0Clock()
@@ -128,18 +154,26 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       async stream(request, onEvent) {
         const [
           { useLLM },
+          { useAiriCardStore },
           { useConsciousnessStore },
           { useProvidersStore },
         ] = await Promise.all([
           import('./llm'),
+          import('./modules/airi-card'),
           import('./modules/consciousness'),
           import('./providers'),
         ])
         const llm = useLLM()
+        const airiCard = useAiriCardStore()
         const consciousness = useConsciousnessStore()
         const providers = useProvidersStore()
-        const providerId = consciousness.activeProvider
-        const model = consciousness.activeModel
+        const { providerId, model } = resolveNan0ReasoningRoute(
+          airiCard.activeCard?.extensions?.airi?.modules?.cognition,
+          {
+            providerId: consciousness.activeProvider,
+            model: consciousness.activeModel,
+          },
+        )
         if (!providerId || !model)
           throw new Error('AIRI has no active provider and model for Nan0 private thought.')
 
@@ -189,18 +223,26 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       async generate(request) {
         const [
           { useLLM },
+          { useAiriCardStore },
           { useConsciousnessStore },
           { useProvidersStore },
         ] = await Promise.all([
           import('./llm'),
+          import('./modules/airi-card'),
           import('./modules/consciousness'),
           import('./providers'),
         ])
         const llm = useLLM()
+        const airiCard = useAiriCardStore()
         const consciousness = useConsciousnessStore()
         const providers = useProvidersStore()
-        const providerId = consciousness.activeProvider
-        const model = consciousness.activeModel
+        const { providerId, model } = resolveNan0ReasoningRoute(
+          airiCard.activeCard?.extensions?.airi?.modules?.cognition,
+          {
+            providerId: consciousness.activeProvider,
+            model: consciousness.activeModel,
+          },
+        )
         if (!providerId || !model)
           throw new Error('AIRI has no active provider and model for Nan0 private thought.')
 
@@ -240,13 +282,14 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       provider: 'airi-provider-selection',
       model: 'active-consciousness-model',
     },
-    diagnostic: ({ event, details }) => diagnostic(event, details),
+    observatory,
   })
 
   let installPromise: Promise<void> | null = null
 
   async function ensureInstalled(renderer: Nan0RendererIdentity): Promise<void> {
     rendererIdentity ??= renderer
+    await ensureObservatoryConfigured()
     diagnostic('store.install.requested', {
       installed: installed.value,
       installPending: installPromise != null,
@@ -372,8 +415,15 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
   }
 
   async function installExecutor(renderer: Nan0RendererIdentity): Promise<void> {
-    const { useChatOrchestratorStore } = await import('./chat')
+    const [{ useChatOrchestratorStore }, { useAiriCardStore }] = await Promise.all([
+      import('./chat'),
+      import('./modules/airi-card'),
+    ])
     const chat = useChatOrchestratorStore()
+    const airiCard = useAiriCardStore()
+    const nan0ProcessorEnabled = () => isNan0ProcessorEnabled(
+      airiCard.activeCard?.extensions?.airi?.modules?.cognition,
+    )
     const preparedTurns = new Map<string, Nan0PreparedTurnProxy>()
     const dispatchedBodyTurns = new Set<string>()
     const autonomyByTurn = new Map<string, {
@@ -381,6 +431,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       evaluationId?: string
       temporalEventId?: string
       internalObservationId?: string
+      heartbeatTickId?: string
       source: `internal:${string}`
     }>()
     const pendingAutonomy = new Map<string, {
@@ -389,7 +440,13 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       evaluationId?: string
       temporalEventId?: string
       internalObservationId?: string
+      heartbeatTickId?: string
       source: `internal:${string}`
+    }>()
+    const expressionResultByHeartbeatTick = new Map<string, {
+      result: 'SPEAK' | 'CHOSEN_SILENCE' | 'SUPPRESSED_SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'STALE' | 'FAILURE_SILENCE'
+      failureLayer?: string
+      reasonCodes?: string[]
     }>()
 
     function turnKey(context: { message: { id?: string } }): string {
@@ -412,6 +469,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             evaluationId: autonomous.evaluationId,
             temporalEventId: autonomous.temporalEventId,
             internalObservationId: autonomous.internalObservationId,
+            heartbeatTickId: autonomous.heartbeatTickId,
             source: autonomous.source,
           })
           lastThoughtId.value = autonomous.prepared.thoughtId
@@ -421,9 +479,12 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             temporalEventId: autonomous.temporalEventId,
             thoughtId: autonomous.prepared.thoughtId,
             turnId: autonomous.prepared.turnId,
+            heartbeatTickId: autonomous.heartbeatTickId,
           })
           return
         }
+        if (!nan0ProcessorEnabled())
+          return
         const source = context.input?.type?.startsWith('input:')
           ? context.input.type.slice('input:'.length)
           : 'chat'
@@ -569,6 +630,7 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         diagnostic('bridge.delegate.assistant-end.fired', {
           thoughtId: prepared?.thoughtId,
           outputLength: message.length,
+          heartbeatTickId: autonomy?.heartbeatTickId,
         })
         if (!prepared)
           return
@@ -595,7 +657,15 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
         diagnostic('bridge.delegate.assistant-end.acknowledged', {
           thoughtId: prepared.thoughtId,
           turnId: prepared.turnId,
+          decisionId: prepared.decision.decisionId,
+          heartbeatTickId: autonomy?.heartbeatTickId,
         })
+        if (autonomy?.heartbeatTickId) {
+          expressionResultByHeartbeatTick.set(autonomy.heartbeatTickId, {
+            result: prepared.decision.finalDecision === 'BODY_EXPRESSION' ? 'BODY_EXPRESSION' : 'SPEAK',
+            reasonCodes: prepared.decision.reasonCodes,
+          })
+        }
         scheduler.notify('turn-complete')
       }),
 
@@ -625,6 +695,15 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             internalObservationId: autonomy?.internalObservationId,
           },
         })
+        if (autonomy?.heartbeatTickId) {
+          expressionResultByHeartbeatTick.set(autonomy.heartbeatTickId, {
+            result: prepared.decision.finalDecision === 'BODY_EXPRESSION'
+              ? 'BODY_EXPRESSION'
+              : prepared.decision.finalDecision === 'SPEAK' ? 'SUPPRESSED_SILENCE' : prepared.decision.finalDecision === 'SILENCE' ? 'CHOSEN_SILENCE' : prepared.decision.finalDecision,
+            failureLayer: prepared.decision.finalDecision === 'SPEAK' ? 'outward-provider' : undefined,
+            reasonCodes: [...prepared.decision.reasonCodes, reason],
+          })
+        }
         preparedTurns.delete(key)
         dispatchedBodyTurns.delete(key)
         autonomyByTurn.delete(key)
@@ -653,6 +732,13 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
             internalObservationId: autonomy?.internalObservationId,
           },
         })
+        if (autonomy?.heartbeatTickId) {
+          expressionResultByHeartbeatTick.set(autonomy.heartbeatTickId, {
+            result: 'FAILURE_SILENCE',
+            failureLayer: 'outward-expression',
+            reasonCodes: ['expression.host-error'],
+          })
+        }
         preparedTurns.delete(key)
         dispatchedBodyTurns.delete(key)
         autonomyByTurn.delete(key)
@@ -661,19 +747,25 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
     ]
 
     const scheduler = createNan0HeartbeatEngine({
-      isHostReady: () => !chat.sending,
+      isHostReady: () => nan0ProcessorEnabled() && !chat.sending,
       baseIntervalMs: 30_000,
       minimumIntervalMs: 10_000,
       maximumIntervalMs: 60_000,
       jitterRatio: 0.2,
       diagnostic,
-      async evaluate(reason) {
+      async evaluate(reason, heartbeatContext) {
         const metabolism = await requestNan0Owner(renderer.instanceId, 'evaluateMetabolism', {
           reason,
           hostReady: !chat.sending,
+          heartbeatTickId: heartbeatContext.heartbeatTickId,
         })
+        const metabolismResult = {
+          nextEvaluationAt: metabolism.nextEvaluationAt,
+          ...metabolism.terminal,
+          observationCount: metabolism.observationId ? 1 : 0,
+        }
         if (metabolism.outcome === 'skipped')
-          return { nextEvaluationAt: metabolism.nextEvaluationAt }
+          return metabolismResult
         if (metabolism.prepared) {
           const prepared = metabolism.prepared
           if (chat.sending) {
@@ -684,14 +776,40 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
               timestamp: Date.now(),
               metadata: { internalObservationId: metabolism.observationId, failureLayer: 'autonomous-expression-handoff' },
             })
-            return { nextEvaluationAt: metabolism.nextEvaluationAt }
+            diagnostic('expression.suppressed', {
+              heartbeatTickId: heartbeatContext.heartbeatTickId,
+              observationId: metabolism.observationId,
+              thoughtId: prepared.thoughtId,
+              decisionId: prepared.decision.decisionId,
+              turnId: prepared.turnId,
+              result: 'SUPPRESSED_SILENCE',
+              failureLayer: 'host-readiness',
+              reasonCodes: ['metabolism.host-became-busy'],
+            })
+            return {
+              ...metabolismResult,
+              result: 'SUPPRESSED_SILENCE' as const,
+              failureLayer: 'host-readiness',
+              reasonCodes: ['metabolism.host-became-busy'],
+            }
           }
           const correlationId = `metabolism_${nanoid()}`
+          const expressionEventId = `expression_${nanoid()}`
           const source = 'internal:heartbeat' as const
           pendingAutonomy.set(correlationId, {
             prepared,
             internalObservationId: metabolism.observationId ?? undefined,
+            heartbeatTickId: heartbeatContext.heartbeatTickId,
             source,
+          })
+          diagnostic('expression.started', {
+            expressionEventId,
+            heartbeatTickId: heartbeatContext.heartbeatTickId,
+            observationId: metabolism.observationId,
+            thoughtId: prepared.thoughtId,
+            decisionId: prepared.decision.decisionId,
+            turnId: prepared.turnId,
+            sessionId: prepared.sessionId,
           })
           try {
             await chat.ingest('', {
@@ -701,8 +819,31 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
                 internalObservationId: metabolism.observationId,
                 actorId: 'nan0',
                 source,
+                heartbeatTickId: heartbeatContext.heartbeatTickId,
+                nan0ExpressionEventId: expressionEventId,
               },
             }, prepared.sessionId)
+            const hostResult = expressionResultByHeartbeatTick.get(heartbeatContext.heartbeatTickId)
+            expressionResultByHeartbeatTick.delete(heartbeatContext.heartbeatTickId)
+            const result = hostResult?.result ?? metabolism.terminal.result
+            diagnostic(result === 'FAILURE_SILENCE' ? 'expression.failed' : result === 'SUPPRESSED_SILENCE' || result === 'STALE' ? 'expression.suppressed' : 'expression.completed', {
+              expressionEventId,
+              heartbeatTickId: heartbeatContext.heartbeatTickId,
+              observationId: metabolism.observationId,
+              thoughtId: prepared.thoughtId,
+              decisionId: prepared.decision.decisionId,
+              turnId: prepared.turnId,
+              sessionId: prepared.sessionId,
+              result,
+              failureLayer: hostResult?.failureLayer ?? null,
+              reasonCodes: hostResult?.reasonCodes ?? prepared.decision.reasonCodes,
+            })
+            return {
+              ...metabolismResult,
+              result,
+              failureLayer: hostResult?.failureLayer ?? metabolism.terminal.failureLayer,
+              reasonCodes: hostResult?.reasonCodes ?? metabolism.terminal.reasonCodes,
+            }
           }
           catch (error) {
             pendingAutonomy.delete(correlationId)
@@ -713,8 +854,26 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
               timestamp: Date.now(),
               metadata: { internalObservationId: metabolism.observationId, failureLayer: 'autonomous-expression-handoff' },
             })
+            diagnostic('expression.failed', {
+              expressionEventId,
+              heartbeatTickId: heartbeatContext.heartbeatTickId,
+              observationId: metabolism.observationId,
+              thoughtId: prepared.thoughtId,
+              decisionId: prepared.decision.decisionId,
+              turnId: prepared.turnId,
+              sessionId: prepared.sessionId,
+              result: 'FAILURE_SILENCE',
+              failureLayer: 'autonomous-expression-handoff',
+              reasonCodes: ['expression.handoff-failed'],
+              error: error instanceof Error ? error.message : String(error),
+            })
+            return {
+              ...metabolismResult,
+              result: 'FAILURE_SILENCE' as const,
+              failureLayer: 'autonomous-expression-handoff',
+              reasonCodes: ['expression.handoff-failed'],
+            }
           }
-          return { nextEvaluationAt: metabolism.nextEvaluationAt }
         }
 
         const response = await requestNan0Owner(renderer.instanceId, 'evaluateAutonomy', {
@@ -722,9 +881,21 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
           hostReady: !chat.sending,
           limit: 2,
         })
+        let heartbeatResult = metabolismResult
         for (const evaluation of response.evaluations) {
-          if (!evaluation.prepared)
+          if (!evaluation.prepared) {
+            const result = evaluation.outcome === 'provider-failure'
+              ? 'FAILURE_SILENCE' as const
+              : evaluation.outcome === 'SILENCE' ? 'CHOSEN_SILENCE' as const : evaluation.outcome
+            heartbeatResult = {
+              ...heartbeatResult,
+              result,
+              observationId: evaluation.observationId,
+              observationCount: 1,
+              failureLayer: evaluation.outcome === 'provider-failure' ? 'thought-generation' : null,
+            }
             continue
+          }
           if (chat.sending) {
             await requestNan0Owner(renderer.instanceId, 'deferAutonomy', {
               intentionId: evaluation.intentionId,
@@ -732,14 +903,31 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
               thoughtId: evaluation.prepared.thoughtId,
               reason: 'autonomy.host-became-busy',
             })
+            heartbeatResult = {
+              ...heartbeatResult,
+              result: 'SUPPRESSED_SILENCE',
+              failureLayer: 'host-readiness',
+              reasonCodes: ['autonomy.host-became-busy'],
+            }
             continue
           }
           const correlationId = `autonomy_${nanoid()}`
+          const expressionEventId = `expression_${nanoid()}`
           pendingAutonomy.set(correlationId, {
             prepared: evaluation.prepared,
             intentionId: evaluation.intentionId,
             evaluationId: evaluation.evaluationId,
+            heartbeatTickId: heartbeatContext.heartbeatTickId,
             source: 'internal:intention',
+          })
+          diagnostic('expression.started', {
+            expressionEventId,
+            heartbeatTickId: heartbeatContext.heartbeatTickId,
+            observationId: evaluation.observationId,
+            thoughtId: evaluation.prepared.thoughtId,
+            decisionId: evaluation.prepared.decision.decisionId,
+            turnId: evaluation.prepared.turnId,
+            sessionId: evaluation.prepared.sessionId,
           })
           try {
             await chat.ingest('', {
@@ -750,8 +938,38 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
                 evaluationId: evaluation.evaluationId,
                 actorId: 'nan0',
                 source: 'internal:intention',
+                heartbeatTickId: heartbeatContext.heartbeatTickId,
+                nan0ExpressionEventId: expressionEventId,
               },
             }, evaluation.prepared.sessionId)
+            const hostResult = expressionResultByHeartbeatTick.get(heartbeatContext.heartbeatTickId)
+            expressionResultByHeartbeatTick.delete(heartbeatContext.heartbeatTickId)
+            const result = hostResult?.result ?? classifyNan0DiagnosticResult({ outcome: evaluation.outcome })
+            diagnostic(result === 'FAILURE_SILENCE' ? 'expression.failed' : result === 'SUPPRESSED_SILENCE' || result === 'STALE' ? 'expression.suppressed' : 'expression.completed', {
+              expressionEventId,
+              heartbeatTickId: heartbeatContext.heartbeatTickId,
+              observationId: evaluation.observationId,
+              thoughtId: evaluation.prepared.thoughtId,
+              decisionId: evaluation.prepared.decision.decisionId,
+              turnId: evaluation.prepared.turnId,
+              sessionId: evaluation.prepared.sessionId,
+              result,
+              failureLayer: hostResult?.failureLayer ?? null,
+              reasonCodes: hostResult?.reasonCodes ?? evaluation.prepared.decision.reasonCodes,
+            })
+            heartbeatResult = {
+              ...heartbeatResult,
+              result,
+              sessionId: evaluation.prepared.sessionId,
+              observationId: evaluation.observationId,
+              thoughtId: evaluation.prepared.thoughtId,
+              decisionId: evaluation.prepared.decision.decisionId,
+              turnId: evaluation.prepared.turnId,
+              source: 'internal:intention',
+              observationCount: 1,
+              failureLayer: hostResult?.failureLayer ?? null,
+              reasonCodes: hostResult?.reasonCodes ?? evaluation.prepared.decision.reasonCodes,
+            }
           }
           catch (error) {
             pendingAutonomy.delete(correlationId)
@@ -761,18 +979,38 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
               thoughtId: evaluation.prepared.thoughtId,
               reason: error instanceof Error ? error.message : 'autonomy.expression-handoff-failed',
             })
+            diagnostic('expression.failed', {
+              expressionEventId,
+              heartbeatTickId: heartbeatContext.heartbeatTickId,
+              observationId: evaluation.observationId,
+              thoughtId: evaluation.prepared.thoughtId,
+              decisionId: evaluation.prepared.decision.decisionId,
+              turnId: evaluation.prepared.turnId,
+              sessionId: evaluation.prepared.sessionId,
+              result: 'FAILURE_SILENCE',
+              failureLayer: 'autonomous-expression-handoff',
+              reasonCodes: ['expression.handoff-failed'],
+            })
+            heartbeatResult = {
+              ...heartbeatResult,
+              result: 'FAILURE_SILENCE',
+              failureLayer: 'autonomous-expression-handoff',
+              reasonCodes: ['expression.handoff-failed'],
+            }
           }
         }
         const nextEvaluationAt = [metabolism.nextEvaluationAt, response.nextEvaluationAt]
           .filter((candidate): candidate is number => candidate != null)
           .reduce<number | null>((minimum, candidate) => minimum == null ? candidate : Math.min(minimum, candidate), null)
-        return { nextEvaluationAt }
+        return { ...heartbeatResult, nextEvaluationAt }
       },
       onError: error => diagnostic('autonomy.scheduler.failed', {
         error: error instanceof Error ? error.message : String(error),
       }),
     })
     cleanups.push(setNan0InputPresenceHandler((input) => {
+      if (!nan0ProcessorEnabled())
+        return
       void requestNan0Owner(renderer.instanceId, 'notifyInput', input)
         .then(() => scheduler.notify('external-input'))
         .catch(error => diagnostic('heartbeat.input-notification.failed', {
@@ -790,6 +1028,8 @@ export const useNan0RuntimeStore = defineStore('nan0-runtime', () => {
       dispatchedBodyTurns.clear()
       autonomyByTurn.clear()
       pendingAutonomy.clear()
+      expressionResultByHeartbeatTick.clear()
+      void observatory.flush()
     }
     installed.value = true
     diagnostic('store.executor.install.complete', {

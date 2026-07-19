@@ -15,6 +15,7 @@ import type {
   Nan0InternalObservationRecord,
   Nan0MemoryRecord,
   Nan0Observation,
+  Nan0ObservationSource,
   Nan0PendingIntention,
   Nan0PendingIntentionState,
   Nan0RelationshipContext,
@@ -132,6 +133,10 @@ import {
   createEmptyHeartbeatRuntimeState,
   normalizeHeartbeatRuntimeState,
 } from '../heartbeat/Nan0HeartbeatEngine'
+import {
+  classifyNan0DiagnosticResult,
+} from '../diagnostics/Nan0KernelObservatory'
+import type { Nan0HeartbeatTerminalResult } from '../diagnostics/Nan0KernelObservatory'
 
 type ExpressionHandler = (expression: Nan0Expression) => void
 
@@ -181,6 +186,20 @@ export interface Nan0MetabolismEvaluationResult {
   prepared: Nan0PreparedTurn | null
   outcome: 'SPEAK' | 'SILENCE' | 'WAIT' | 'ACT' | 'BODY_EXPRESSION' | 'provider-failure' | 'idle' | 'skipped'
   nextEvaluationAt: number | null
+  terminal: {
+    result: Nan0HeartbeatTerminalResult
+    sessionId: string | null
+    observationId: string | null
+    thoughtId: string | null
+    decisionId: string | null
+    turnId: string | null
+    source: Nan0ObservationSource | null
+    provenance: unknown
+    failureLayer: string | null
+    reasonCodes: string[]
+    queuedObservationCount: number
+    mood: string
+  }
 }
 
 interface Nan0PrepareTurnOptions {
@@ -189,6 +208,7 @@ interface Nan0PrepareTurnOptions {
   autonomous?: boolean
   hostReady?: boolean
   internalObservation?: Nan0InternalObservationRecord
+  heartbeatTickId?: string
 }
 
 function defaultInitialState(
@@ -554,7 +574,22 @@ export class Nan0Kernel {
         : undefined)
       ?? this.state.timeline.activeSessionId
       ?? this.createId()
+    const diagnosticContext = {
+      heartbeatTickId: options.heartbeatTickId ?? null,
+      sessionId,
+      observationId: canonicalObservation.id,
+      thoughtId,
+      turnId,
+      source: canonicalObservation.source,
+      provenance: isInternalObservation ? options.internalObservation?.observation.provenance ?? null : null,
+    }
+    this.diagnostic('observation.created', {
+      ...diagnosticContext,
+      actorId: ownership.actorId,
+      internal: isInternalObservation,
+    })
     this.diagnostic('prepareTurn.start', {
+      ...diagnosticContext,
       thoughtId,
       observationId: observation.id,
       actorId: ownership.actorId,
@@ -562,6 +597,7 @@ export class Nan0Kernel {
     })
     const emotionalEvents = this.updateEmotionalStateForObservation(canonicalObservation)
     if (ownership.actorId === 'kyo') {
+      const trackedPromiseIds = new Set(normalizeTemporalTrackingState(this.state.temporal.engine.lived).trackedPromises.map(promise => promise.promiseId))
       const lived = recordLivedTemporalObservation({
         engine: this.state.temporal.engine,
         observation: canonicalObservation,
@@ -570,6 +606,14 @@ export class Nan0Kernel {
         createId: this.createId,
       })
       this.state = { ...this.state, temporal: { ...this.state.temporal, engine: lived.engine } }
+      for (const promise of normalizeTemporalTrackingState(lived.engine.lived).trackedPromises.filter(item => !trackedPromiseIds.has(item.promiseId))) {
+        this.diagnostic('temporal.promise.tracked', {
+          ...diagnosticContext,
+          promiseId: promise.promiseId,
+          dueAt: promise.dueAt,
+          sourceObservationId: promise.sourceObservationId,
+        })
+      }
       this.applyLivedTemporalCandidates(lived.created)
     }
 
@@ -586,18 +630,29 @@ export class Nan0Kernel {
         at: canonicalObservation.timestamp,
       })
       this.state = { ...this.state, attention: focused.attention }
-      this.diagnostic('attention.focused', {
+      this.diagnostic('attention.focus.selected', {
+        ...diagnosticContext,
         observationId: canonicalObservation.id,
         source: canonicalObservation.source,
         interruptedObservationId: focused.interruptedObservationId,
       })
-      if (focused.interruptedObservationId)
-        this.diagnostic('attention.interrupted', { observationId: focused.interruptedObservationId, byObservationId: canonicalObservation.id })
+      this.diagnostic('observation.selected', {
+        ...diagnosticContext,
+        priority: isInternalObservation ? options.internalObservation?.priority ?? metadataPriority : 1,
+      })
+      if (focused.interruptedObservationId) {
+        this.diagnostic('attention.focus.interrupted', {
+          ...diagnosticContext,
+          observationId: focused.interruptedObservationId,
+          byObservationId: canonicalObservation.id,
+        })
+      }
     }
     const attentionAuthoritative = isObservationFocusAuthoritative(this.state.attention!, canonicalObservation.id)
     if (attentionAuthoritative) {
+      const previousPrediction = normalizePredictionState(this.state.prediction)
       const prediction = processAttendedObservation({
-        state: normalizePredictionState(this.state.prediction),
+        state: previousPrediction,
         observation: canonicalObservation,
         emotionalState: this.state.emotionalState,
         createId: this.createId,
@@ -608,13 +663,35 @@ export class Nan0Kernel {
       for (const candidate of prediction.internalObservations)
         this.enqueueMetabolismObservation(candidate.observation, candidate.priority, candidate.dedupeKey, canonicalObservation.timestamp)
       for (const pattern of prediction.detectedPatterns)
-        this.diagnostic('prediction.pattern.detected', { patternId: pattern.patternId, actorId: pattern.actorId, occurrences: pattern.occurrences, confidence: pattern.confidence })
+        this.diagnostic('prediction.pattern.detected', { ...diagnosticContext, patternId: pattern.patternId, actorId: pattern.actorId, occurrences: pattern.occurrences, confidence: pattern.confidence })
       for (const expectation of prediction.formed)
-        this.diagnostic('prediction.expectation.formed', { expectationId: expectation.expectationId, actorId: expectation.actorId, confidence: expectation.confidence })
+        this.diagnostic('prediction.expectation.formed', { ...diagnosticContext, expectationId: expectation.expectationId, actorId: expectation.actorId, confidence: expectation.confidence })
       for (const expectation of prediction.confirmed)
-        this.diagnostic('prediction.confirmed', { expectationId: expectation.expectationId, confidence: expectation.confidence })
+        this.diagnostic('prediction.confirmed', { ...diagnosticContext, expectationId: expectation.expectationId, confidence: expectation.confidence })
       for (const expectation of prediction.violated)
-        this.diagnostic('prediction.violated', { expectationId: expectation.expectationId, confidence: expectation.confidence })
+        this.diagnostic('prediction.violated', { ...diagnosticContext, expectationId: expectation.expectationId, confidence: expectation.confidence })
+      const previousBeliefs = new Map(previousPrediction.beliefs.map(belief => [belief.beliefId, belief]))
+      for (const belief of prediction.state.beliefs) {
+        const previous = previousBeliefs.get(belief.beliefId)
+        if (previous
+          && previous.confidence === belief.confidence
+          && previous.uncertainty === belief.uncertainty
+          && previous.confirmingEvidence === belief.confirmingEvidence
+          && previous.violatingEvidence === belief.violatingEvidence
+          && previous.status === belief.status)
+          continue
+        this.diagnostic('prediction.belief.revised', {
+          ...diagnosticContext,
+          beliefId: belief.beliefId,
+          revisionKind: previous ? 'updated' : 'formed',
+          previousConfidence: previous?.confidence ?? null,
+          confidence: belief.confidence,
+          uncertainty: belief.uncertainty,
+          status: belief.status,
+          confirmingEvidence: belief.confirmingEvidence,
+          violatingEvidence: belief.violatingEvidence,
+        })
+      }
 
       const goalFormation = evaluateEmotionDrivenGoalFormation({
         goals: this.state.goals,
@@ -627,11 +704,13 @@ export class Nan0Kernel {
       const progress = updateGoalProgressFromObservation({ goals: goalFormation.goals, observation: canonicalObservation, at: canonicalObservation.timestamp })
       this.state = { ...this.state, goals: progress.goals }
       for (const goal of goalFormation.formed)
-        this.diagnostic('goal.formed', { goalId: goal.goalId, status: goal.status, kind: goal.kind })
+        this.diagnostic('goal.formed', { ...diagnosticContext, goalId: goal.goalId, status: goal.status, kind: goal.kind })
       for (const goal of goalFormation.committed)
-        this.diagnostic('goal.committed', { goalId: goal.goalId, kind: goal.kind })
+        this.diagnostic('goal.committed', { ...diagnosticContext, goalId: goal.goalId, kind: goal.kind })
       for (const goal of progress.progressed)
-        this.diagnostic('goal.progressed', { goalId: goal.goalId, progress: goal.progress })
+        this.diagnostic('goal.progressed', { ...diagnosticContext, goalId: goal.goalId, progress: goal.progress })
+      for (const goal of progress.progressed.filter(goal => goal.status === 'completed'))
+        this.diagnostic('goal.completed', { ...diagnosticContext, goalId: goal.goalId, progress: goal.progress, at: canonicalObservation.timestamp })
       this.syncGoalTemporalConditions()
     }
 
@@ -804,6 +883,16 @@ export class Nan0Kernel {
       updatedAt: this.now(),
     }
 
+    if (ownership.actorId === 'kyo') {
+      const absence = this.state.temporal.engine.absence
+      this.diagnostic('temporal.absence.started', {
+        ...diagnosticContext,
+        intervalId: absence.intervalId,
+        startedAt: absence.startedAt,
+        cause: 'kyo-interaction',
+      })
+    }
+
     this.state = await this.dependencies.stateStore.save(this.state)
     this.diagnostic('prepareTurn.persisted', {
       thoughtId,
@@ -848,10 +937,16 @@ export class Nan0Kernel {
     }
     this.state = await this.dependencies.stateStore.save(this.state)
     this.diagnostic('thought.computation.started', {
+      ...diagnosticContext,
       requestId,
       turnId,
       thoughtId,
       timeoutPolicyId: timeoutPolicy.policyId,
+      timeoutDurationMs: timeoutPolicy.durationMs,
+    })
+    this.diagnostic('thought.started', {
+      ...diagnosticContext,
+      requestId,
       timeoutDurationMs: timeoutPolicy.durationMs,
     })
 
@@ -1002,6 +1097,7 @@ export class Nan0Kernel {
     }
     this.state = await this.dependencies.stateStore.save(this.state)
     this.diagnostic('thought.computation.terminal', {
+      ...diagnosticContext,
       requestId,
       turnId,
       thoughtId,
@@ -1009,6 +1105,20 @@ export class Nan0Kernel {
       timeoutPolicyId: timeoutPolicy.policyId,
       failureReason: terminalComputation.failureReason,
     })
+    this.diagnostic(
+      thought.status === 'generated' ? 'thought.generated' : 'thought.failed',
+      {
+        ...diagnosticContext,
+        requestId,
+        status: thought.status,
+        attentionScore: thought.attentionScore,
+        speakability: thought.speakability,
+        mood: thought.mood,
+        failureLayer: thought.status === 'generated' ? null : 'thought-generation',
+        reasonCodes: thought.reasonCodes,
+      },
+      thought,
+    )
     this.diagnostic('prepareTurn.thought-persisted', {
       thoughtId,
       turnId,
@@ -1021,6 +1131,11 @@ export class Nan0Kernel {
     })
 
     const availableCapabilityIds = this.capabilities.availableCapabilityIds()
+    this.diagnostic('decision.started', {
+      ...diagnosticContext,
+      proposedDecision: thought.decision,
+      thoughtStatus: thought.status,
+    })
     const decision = evaluateNan0Decision({
       thought,
       existingDecisions: this.state.decisions,
@@ -1144,6 +1259,7 @@ export class Nan0Kernel {
     }
     this.state = await this.dependencies.stateStore.save(this.state)
     this.diagnostic('prepareTurn.decision-persisted', {
+      ...diagnosticContext,
       thoughtId,
       decisionId: decision.decisionId,
       proposedDecision: decision.proposedDecision,
@@ -1153,6 +1269,25 @@ export class Nan0Kernel {
       decisionCount: this.state.decisions.length,
       goalCount: this.state.goals.length,
     })
+    this.diagnostic('decision.completed', {
+      ...diagnosticContext,
+      decisionId: decision.decisionId,
+      proposedDecision: decision.proposedDecision,
+      finalDecision: decision.finalDecision,
+      allowed: decision.allowed,
+      reasonCodes: decision.reasonCodes,
+      suppressionReason: decision.suppressionReason,
+    })
+    if (!decision.allowed) {
+      this.diagnostic('decision.blocked', {
+        ...diagnosticContext,
+        decisionId: decision.decisionId,
+        finalDecision: decision.finalDecision,
+        reasonCodes: decision.reasonCodes,
+        suppressionReason: decision.suppressionReason,
+        failureLayer: 'decision-authority',
+      })
+    }
 
     if (thought.status === 'failed') {
       await this.failTurn({
@@ -1363,8 +1498,14 @@ export class Nan0Kernel {
           decisionId: decision.decisionId,
         })
       : { queue: this.state.internalObservations!, attention: this.state.attention! }
-    if (focusedObservationId)
+    const resumedObservationId = completedFocus.attention.currentFocus?.observationId ?? null
+    if (focusedObservationId) {
       this.diagnostic('attention.completed', { observationId: focusedObservationId, outcome: 'SPEAK', thoughtId: input.thoughtId, decisionId: decision.decisionId })
+      this.diagnostic('observation.completed', { observationId: focusedObservationId, outcome: 'SPEAK', thoughtId: input.thoughtId, decisionId: decision.decisionId, turnId: turn.turnId, sessionId: turn.sessionId })
+      this.diagnostic('attention.focus.released', { observationId: focusedObservationId, outcome: 'SPEAK', thoughtId: input.thoughtId, decisionId: decision.decisionId, turnId: turn.turnId, sessionId: turn.sessionId })
+      if (resumedObservationId && resumedObservationId !== focusedObservationId)
+        this.diagnostic('attention.focus.resumed', { observationId: resumedObservationId, afterObservationId: focusedObservationId, outcome: 'SPEAK', thoughtId: input.thoughtId, decisionId: decision.decisionId, turnId: turn.turnId, sessionId: turn.sessionId })
+    }
 
     this.state = {
       ...this.state,
@@ -1766,21 +1907,65 @@ export class Nan0Kernel {
     reason: 'interval' | 'session-resume' | 'turn-complete' | 'state-change' | 'manual' | 'external-input'
     hostReady: boolean
     sessionId?: string
+    heartbeatTickId?: string
   }): Promise<Nan0MetabolismEvaluationResult> {
     this.assertBooted()
     const sessionId = input.sessionId ?? this.state.timeline.activeSessionId ?? undefined
+    const heartbeatTickId = input.heartbeatTickId ?? null
+    const queuedCount = (): number => normalizeInternalObservationQueue(this.state.internalObservations).records.filter(record => record.status === 'queued').length
+    const terminal = (parameters: {
+      result: Nan0HeartbeatTerminalResult
+      observationId?: string | null
+      thoughtId?: string | null
+      decisionId?: string | null
+      turnId?: string | null
+      source?: Nan0ObservationSource | null
+      provenance?: unknown
+      failureLayer?: string | null
+      reasonCodes?: readonly string[]
+    }): Nan0MetabolismEvaluationResult['terminal'] => ({
+      result: parameters.result,
+      sessionId: sessionId ?? null,
+      observationId: parameters.observationId ?? null,
+      thoughtId: parameters.thoughtId ?? null,
+      decisionId: parameters.decisionId ?? null,
+      turnId: parameters.turnId ?? null,
+      source: parameters.source ?? null,
+      provenance: structuredClone(parameters.provenance ?? null),
+      failureLayer: parameters.failureLayer ?? null,
+      reasonCodes: [...(parameters.reasonCodes ?? [])],
+      queuedObservationCount: queuedCount(),
+      mood: deriveMood(this.state.emotionalState).primary,
+    })
     if (!input.hostReady
       || !sessionId
       || this.state.temporal.currentPhase !== 'running'
       || this.state.turns.some(turn => turn.status === 'prepared')) {
+      const reasonCodes = [
+        ...(!input.hostReady ? ['heartbeat.host-not-ready'] : []),
+        ...(!sessionId ? ['heartbeat.session-unavailable'] : []),
+        ...(this.state.temporal.currentPhase !== 'running' ? ['heartbeat.runtime-not-running'] : []),
+        ...(this.state.turns.some(turn => turn.status === 'prepared') ? ['heartbeat.session-transition'] : []),
+      ]
+      const result = !sessionId ? 'NO_COGNITION' as const : 'SUPPRESSED_SILENCE' as const
       this.diagnostic('heartbeat.tick.skipped', {
+        heartbeatTickId,
+        sessionId: sessionId ?? null,
         reason: input.reason,
         hostReady: input.hostReady,
         hasSession: Boolean(sessionId),
         runtimePhase: this.state.temporal.currentPhase,
         preparedTurnActive: this.state.turns.some(turn => turn.status === 'prepared'),
+        result,
+        reasonCodes,
       })
-      return { observationId: null, prepared: null, outcome: 'skipped', nextEvaluationAt: this.state.temporal.nextEvaluationAt }
+      return {
+        observationId: null,
+        prepared: null,
+        outcome: 'skipped',
+        nextEvaluationAt: this.state.temporal.nextEvaluationAt,
+        terminal: terminal({ result, failureLayer: result === 'SUPPRESSED_SILENCE' ? 'heartbeat-readiness' : null, reasonCodes }),
+      }
     }
 
     const at = this.now()
@@ -1837,6 +2022,7 @@ export class Nan0Kernel {
       this.diagnostic('goal.abandoned', { goalId: goal.goalId, at })
 
     const configuration = resolveTemporalEngineConfiguration(this.dependencies.temporalEngineConfiguration)
+    const previousAbsence = this.state.temporal.engine.absence
     const objectiveEvidence = evaluateTemporalEvidence({
       temporal: this.state.temporal,
       clock: this.clock,
@@ -1858,8 +2044,30 @@ export class Nan0Kernel {
       allowEligibility: objectiveEvidence.clockTrusted,
     })
     this.state = { ...this.state, temporal: conditions.temporal }
-    for (const event of objectiveEvidence.created)
+    const currentAbsence = this.state.temporal.engine.absence
+    if (currentAbsence.startedAt != null && currentAbsence.intervalId !== previousAbsence.intervalId) {
+      this.diagnostic('temporal.absence.started', {
+        heartbeatTickId,
+        sessionId,
+        intervalId: currentAbsence.intervalId,
+        startedAt: currentAbsence.startedAt,
+        cause: 'temporal-engine-initialization',
+      })
+    }
+    for (const event of objectiveEvidence.created) {
       this.diagnostic('temporal.event.created', { temporalEventId: event.temporalEventId, eventType: event.eventType, evidenceKey: event.evidenceKey, significance: event.significance })
+      if (event.eventType === 'absence-threshold') {
+        this.diagnostic('temporal.absence.threshold', {
+          heartbeatTickId,
+          sessionId,
+          temporalEventId: event.temporalEventId,
+          evidenceKey: event.evidenceKey,
+          observedDurationMs: event.observedDurationMs,
+          thresholdMs: event.thresholdMs,
+          reasonCodes: event.reasonCodes,
+        })
+      }
+    }
     for (const event of objectiveEvidence.eligible) {
       const priority = clamp(0.3 + event.significance * 0.65)
       this.enqueueMetabolismObservation({
@@ -1934,6 +2142,8 @@ export class Nan0Kernel {
       updatedAt: at,
     }
     this.diagnostic('heartbeat.tick.evaluated', {
+      heartbeatTickId,
+      sessionId,
       reason: input.reason,
       selectedObservationId: selected.selected?.observation.id ?? null,
       queuedObservationCount: queued.length,
@@ -1941,10 +2151,26 @@ export class Nan0Kernel {
       nextEvaluationAt,
     })
     this.state = await this.dependencies.stateStore.save(this.state)
-    if (!selected.selected)
-      return { observationId: null, prepared: null, outcome: 'idle', nextEvaluationAt }
+    if (!selected.selected) {
+      return {
+        observationId: null,
+        prepared: null,
+        outcome: 'idle',
+        nextEvaluationAt,
+        terminal: terminal({ result: 'NO_COGNITION', reasonCodes: ['heartbeat.no-observation-selected'] }),
+      }
+    }
 
     const selectedRecord = this.state.internalObservations!.records.find(record => record.observation.id === selected.selected!.observation.id) ?? selected.selected
+    this.diagnostic('observation.selected', {
+      heartbeatTickId,
+      sessionId,
+      observationId: selectedRecord.observation.id,
+      source: selectedRecord.observation.source,
+      provenance: selectedRecord.observation.provenance ?? null,
+      priority: selectedRecord.priority,
+      queuedObservationCount: queued.length,
+    })
     const temporalEventId = selectedRecord.observation.temporalEventId
       ?? (typeof selectedRecord.observation.metadata.temporalEventId === 'string' ? selectedRecord.observation.metadata.temporalEventId : null)
     if (temporalEventId) {
@@ -1965,10 +2191,41 @@ export class Nan0Kernel {
       internalObservation: selectedRecord,
       autonomous: true,
       hostReady: input.hostReady,
+      heartbeatTickId: input.heartbeatTickId,
     })
     const outcome = prepared.thought.status === 'failed' ? 'provider-failure' as const : prepared.decision.finalDecision
-    if ((outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION') && prepared.decision.allowed)
-      return { observationId: selectedRecord.observation.id, prepared, outcome, nextEvaluationAt }
+    const result = classifyNan0DiagnosticResult({
+      observationId: selectedRecord.observation.id,
+      outcome,
+      thought: prepared.thought,
+      decision: prepared.decision,
+      failureLayer: prepared.thought.status === 'failed' ? 'thought-generation' : null,
+    })
+    const terminalResult = terminal({
+      result,
+      observationId: selectedRecord.observation.id,
+      thoughtId: prepared.thoughtId,
+      decisionId: prepared.decision.decisionId,
+      turnId: prepared.turnId,
+      source: selectedRecord.observation.source,
+      provenance: selectedRecord.observation.provenance ?? null,
+      failureLayer: prepared.thought.status === 'failed' ? 'thought-generation' : null,
+      reasonCodes: prepared.decision.reasonCodes,
+    })
+    if ((outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION') && prepared.decision.allowed) {
+      this.diagnostic('expression.authorized', {
+        heartbeatTickId,
+        sessionId,
+        observationId: selectedRecord.observation.id,
+        thoughtId: prepared.thoughtId,
+        decisionId: prepared.decision.decisionId,
+        turnId: prepared.turnId,
+        result,
+        expressionType: outcome,
+        reasonCodes: prepared.decision.reasonCodes,
+      })
+      return { observationId: selectedRecord.observation.id, prepared, outcome, nextEvaluationAt, terminal: terminalResult }
+    }
     if (outcome === 'SPEAK' || outcome === 'BODY_EXPRESSION')
       throw new Error(`Autonomous metabolism ${outcome} decision ${prepared.decision.decisionId} was not allowed.`)
 
@@ -1991,7 +2248,20 @@ export class Nan0Kernel {
         metadata: { internalObservationId: selectedRecord.observation.id, temporalEventId },
       })
     }
-    return { observationId: selectedRecord.observation.id, prepared: null, outcome, nextEvaluationAt }
+    if (result === 'SUPPRESSED_SILENCE' || result === 'STALE') {
+      this.diagnostic('expression.suppressed', {
+        heartbeatTickId,
+        sessionId,
+        observationId: selectedRecord.observation.id,
+        thoughtId: prepared.thoughtId,
+        decisionId: prepared.decision.decisionId,
+        turnId: prepared.turnId,
+        result,
+        reasonCodes: prepared.decision.reasonCodes,
+        suppressionReason: prepared.decision.suppressionReason,
+      })
+    }
+    return { observationId: selectedRecord.observation.id, prepared: null, outcome, nextEvaluationAt, terminal: terminalResult }
   }
 
   async evaluateTemporalAutonomy(input: {
@@ -2581,8 +2851,14 @@ export class Nan0Kernel {
           decisionId: input.decisionId ?? null,
         })
       : { queue: this.state.internalObservations!, attention: this.state.attention! }
-    if (focusedObservationId)
+    const resumedObservationId = completedFocus.attention.currentFocus?.observationId ?? null
+    if (focusedObservationId) {
       this.diagnostic('attention.completed', { observationId: focusedObservationId, outcome: input.decision, thoughtId: turn.thoughtId, decisionId: input.decisionId ?? null })
+      this.diagnostic('observation.completed', { observationId: focusedObservationId, outcome: input.decision, thoughtId: turn.thoughtId, decisionId: input.decisionId ?? null, turnId: turn.turnId, sessionId: turn.sessionId })
+      this.diagnostic('attention.focus.released', { observationId: focusedObservationId, outcome: input.decision, thoughtId: turn.thoughtId, decisionId: input.decisionId ?? null, turnId: turn.turnId, sessionId: turn.sessionId })
+      if (resumedObservationId && resumedObservationId !== focusedObservationId)
+        this.diagnostic('attention.focus.resumed', { observationId: resumedObservationId, afterObservationId: focusedObservationId, outcome: input.decision, thoughtId: turn.thoughtId, decisionId: input.decisionId ?? null, turnId: turn.turnId, sessionId: turn.sessionId })
+    }
     this.state = {
       ...this.state,
       turns,
@@ -2825,10 +3101,20 @@ Respond only with Nan0's outward expression. Do not output JSON, labels, analysi
       at,
     })
     this.state = { ...this.state, internalObservations: enqueued.queue, attention: enqueued.attention }
-    if (enqueued.enqueued)
+    if (enqueued.enqueued) {
+      this.diagnostic('observation.created', { observationId: observation.id, source: observation.source, provenance: observation.provenance ?? null, priority, dedupeKey })
+      this.diagnostic('observation.queued', { observationId: observation.id, source: observation.source, provenance: observation.provenance ?? null, priority, dedupeKey })
       this.diagnostic('attention.queued', { observationId: observation.id, source: observation.source, priority, dedupeKey })
-    if (enqueued.discardedObservationId)
+      this.diagnostic('attention.queue.changed', { observationId: observation.id, change: 'queued', queuedObservationCount: enqueued.queue.records.filter(record => record.status === 'queued').length })
+    }
+    else {
+      this.diagnostic('observation.deduplicated', { observationId: observation.id, source: observation.source, provenance: observation.provenance ?? null, dedupeKey })
+    }
+    if (enqueued.discardedObservationId) {
+      this.diagnostic('observation.discarded', { observationId: enqueued.discardedObservationId, reason: 'queue-overflow' })
       this.diagnostic('attention.discarded', { observationId: enqueued.discardedObservationId, reason: 'queue-overflow' })
+      this.diagnostic('attention.queue.changed', { observationId: enqueued.discardedObservationId, change: 'discarded', queuedObservationCount: enqueued.queue.records.filter(record => record.status === 'queued').length })
+    }
   }
 
   private syncGoalTemporalConditions(): void {
@@ -2848,6 +3134,27 @@ Respond only with Nan0's outward expression. Do not output JSON, labels, analysi
         evidenceKey: candidate.event.evidenceKey,
         significance: candidate.event.significance,
       })
+      const diagnosticEvent = ({
+        'absence-returned': 'temporal.actor.returned',
+        'absence-threshold': 'temporal.absence.threshold',
+        'waiting-overdue': 'temporal.waiting.overdue',
+        'promise-overdue': 'temporal.promise.overdue',
+        'promise-kept': 'temporal.promise.kept',
+        'rhythm-detected': 'temporal.rhythm.detected',
+        'rhythm-broken': 'temporal.rhythm.broken',
+        'idle-deepening': 'temporal.idle.deepened',
+        'milestone-passed': 'temporal.milestone',
+      } as Partial<Record<import('../types').Nan0TemporalEventType, string>>)[candidate.event.eventType]
+      if (diagnosticEvent) {
+        this.diagnostic(diagnosticEvent, {
+          temporalEventId: candidate.event.temporalEventId,
+          eventType: candidate.event.eventType,
+          evidenceKey: candidate.event.evidenceKey,
+          reasonCodes: candidate.event.reasonCodes,
+          observedDurationMs: candidate.event.observedDurationMs,
+          thresholdMs: candidate.event.thresholdMs,
+        })
+      }
       const lived = this.state.temporal.engine.lived
       if (!lived?.emotionallyAppliedEvidenceKeys.includes(candidate.event.evidenceKey)) {
         this.applyEmotionalConsequence(
@@ -2903,8 +3210,23 @@ Respond only with Nan0's outward expression. Do not output JSON, labels, analysi
       throw new Error('Nan0Kernel must be booted before use.')
   }
 
-  private diagnostic(event: string, details: Record<string, unknown>): void {
-    this.dependencies.diagnostic?.({ event, details })
+  private diagnostic(event: string, details: Record<string, unknown>, privateThought?: Readonly<Nan0Thought>): void {
+    try {
+      this.dependencies.observatory?.emit({
+        event,
+        details,
+        privateThought,
+      })
+    }
+    catch {
+      // Observability is read-only and must never alter cognition.
+    }
+    try {
+      this.dependencies.diagnostic?.({ event, details })
+    }
+    catch {
+      // Preserve the legacy callback boundary without granting it runtime authority.
+    }
   }
 
   private emitExpression(expression: Nan0Expression): void {
